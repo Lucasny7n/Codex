@@ -38,39 +38,54 @@ function summarize(text?: string): string | undefined {
 
 export function PermissionsPanel({ requests, outcomes, onApprove, onReject }: PermissionsPanelProps): JSX.Element {
   return (
-    <section className="panel">
+    <section className="panel approval-panel">
       <header className="panel-header">
-        <h2>Permissões Pendentes</h2>
+        <h2>Centro de Aprovação</h2>
         <Badge tone={requests.length > 0 ? 'warn' : 'ok'}>{requests.length}</Badge>
       </header>
       <div className="panel-body scroll-y compact-list">
         <div className="permission-guidance">
-          <p className="muted">Dry-run simula sem aplicar.</p>
-          <p className="muted">Ação privilegiada nunca pede senha no app.</p>
-          <p className="muted">Leia risco, alvo e reversão antes de aprovar.</p>
-          <p className="muted">Sim executa a ação; Não cancela.</p>
+          <strong>Sim/Não explícito</strong>
+          <span>Sem senha na UI. Dry-run não aplica alteração real.</span>
         </div>
-        {requests.length === 0 ? <p className="muted">Nenhuma permissão pendente no momento.</p> : null}
+        {requests.length === 0 ? (
+          <div className="empty-state empty-state-inline">
+            <strong>Fila limpa</strong>
+            <span>Nenhuma permissão pendente.</span>
+          </div>
+        ) : null}
         {requests.map((request) => (
           <article key={request.id} className="permission-card">
             <div className="row-between">
-              <Badge tone={tone(request.category)}>{request.category}</Badge>
-              <Badge tone={riskTone(request.riskLevel)}>risco {request.riskLevel}</Badge>
-              {request.requiresHighConfirmation ? <Badge tone="danger">confirmação alta</Badge> : null}
+              <div className="permission-badges">
+                <Badge tone={tone(request.category)}>{request.category}</Badge>
+                <Badge tone={riskTone(request.riskLevel)}>risco {request.riskLevel}</Badge>
+                {request.dryRun ? <Badge tone="ok">dry-run</Badge> : null}
+                {request.requiresHighConfirmation ? <Badge tone="danger">confirmação alta</Badge> : null}
+              </div>
               <small>{formatDateTime(request.requestedAt)}</small>
             </div>
             <strong>{request.title}</strong>
             <p className="muted">{request.description}</p>
-            <p className="command-preview">{request.command}</p>
+            <pre className="command-preview">{request.command}</pre>
             {request.actionId ? <p className="muted">ação: {request.actionId}</p> : null}
-            <p className="muted">alvo: {shortPath(request.target, 3)}</p>
-            <p className="muted">risco: {request.risk}</p>
-            {request.rollback ? <p className="muted">reversão: {request.rollback}</p> : null}
+            <div className="permission-facts">
+              <span>alvo</span>
+              <strong>{shortPath(request.target, 3)}</strong>
+              <span>risco</span>
+              <strong>{request.risk}</strong>
+              {request.rollback ? (
+                <>
+                  <span>reversão</span>
+                  <strong>{request.rollback}</strong>
+                </>
+              ) : null}
+            </div>
             <div className="row-actions">
-              <button type="button" className="btn btn-primary" onClick={() => onApprove(request.id)}>
+              <button type="button" className="btn-modern btn-modern-primary" onClick={() => onApprove(request.id)}>
                 Sim
               </button>
-              <button type="button" className="btn btn-ghost" onClick={() => onReject(request.id)}>
+              <button type="button" className="btn-modern" onClick={() => onReject(request.id)}>
                 Não
               </button>
             </div>
@@ -85,8 +100,8 @@ export function PermissionsPanel({ requests, outcomes, onApprove, onReject }: Pe
               <small>{formatDateTime(outcome.at)}</small>
             </div>
             <p>{outcome.summary}</p>
-            {summarize(outcome.stdout) ? <p className="muted">stdout: {summarize(outcome.stdout)}</p> : null}
-            {summarize(outcome.stderr) ? <p className="muted">stderr: {summarize(outcome.stderr)}</p> : null}
+            {summarize(outcome.stdout) ? <pre className="terminal-snippet">stdout: {summarize(outcome.stdout)}</pre> : null}
+            {summarize(outcome.stderr) ? <pre className="terminal-snippet stream-stderr">stderr: {summarize(outcome.stderr)}</pre> : null}
           </article>
         ))}
       </div>

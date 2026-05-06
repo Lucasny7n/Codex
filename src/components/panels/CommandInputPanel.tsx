@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import type { PrivilegedActionSpec } from '../../types/domain';
 
 interface CommandInputPanelProps {
@@ -28,6 +28,24 @@ export function CommandInputPanel({
   const [actionDryRun, setActionDryRun] = useState(true);
 
   const [error, setError] = useState<string>();
+  const [copyState, setCopyState] = useState<'idle' | 'copied' | 'failed'>('idle');
+
+  const activeActionId = selectedActionId || privilegedActions[0]?.id || '';
+  const displayedActionArgsText =
+    !selectedActionId && actionArgsText === '{}'
+      ? actionJsonExamples[activeActionId] || actionArgsText
+      : actionArgsText;
+
+  const selectedAction = useMemo(
+    () => privilegedActions.find((action) => action.id === activeActionId),
+    [activeActionId, privilegedActions]
+  );
+
+  const canSubmit =
+    !busy &&
+    ((mode === 'order' && prompt.trim().length > 0) ||
+      (mode === 'terminal' && command.trim().length > 0) ||
+      (mode === 'action' && activeActionId.length > 0));
 
   const handleSend = async () => {
     setError(undefined);
@@ -38,48 +56,84 @@ export function CommandInputPanel({
       await onExecuteCommand(command);
       setCommand('');
     } else {
+      let args: Record<string, unknown>;
       try {
-        const args = JSON.parse(actionArgsText);
-        await onRequestPrivilegedAction(selectedActionId, args, actionDryRun);
+        if (!activeActionId) {
+          setError('Escolha uma ação antes de solicitar permissão.');
+          return;
+        }
+        const parsed: unknown = JSON.parse(displayedActionArgsText);
+        if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+          setError('JSON de argumentos precisa ser um objeto.');
+          return;
+        }
+        args = parsed as Record<string, unknown>;
       } catch {
         setError('JSON de argumentos inválido. Verifique o formato.');
+        return;
       }
+      await onRequestPrivilegedAction(activeActionId, args, actionDryRun);
+    }
+  };
+
+  const handleCopyJson = async () => {
+    setError(undefined);
+    setCopyState('idle');
+    try {
+      await navigator.clipboard.writeText(displayedActionArgsText);
+      setCopyState('copied');
+      window.setTimeout(() => setCopyState('idle'), 1400);
+    } catch {
+      setCopyState('failed');
+      setError('Não foi possível copiar o JSON.');
     }
   };
 
   return (
     <section className="command-input-panel">
-      {error && (
-        <div className="input-error-tip">
-          {error}
+      <div className="command-panel-header">
+        <div>
+          <h2>Ordem e Execução</h2>
+          <p>Envie trabalho, rode comandos ou solicite ações controladas.</p>
         </div>
-      )}
-      <div className="mode-selector">
+        {busy ? <span className="live-chip">processando</span> : <span className="live-chip idle">pronto</span>}
+      </div>
+
+      <div className="mode-selector" role="tablist" aria-label="Modo de entrada">
         <button 
           className={`mode-tab ${mode === 'order' ? 'active' : ''}`} 
+          type="button"
           onClick={() => setMode('order')}
         >
           Ordem
         </button>
         <button 
           className={`mode-tab ${mode === 'terminal' ? 'active' : ''}`} 
+          type="button"
           onClick={() => setMode('terminal')}
         >
           Terminal
         </button>
         <button 
           className={`mode-tab ${mode === 'action' ? 'active' : ''}`} 
+          type="button"
           onClick={() => setMode('action')}
         >
-          Ação Privilegiada
+          Ação
         </button>
       </div>
+
+      {error && (
+        <div className="input-error-tip" role="alert">
+          {error}
+        </div>
+      )}
 
       <div className="input-container">
         {mode === 'order' && (
           <textarea
             className="input-modern main-input"
-            placeholder="Diga ao agente o que fazer..."
+            placeholder="Descreva a tarefa com objetivo, risco e validação esperada."
             value={prompt}
             onChange={(e) => setPrompt(e.target.value)}
             rows={3}
@@ -89,7 +143,7 @@ export function CommandInputPanel({
         {mode === 'terminal' && (
           <textarea
             className="input-modern terminal-input"
-            placeholder="Comando de terminal (ex: npm run test)"
+            placeholder="Comando de terminal"
             value={command}
             onChange={(e) => setCommand(e.target.value)}
             rows={2}
@@ -100,7 +154,7 @@ export function CommandInputPanel({
           <div className="privileged-input-stack">
             <select 
               className="input-modern" 
-              value={selectedActionId} 
+              value={activeActionId}
               onChange={(e) => {
                 setSelectedActionId(e.target.value);
                 setActionArgsText(actionJsonExamples[e.target.value] || '{}');
@@ -112,10 +166,22 @@ export function CommandInputPanel({
                 </option>
               ))}
             </select>
+
+            {selectedAction ? (
+              <div className="action-spec-card">
+                <div className="row-between">
+                  <strong>{selectedAction.category}</strong>
+                  <span className={`risk-chip risk-${selectedAction.riskLevel}`}>{selectedAction.riskLevel}</span>
+                </div>
+                <p>{selectedAction.description}</p>
+                <span>alvo: {selectedAction.targetHint}</span>
+                {selectedAction.rollbackHint ? <span>reversão: {selectedAction.rollbackHint}</span> : null}
+              </div>
+            ) : null}
             
             <textarea
               className="input-modern args-input"
-              value={actionArgsText}
+              value={displayedActionArgsText}
               onChange={(e) => setActionArgsText(e.target.value)}
               rows={4}
             />
@@ -126,19 +192,24 @@ export function CommandInputPanel({
                 checked={actionDryRun} 
                 onChange={(e) => setActionDryRun(e.target.checked)} 
               />
-              Modo Dry-Run (Seguro)
+              Dry-run
             </label>
           </div>
         )}
       </div>
 
       <div className="input-actions">
+        {mode === 'action' ? (
+          <button className="btn-modern" type="button" onClick={() => void handleCopyJson()}>
+            {copyState === 'copied' ? 'JSON copiado' : copyState === 'failed' ? 'Falhou' : 'Copiar JSON'}
+          </button>
+        ) : null}
         <button 
           className="btn-modern btn-modern-primary" 
-          disabled={busy || (mode === 'order' && !prompt) || (mode === 'terminal' && !command)}
-          onClick={handleSend}
+          disabled={!canSubmit}
+          onClick={() => void handleSend()}
         >
-          {busy ? 'Processando...' : mode === 'action' ? 'Solicitar Permissão' : 'Executar'}
+          {busy ? 'Processando...' : mode === 'action' ? 'Solicitar aprovação' : mode === 'terminal' ? 'Executar comando' : 'Enviar ordem'}
         </button>
       </div>
     </section>

@@ -20,9 +20,19 @@ export function shortPath(path: string, keep = 2): string {
 }
 
 export function trimMultiline(input: string): string {
-  return input
-    .split('\n')
-    .map((line) => line.trim())
-    .filter(Boolean)
-    .join('\n');
+  const lines = input.replace(/\r\n/g, '\n').split('\n');
+
+  while (lines.length > 0 && lines[0].trim() === '') {
+    lines.shift();
+  }
+
+  while (lines.length > 0 && lines[lines.length - 1].trim() === '') {
+    lines.pop();
+  }
+
+  return lines.map((line) => line.trimEnd()).join('\n');
+}
+
+export function shellQuote(value: string): string {
+  return "'" + value.replace(/'/g, "'\\''") + "'";
 }

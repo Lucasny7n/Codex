@@ -16,17 +16,20 @@ export function SettingsPanel({ settings, providers, profiles, onChange }: Setti
 
   if (!settings) {
     return (
-      <section className="panel">
+      <section className="panel settings-panel">
         <header className="panel-header">
           <h2>Configurações</h2>
         </header>
-        <div className="panel-body centered muted">Carregando configurações...</div>
+        <div className="panel-body empty-state empty-state-inline">
+          <strong>Carregando</strong>
+          <span>Configurações ainda indisponíveis.</span>
+        </div>
       </section>
     );
   }
 
   return (
-    <section className="panel">
+    <section className="panel settings-panel">
       <header className="panel-header">
         <h2>Modelos e Agentes</h2>
       </header>

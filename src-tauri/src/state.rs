@@ -81,8 +81,9 @@ impl AppState {
                     .unwrap_or("#2d95ec")
                     .to_owned();
                 let accent_secondary = json
-                    .get("secondary")
+                    .get("primary_container")
                     .and_then(Value::as_str)
+                    .or_else(|| json.get("secondary").and_then(Value::as_str))
                     .or_else(|| json.get("surface_tint").and_then(Value::as_str))
                     .unwrap_or("#9dcaff")
                     .to_owned();

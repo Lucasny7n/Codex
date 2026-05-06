@@ -20,8 +20,8 @@ import {
   updateBasePrompt,
   updateSettings
 } from './lib/api';
-import { trimMultiline } from './lib/format';
-import type { PrivilegedActionSpec } from './types/domain';
+import { shellQuote, trimMultiline } from './lib/format';
+import type { AgentSession, AppSettings, PrivilegedActionSpec } from './types/domain';
 import { useAppStore } from './stores/appStore';
 
 import { AppShell } from './components/layout/AppShell';
@@ -39,29 +39,52 @@ import { BasePromptPanel } from './components/panels/BasePromptPanel';
 import { OnboardingPanel } from './components/panels/OnboardingPanel';
 import { CommandInputPanel } from './components/panels/CommandInputPanel';
 
-const ACTION_JSON_EXAMPLES: Record<string, string> = {
-  systemctl_enable_service: '{\n  "service": "fstrim.timer"\n}',
-  systemctl_disable_service: '{\n  "service": "waydroid-container.service"\n}',
-  systemctl_restart_service: '{\n  "service": "waydroid-container.service"\n}',
-  systemctl_status_service: '{\n  "service": "waydroid-container.service"\n}',
-  bootctl_set_default_kernel: '{\n  "entry": "arch-linux-cachyos-bore.conf"\n}',
-  chmod_random_seed: '{}',
-  backup_file: '{\n  "path": "/boot/loader/loader.conf"\n}',
-  restore_file: '{\n  "backupPath": "/home/lucas/.codex/codex-ui/backups/exemplo.bak",\n  "targetPath": "/boot/loader/loader.conf"\n}',
-  pacman_install_packages: '{\n  "packages": ["ripgrep"]\n}',
-  paccache_keep_versions: '{\n  "keep": 2\n}',
-  waydroid_start: '{}',
-  waydroid_stop: '{}',
-  waydroid_status: '{}',
-  hyprland_verify_config: '{\n  "configPath": "/home/lucas/.config/hypr/hyprland.conf"\n}',
-  hyprland_reload_user: '{}'
-};
-
 function applyTheme(accent: { accentPrimary: string; accentSecondary: string; background: string }): void {
   const root = document.documentElement;
   root.style.setProperty('--accent', accent.accentPrimary);
   root.style.setProperty('--accent-2', accent.accentSecondary);
-  root.style.setProperty('--surface-base', accent.background);
+  root.style.setProperty('--accent-strong', accent.accentSecondary);
+  root.style.setProperty('--end4-background', accent.background);
+}
+
+function homeFromCodexRoot(settings?: AppSettings): string | undefined {
+  if (!settings?.codexRoot) return undefined;
+  return settings.codexRoot.endsWith('/.codex') ? settings.codexRoot.slice(0, -'/.codex'.length) : undefined;
+}
+
+function buildActionJsonExamples(settings?: AppSettings): Record<string, string> {
+  const codexRoot = settings?.codexRoot ?? '~/.codex';
+  const home = homeFromCodexRoot(settings) ?? '~';
+
+  return {
+    systemctl_enable_service: '{\n  "service": "fstrim.timer"\n}',
+    systemctl_disable_service: '{\n  "service": "waydroid-container.service"\n}',
+    systemctl_restart_service: '{\n  "service": "waydroid-container.service"\n}',
+    systemctl_status_service: '{\n  "service": "waydroid-container.service"\n}',
+    bootctl_set_default_kernel: '{\n  "entry": "arch-linux-cachyos-bore.conf"\n}',
+    chmod_random_seed: '{}',
+    backup_file: '{\n  "path": "/boot/loader/loader.conf"\n}',
+    restore_file: `{\n  "backupPath": "${codexRoot}/codex-ui/backups/exemplo.bak",\n  "targetPath": "/boot/loader/loader.conf"\n}`,
+    pacman_install_packages: '{\n  "packages": ["ripgrep"]\n}',
+    paccache_keep_versions: '{\n  "keep": 2\n}',
+    waydroid_start: '{}',
+    waydroid_stop: '{}',
+    waydroid_status: '{}',
+    hyprland_verify_config: `{\n  "configPath": "${home}/.config/hypr/hyprland.conf"\n}`,
+    hyprland_reload_user: '{}'
+  };
+}
+
+type VisualSessionState = 'idle' | 'planning' | 'running' | 'waiting_permission' | 'error' | 'done';
+
+function getVisualSessionState(session?: AgentSession): VisualSessionState {
+  if (!session) return 'idle';
+  if (session.status === 'error') return 'error';
+  if (session.status === 'waiting_approval') return 'waiting_permission';
+  if (session.status === 'planning') return 'planning';
+  if (session.status === 'executing' || session.status === 'diagnosing') return 'running';
+  if (session.tasks.length > 0 && session.tasks.every((task) => task.status === 'done')) return 'done';
+  return 'idle';
 }
 
 export default function App(): JSX.Element {
@@ -79,6 +102,7 @@ export default function App(): JSX.Element {
     profiles,
     memory,
     theme,
+    workspaceMeta,
     sessions,
     selectedSessionId,
     statusFeed,
@@ -104,6 +128,30 @@ export default function App(): JSX.Element {
     () => sessions.find((session) => session.id === selectedSessionId),
     [sessions, selectedSessionId]
   );
+
+  const actionJsonExamples = useMemo(() => buildActionJsonExamples(settings), [settings]);
+
+  const selectedProvider = useMemo(
+    () => providers.find((provider) => provider.id === settings?.selectedProviderId),
+    [providers, settings?.selectedProviderId]
+  );
+
+  const selectedModel = useMemo(
+    () => selectedProvider?.models.find((model) => model.id === settings?.selectedModelId),
+    [selectedProvider, settings?.selectedModelId]
+  );
+
+  const selectedProfile = useMemo(
+    () => profiles.find((profile) => profile.id === settings?.selectedAgentId),
+    [profiles, settings?.selectedAgentId]
+  );
+
+  const visualSessionState = getVisualSessionState(selectedSession);
+
+  const workspacePath = (relativePath: string): string | undefined => {
+    if (!settings?.workspaceRoot) return undefined;
+    return `${settings.workspaceRoot.replace(/\/$/, '')}/${relativePath}`;
+  };
   
   const shouldHighlightOnboarding = booted && sessions.length === 0;
 
@@ -235,13 +283,19 @@ export default function App(): JSX.Element {
   }
 
   async function handleRunCheckEnvironment(): Promise<void> {
+    const scriptPath = workspacePath('scripts/check-environment.sh');
+    if (!settings?.workspaceRoot || !scriptPath) {
+      setError('Workspace ainda não carregado para rodar check-environment.');
+      return;
+    }
+
     setBusy(true);
     try {
       const sessionId = await ensureSession();
       const response = await requestExecution({
         sessionId,
-        command: 'bash /home/lucas/Codex/scripts/check-environment.sh',
-        cwd: settings?.workspaceRoot ?? '/home/lucas/Codex',
+        command: `bash ${shellQuote(scriptPath)}`,
+        cwd: settings.workspaceRoot,
         reason: 'Checklist de ambiente acionado pelo painel Primeiros Passos.'
       });
       if (response.permissionRequest) {
@@ -260,6 +314,12 @@ export default function App(): JSX.Element {
       header={
         <TopBar 
           settings={settings}
+          workspaceMeta={workspaceMeta}
+          providerLabel={selectedProvider?.label}
+          modelLabel={selectedModel?.label}
+          profileLabel={selectedProfile?.label}
+          sessionState={visualSessionState}
+          pendingPermissions={pendingPermissions.length}
           onCreateSession={() => void handleCreateSession()}
           onOpenProject={(root) => void openProjectInVscode(root)}
           onOpenLastFile={(path) => void openFileInVscode(path)}
@@ -282,7 +342,7 @@ export default function App(): JSX.Element {
             onSendOrder={handleSendPrompt}
             onExecuteCommand={handleExecuteCommand}
             onRequestPrivilegedAction={handleRequestPrivilegedAction}
-            actionJsonExamples={ACTION_JSON_EXAMPLES}
+            actionJsonExamples={actionJsonExamples}
           />
           <TerminalPanel logs={logs} />
         </>
@@ -298,11 +358,23 @@ export default function App(): JSX.Element {
           <OnboardingPanel
             busy={busy}
             highlight={shouldHighlightOnboarding}
-            onOpenGuide={() => void openFileInVscode('/home/lucas/Codex/docs/GUIA_DE_USO.md')}
-            onOpenQuickstart={() => void openFileInVscode('/home/lucas/Codex/docs/QUICKSTART.md')}
-            onOpenWorkspace={() => void openProjectInVscode(settings?.workspaceRoot ?? '/home/lucas/Codex')}
-            onOpenCodexRoot={() => void openProjectInVscode(settings?.codexRoot ?? '/home/lucas/.codex')}
-            onOpenLogs={() => void openProjectInVscode(`${settings?.codexRoot ?? '/home/lucas/.codex'}/codex-ui/logs`)}
+            onOpenGuide={() => {
+              const path = workspacePath('docs/GUIA_DE_USO.md');
+              if (path) void openFileInVscode(path);
+            }}
+            onOpenQuickstart={() => {
+              const path = workspacePath('docs/QUICKSTART.md');
+              if (path) void openFileInVscode(path);
+            }}
+            onOpenWorkspace={() => {
+              if (settings?.workspaceRoot) void openProjectInVscode(settings.workspaceRoot);
+            }}
+            onOpenCodexRoot={() => {
+              if (settings?.codexRoot) void openProjectInVscode(settings.codexRoot);
+            }}
+            onOpenLogs={() => {
+              if (settings?.codexRoot) void openProjectInVscode(`${settings.codexRoot}/codex-ui/logs`);
+            }}
             onRunCheckEnvironment={() => void handleRunCheckEnvironment()}
           />
           <ChangedFilesPanel entries={changedFiles} onOpen={(path) => void openFileInVscode(path)} />

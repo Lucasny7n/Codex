@@ -10,7 +10,8 @@ import type {
   ProviderDescriptor,
   StatusNote,
   MemorySnapshot,
-  SystemTheme
+  SystemTheme,
+  WorkspaceMeta
 } from '../types/domain';
 
 interface AppStoreState {
@@ -18,6 +19,7 @@ interface AppStoreState {
   loading: boolean;
   error?: string;
   settings?: AppSettings;
+  workspaceMeta?: WorkspaceMeta;
   providers: ProviderDescriptor[];
   profiles: AgentProfile[];
   memory?: MemorySnapshot;
@@ -33,6 +35,7 @@ interface AppStoreState {
   setError: (value?: string) => void;
   bootstrap: (payload: {
     settings: AppSettings;
+    workspaceMeta: WorkspaceMeta;
     sessions: AgentSession[];
     pendingPermissions: PermissionRequest[];
     providers: ProviderDescriptor[];
@@ -78,6 +81,7 @@ export const useAppStore = create<AppStoreState>((set, get) => ({
       loading: false,
       error: undefined,
       settings: payload.settings,
+      workspaceMeta: payload.workspaceMeta,
       sessions: payload.sessions,
       selectedSessionId: payload.sessions[0]?.id,
       pendingPermissions: payload.pendingPermissions,

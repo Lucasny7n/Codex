@@ -12,7 +12,7 @@ export function BasePromptPanel({
   onSave
 }: BasePromptPanelProps): JSX.Element {
   return (
-    <section className="panel">
+    <section className="panel base-prompt-panel">
       <header className="panel-header">
         <h2>Prompt Base do Agente</h2>
       </header>
@@ -20,7 +20,7 @@ export function BasePromptPanel({
         <textarea rows={8} value={content} onChange={(event) => onChange(event.target.value)} />
         <button
           type="button"
-          className="btn btn-primary"
+          className="btn-modern btn-modern-primary"
           disabled={saving}
           onClick={async () => onSave()}
         >

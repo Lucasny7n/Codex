@@ -121,6 +121,14 @@ export interface SystemTheme {
   background: string;
 }
 
+export interface WorkspaceMeta {
+  root: string;
+  repoName: string;
+  branch?: string;
+  headShort?: string;
+  dirty: boolean;
+}
+
 export interface AppSettings {
   workspaceRoot: string;
   codexRoot: string;
@@ -141,6 +149,7 @@ export interface MemorySnapshot {
 
 export interface BootstrapPayload {
   settings: AppSettings;
+  workspaceMeta: WorkspaceMeta;
   sessions: AgentSession[];
   pendingPermissions: PermissionRequest[];
   providers: ProviderDescriptor[];

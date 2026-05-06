@@ -29,15 +29,17 @@ O projeto conta com uma interface moderna (Modern UI) baseada em um Design Syste
 O projeto está sendo preparado para suportar múltiplos agentes coordenados (Architect, Builder, Reviewer, Tester). Veja [MULTI_AGENT_PLAN.md](docs/MULTI_AGENT_PLAN.md) para detalhes.
 
 ## Rodar em desenvolvimento
+Execute a partir da raiz do projeto.
+
 ```bash
-cd /home/lucas/Codex
+export WORKSPACE_ROOT="$(pwd)"
 npm install
 npm run tauri dev
 ```
 
 ## Build
 ```bash
-cd /home/lucas/Codex
+export WORKSPACE_ROOT="$(pwd)"
 npm run tauri build -- --debug
 ```
 
@@ -48,16 +50,16 @@ npm run tauri build -- --debug
 Instale apenas quando quiser ativar o fluxo root real.
 
 ```bash
-cd /home/lucas/Codex/src-tauri
+cd "$WORKSPACE_ROOT/src-tauri"
 cargo build --release --bin codex-privileged-helper
 
-cd /home/lucas/Codex
+cd "$WORKSPACE_ROOT"
 bash scripts/install-privileged-helper.sh
 ```
 
 ## Remoção do helper
 ```bash
-cd /home/lucas/Codex
+cd "$WORKSPACE_ROOT"
 bash scripts/uninstall-privileged-helper.sh
 ```
 

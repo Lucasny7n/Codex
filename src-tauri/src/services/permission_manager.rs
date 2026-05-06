@@ -184,8 +184,8 @@ mod tests {
 
     fn settings() -> AppSettings {
         AppSettings {
-            workspace_root: "/home/lucas/Codex".to_owned(),
-            codex_root: "/home/lucas/.codex".to_owned(),
+            workspace_root: "/tmp/codex-workspace".to_owned(),
+            codex_root: "/tmp/codex-root".to_owned(),
             selected_provider_id: "openai".to_owned(),
             selected_model_id: "gpt-5.5".to_owned(),
             selected_agent_id: "equilibrado".to_owned(),
@@ -198,7 +198,7 @@ mod tests {
         ExecutionRequestInput {
             session_id: "s1".to_owned(),
             command: command.to_owned(),
-            cwd: Some("/home/lucas/Codex".to_owned()),
+            cwd: Some("/tmp/codex-workspace".to_owned()),
             reason: "teste".to_owned(),
         }
     }

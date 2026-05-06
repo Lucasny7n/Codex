@@ -2,6 +2,8 @@
 
 Objetivo: executar ações root aprovadas no app sem pedir senha dentro da UI, sem `sudo -S` e sem shell root arbitrário.
 
+Os comandos de instalação assumem `WORKSPACE_ROOT` apontando para a raiz do projeto.
+
 ## Arquitetura implementada
 
 1. Frontend cria `PermissionRequest` com:
@@ -71,13 +73,13 @@ Observações:
 
 1. Build do helper:
 ```bash
-cd /home/lucas/Codex/src-tauri
+cd "$WORKSPACE_ROOT/src-tauri"
 cargo build --release --bin codex-privileged-helper
 ```
 
 2. Instalar helper + policy:
 ```bash
-cd /home/lucas/Codex
+cd "$WORKSPACE_ROOT"
 bash scripts/install-privileged-helper.sh
 ```
 

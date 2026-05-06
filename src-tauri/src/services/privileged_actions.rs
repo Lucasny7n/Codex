@@ -1,5 +1,6 @@
 use regex::Regex;
 use serde_json::{json, Value};
+use std::env;
 
 use crate::error::{AppError, AppResult};
 use crate::models::{
@@ -499,8 +500,9 @@ fn prepare_hyprland_verify(
     let path = args
         .get("configPath")
         .and_then(Value::as_str)
-        .unwrap_or("/home/lucas/.config/hypr/hyprland.conf");
-    let safe_path = validate_abs_path(path, "configPath")?;
+        .map(ToOwned::to_owned)
+        .unwrap_or_else(default_hyprland_config_path);
+    let safe_path = validate_abs_path(&path, "configPath")?;
     if !safe_path.starts_with("/home/") {
         return Err(AppError::Message(
             "hyprland_verify_config só permite caminhos em /home".to_owned(),
@@ -514,6 +516,12 @@ fn prepare_hyprland_verify(
         rollback: None,
         args: json!({ "configPath": safe_path }),
     })
+}
+
+fn default_hyprland_config_path() -> String {
+    env::var("HOME")
+        .map(|home| format!("{home}/.config/hypr/hyprland.conf"))
+        .unwrap_or_else(|_| "~/.config/hypr/hyprland.conf".to_owned())
 }
 
 #[cfg(test)]

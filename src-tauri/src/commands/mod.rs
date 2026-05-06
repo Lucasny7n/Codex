@@ -1,4 +1,4 @@
-use std::fs;
+use std::{fs, path::Path, process::Command};
 
 use tauri::{AppHandle, Emitter, State};
 use uuid::Uuid;
@@ -8,6 +8,7 @@ use crate::models::{
     BootstrapPayload, ExecutionRequestInput, ExecutionResponse, PendingIntentKind,
     PermissionDecision, PermissionOutcome, PermissionOutcomeStatus, PermissionRequest,
     PrivilegedActionRequestInput, PrivilegedActionSpec, SessionStatus, StatusKind, TaskStatus,
+    WorkspaceMeta,
 };
 use crate::services::privileged_actions;
 use crate::services::privileged_helper_client::HelperRequest;
@@ -35,6 +36,7 @@ pub fn bootstrap_state(
 
     let memory = state.memory_manager.load_snapshot().map_err(map_err)?;
     let payload = BootstrapPayload {
+        workspace_meta: load_workspace_meta(&settings.workspace_root),
         settings,
         sessions: state.session_manager.list_sessions(),
         pending_permissions: state.permission_manager.list_pending(),
@@ -45,6 +47,38 @@ pub fn bootstrap_state(
     };
 
     Ok(payload)
+}
+
+fn load_workspace_meta(root: &str) -> WorkspaceMeta {
+    let repo_name = Path::new(root)
+        .file_name()
+        .and_then(|name| name.to_str())
+        .unwrap_or("workspace")
+        .to_owned();
+
+    WorkspaceMeta {
+        root: root.to_owned(),
+        repo_name,
+        branch: git_output(root, ["branch", "--show-current"]).filter(|value| !value.is_empty()),
+        head_short: git_output(root, ["rev-parse", "--short", "HEAD"])
+            .filter(|value| !value.is_empty()),
+        dirty: git_output(root, ["status", "--short"]).is_some_and(|value| !value.is_empty()),
+    }
+}
+
+fn git_output<const N: usize>(root: &str, args: [&str; N]) -> Option<String> {
+    let output = Command::new("git")
+        .arg("-C")
+        .arg(root)
+        .args(args)
+        .output()
+        .ok()?;
+
+    if !output.status.success() {
+        return None;
+    }
+
+    Some(String::from_utf8_lossy(&output.stdout).trim().to_owned())
 }
 
 #[tauri::command]

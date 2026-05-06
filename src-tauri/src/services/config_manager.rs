@@ -89,9 +89,13 @@ impl ConfigManager {
     }
 
     pub fn home_dir(&self) -> PathBuf {
-        self.codex_root
-            .parent()
-            .map_or_else(|| PathBuf::from("/home/lucas"), PathBuf::from)
+        if let Some(parent) = self.codex_root.parent() {
+            return parent.to_path_buf();
+        }
+
+        std::env::var("HOME")
+            .map(PathBuf::from)
+            .unwrap_or_else(|_| PathBuf::from("/"))
     }
 
     pub fn make_backup(&self, source: &Path, prefix: &str) -> AppResult<Option<PathBuf>> {

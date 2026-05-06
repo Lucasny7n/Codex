@@ -5,13 +5,20 @@ interface MemoryPanelProps {
 }
 
 function ListSection({ title, items }: { title: string; items: string[] }): JSX.Element {
+  const visibleItems = items.slice(0, 4);
+  const hiddenCount = Math.max(items.length - visibleItems.length, 0);
+
   return (
     <div className="memory-block">
-      <h4>{title}</h4>
+      <div className="memory-block-header">
+        <h4>{title}</h4>
+        <span>{items.length}</span>
+      </div>
       <ul>
-        {items.map((item, index) => (
+        {visibleItems.map((item, index) => (
           <li key={`${title}-${index}`}>{item}</li>
         ))}
+        {hiddenCount > 0 ? <li className="muted">+{hiddenCount} itens</li> : null}
       </ul>
     </div>
   );
@@ -20,19 +27,22 @@ function ListSection({ title, items }: { title: string; items: string[] }): JSX.
 export function MemoryPanel({ memory }: MemoryPanelProps): JSX.Element {
   if (!memory) {
     return (
-      <section className="panel">
+      <section className="panel memory-panel">
         <header className="panel-header">
-          <h2>Memórias</h2>
+          <h2>Contexto</h2>
         </header>
-        <div className="panel-body centered muted">Sem snapshot carregado.</div>
+        <div className="panel-body empty-state empty-state-inline">
+          <strong>Sem snapshot</strong>
+          <span>Nenhum contexto carregado.</span>
+        </div>
       </section>
     );
   }
 
   return (
-    <section className="panel">
+    <section className="panel memory-panel">
       <header className="panel-header">
-        <h2>Memórias Ativas (~/.codex)</h2>
+        <h2>Contexto ~/.codex</h2>
       </header>
       <div className="panel-body scroll-y memory-layout">
         <p className="muted">{memory.profileSummary}</p>

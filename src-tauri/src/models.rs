@@ -1,5 +1,6 @@
 use chrono::Utc;
 use serde::{Deserialize, Serialize};
+use std::path::Path;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -207,6 +208,16 @@ pub struct SystemTheme {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct WorkspaceMeta {
+    pub root: String,
+    pub repo_name: String,
+    pub branch: Option<String>,
+    pub head_short: Option<String>,
+    pub dirty: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct AppSettings {
     pub workspace_root: String,
     pub codex_root: String,
@@ -220,7 +231,7 @@ pub struct AppSettings {
 impl AppSettings {
     pub fn defaults(home: &str) -> Self {
         Self {
-            workspace_root: format!("{home}/Codex"),
+            workspace_root: default_workspace_root(home),
             codex_root: format!("{home}/.codex"),
             selected_provider_id: "openai".to_owned(),
             selected_model_id: "gpt-5.5".to_owned(),
@@ -229,6 +240,16 @@ impl AppSettings {
             auto_approve_safe_read: true,
         }
     }
+}
+
+fn default_workspace_root(home: &str) -> String {
+    for candidate in ["Codex-Codex", "Codex"] {
+        let path = format!("{home}/{candidate}");
+        if Path::new(&path).exists() {
+            return path;
+        }
+    }
+    home.to_owned()
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -245,6 +266,7 @@ pub struct MemorySnapshot {
 #[serde(rename_all = "camelCase")]
 pub struct BootstrapPayload {
     pub settings: AppSettings,
+    pub workspace_meta: WorkspaceMeta,
     pub sessions: Vec<AgentSession>,
     pub pending_permissions: Vec<PermissionRequest>,
     pub providers: Vec<ProviderDescriptor>,

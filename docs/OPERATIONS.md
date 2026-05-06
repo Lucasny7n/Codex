@@ -2,7 +2,7 @@
 
 ## Arquivos principais
 
-- App: `/home/lucas/Codex`
+- App: raiz definida por `settings.workspaceRoot`
 - Runtime: `~/.codex/codex-ui`
 - Prompt base de agentes: `~/.codex/AGENTS.md`
 
@@ -15,6 +15,6 @@
 ## Instalar .desktop
 
 ```bash
-cd /home/lucas/Codex
+cd "$WORKSPACE_ROOT"
 bash scripts/install-desktop-entry.sh
 ```

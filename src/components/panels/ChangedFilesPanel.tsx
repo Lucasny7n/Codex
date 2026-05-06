@@ -8,11 +8,18 @@ interface ChangedFilesPanelProps {
 
 export function ChangedFilesPanel({ entries, onOpen }: ChangedFilesPanelProps): JSX.Element {
   return (
-    <section className="panel">
+    <section className="panel changed-files-panel">
       <header className="panel-header">
         <h2>Arquivos Alterados</h2>
+        <span className="panel-count">{entries.length}</span>
       </header>
       <div className="panel-body scroll-y compact-list">
+        {entries.length === 0 ? (
+          <div className="empty-state empty-state-inline">
+            <strong>Sem mudanças</strong>
+            <span>Nenhum arquivo alterado observado.</span>
+          </div>
+        ) : null}
         {entries.map((entry) => (
           <button key={`${entry.path}-${entry.at}`} type="button" className="list-item" onClick={() => onOpen(entry.path)}>
             <div className="row-between">

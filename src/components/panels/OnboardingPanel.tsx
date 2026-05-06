@@ -38,7 +38,7 @@ export function OnboardingPanel({
       </header>
       <div className="panel-body compact-list">
         <div className="tour-panel">
-          <strong>Tour rápido</strong>
+          <strong>Fluxo rápido</strong>
           <div className="tour-grid">
             {TOUR_STEPS.map((step, index) => (
               <div className="tour-step" key={step}>
@@ -52,22 +52,22 @@ export function OnboardingPanel({
         </div>
 
         <div className="onboarding-actions">
-          <button type="button" className="btn" onClick={onOpenGuide}>
+          <button type="button" className="btn-modern" onClick={onOpenGuide}>
             Abrir Guia de Uso
           </button>
-          <button type="button" className="btn" onClick={onOpenQuickstart}>
+          <button type="button" className="btn-modern" onClick={onOpenQuickstart}>
             Abrir Quickstart
           </button>
-          <button type="button" className="btn" onClick={onOpenWorkspace}>
+          <button type="button" className="btn-modern" onClick={onOpenWorkspace}>
             Abrir pasta no VS Code
           </button>
-          <button type="button" className="btn" onClick={onOpenCodexRoot}>
+          <button type="button" className="btn-modern" onClick={onOpenCodexRoot}>
             Abrir ~/.codex
           </button>
-          <button type="button" className="btn" onClick={onOpenLogs}>
+          <button type="button" className="btn-modern" onClick={onOpenLogs}>
             Abrir logs
           </button>
-          <button type="button" className="btn btn-primary" onClick={onRunCheckEnvironment} disabled={busy}>
+          <button type="button" className="btn-modern btn-modern-primary" onClick={onRunCheckEnvironment} disabled={busy}>
             Rodar check-environment
           </button>
         </div>

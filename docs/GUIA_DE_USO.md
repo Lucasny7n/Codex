@@ -1,5 +1,7 @@
 # Guia de Uso: Codex Command Center
 
+Os comandos abaixo assumem terminal aberto na raiz do projeto. Se mudar de terminal, rode `export WORKSPACE_ROOT="$(pwd)"` novamente.
+
 ## 1. O que é
 O Codex Command Center é um app desktop para operar agentes tipo Codex no Linux, com execução controlada, permissões explícitas, logs, integração com VS Code e memórias em `~/.codex`.
 
@@ -13,13 +15,13 @@ O Codex Command Center é um app desktop para operar agentes tipo Codex no Linux
 
 ## 3. Como abrir em desenvolvimento
 ```bash
-cd /home/lucas/Codex
+export WORKSPACE_ROOT="$(pwd)"
 npm run tauri dev
 ```
 
 ## 4. Como gerar build/pacote
 ```bash
-cd /home/lucas/Codex
+export WORKSPACE_ROOT="$(pwd)"
 npm run tauri build -- --debug
 ```
 
@@ -29,7 +31,7 @@ Os pacotes debug ficam em:
 
 ## 5. Como abrir no VS Code
 ```bash
-code /home/lucas/Codex
+code "$WORKSPACE_ROOT"
 ```
 
 Também existe o botão `Abrir projeto no VS Code` no topo do app.
@@ -114,16 +116,16 @@ Marque `dry-run`, solicite a ação e aprove no painel de permissões.
 Instale apenas quando entender o modelo de permissão.
 
 ```bash
-cd /home/lucas/Codex/src-tauri
+cd "$WORKSPACE_ROOT/src-tauri"
 cargo build --release --bin codex-privileged-helper
 
-cd /home/lucas/Codex
+cd "$WORKSPACE_ROOT"
 bash scripts/install-privileged-helper.sh
 ```
 
 ## 16. Remover helper
 ```bash
-cd /home/lucas/Codex
+cd "$WORKSPACE_ROOT"
 bash scripts/uninstall-privileged-helper.sh
 ```
 
