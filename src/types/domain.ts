@@ -20,10 +20,14 @@ export interface AgentSession {
 
 export type SessionStatus =
   | 'idle'
+  | 'ready'
   | 'planning'
   | 'diagnosing'
   | 'waiting_approval'
   | 'executing'
+  | 'running'
+  | 'installing'
+  | 'completed'
   | 'error';
 
 export interface SessionTask {
@@ -106,7 +110,28 @@ export interface ModelDescriptor {
   supportsTools: boolean;
 }
 
-export type ProviderStatusState = 'mock' | 'unavailable' | 'not_configured' | 'ready' | 'running' | 'error';
+export type ProviderStatusState =
+  | 'mock'
+  | 'unavailable'
+  | 'not_configured'
+  | 'ready'
+  | 'running'
+  | 'error'
+  | 'requires_api_key'
+  | 'requires_login'
+  | 'requires_oauth'
+  | 'requires_cli_auth'
+  | 'not_installed'
+  | 'service_offline'
+  | 'api_unreachable'
+  | 'model_missing'
+  | 'installing'
+  | 'pulling'
+  | 'testing'
+  | 'quota_exceeded'
+  | 'rate_limited'
+  | 'misconfigured'
+  | 'experimental';
 
 export interface ProviderRuntimeStatus {
   state: ProviderStatusState;
@@ -125,6 +150,14 @@ export interface ProviderDescriptor {
   models: ModelDescriptor[];
 }
 
+export interface ProviderCredentialStatus {
+  providerId: string;
+  hasCredential: boolean;
+  maskedKey?: string;
+  source?: string;
+  checkedAt: string;
+}
+
 export interface SystemTheme {
   source: string;
   accentPrimary: string;
@@ -140,6 +173,15 @@ export interface WorkspaceMeta {
   dirty: boolean;
 }
 
+export type ExecutionMode = 'cloud' | 'local';
+
+export interface ModelSelectionHistoryEntry {
+  mode: ExecutionMode;
+  providerId: string;
+  modelId: string;
+  at: string;
+}
+
 export interface AppSettings {
   workspaceRoot: string;
   codexRoot: string;
@@ -148,6 +190,10 @@ export interface AppSettings {
   selectedAgentId: string;
   preferredShell: string;
   autoApproveSafeRead: boolean;
+  executionMode: ExecutionMode;
+  selectedLocalModelId?: string;
+  modelSelectionHistory: ModelSelectionHistoryEntry[];
+  localModelsRoot: string;
 }
 
 export interface MemorySnapshot {
@@ -208,4 +254,90 @@ export interface StatusNote {
   title: string;
   detail: string;
   at: string;
+}
+
+export type LocalRuntimeState =
+  | 'ready'
+  | 'not_configured'
+  | 'unavailable'
+  | 'running'
+  | 'installing'
+  | 'service_offline'
+  | 'api_unreachable'
+  | 'error';
+
+export interface LocalInstalledModel {
+  id: string;
+  size?: string;
+  modifiedAt?: string;
+  digest?: string;
+}
+
+export interface LocalRuntimeSnapshot {
+  state: LocalRuntimeState;
+  message: string;
+  command?: string;
+  version?: string;
+  runtimePath?: string;
+  installCommand?: string;
+  modelsDir: string;
+  installedModels: LocalInstalledModel[];
+  activeModelId?: string;
+  installed: boolean;
+  serviceActive: boolean;
+  apiReachable: boolean;
+  apiUrl: string;
+  canUsePacman: boolean;
+  hasPkexec: boolean;
+  hasSudo: boolean;
+  diskOk?: boolean;
+  problems: string[];
+  repairActions: string[];
+  at: string;
+}
+
+export type LocalModelInstallState = 'running' | 'completed' | 'error';
+
+export interface LocalModelInstallProgress {
+  modelId: string;
+  state: LocalModelInstallState;
+  progressPercent?: number;
+  message: string;
+  at: string;
+}
+
+export interface ActionableError {
+  code: string;
+  severity: 'info' | 'warning' | 'error';
+  message: string;
+  actionLabel?: string;
+  actionTarget?: string;
+  technicalDetails?: string;
+}
+
+export interface AppHealthProvider {
+  id: string;
+  status: ProviderRuntimeStatus;
+  hasKey: boolean;
+}
+
+export interface AppHealthAction {
+  label: string;
+  command?: string;
+}
+
+export interface AppHealthCheck {
+  baseDir: string;
+  expectedBaseDir: string;
+  correctBaseDir: boolean;
+  branch?: string;
+  nodeOk: boolean;
+  npmOk: boolean;
+  cargoOk: boolean;
+  tauriOk: boolean;
+  providers: AppHealthProvider[];
+  ollama: LocalRuntimeSnapshot;
+  recentErrors: ActionableError[];
+  overallStatus: 'ok' | 'warning' | 'error';
+  actions: AppHealthAction[];
 }

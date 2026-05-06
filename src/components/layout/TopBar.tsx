@@ -1,13 +1,27 @@
-import type { AppSettings, ProviderRuntimeStatus, WorkspaceMeta } from '../../types/domain';
+import type {
+  AppSettings,
+  ExecutionMode,
+  LocalRuntimeSnapshot,
+  ProviderRuntimeStatus,
+  WorkspaceMeta,
+} from '../../types/domain';
 
 interface TopBarProps {
   settings?: AppSettings;
   workspaceMeta?: WorkspaceMeta;
   providerLabel?: string;
   providerStatus?: ProviderRuntimeStatus;
+  executionMode: ExecutionMode;
+  activeModelLabel: string;
+  localRuntime?: LocalRuntimeSnapshot;
   onCreateSession: () => void;
   onOpenProject: (root: string) => void;
   onOpenInspector: () => void;
+  onOpenModelSelector: () => void;
+}
+
+function modeLabel(mode: ExecutionMode): string {
+  return mode === 'local' ? 'Local' : 'Nuvem';
 }
 
 export function TopBar({
@@ -15,9 +29,13 @@ export function TopBar({
   workspaceMeta,
   providerLabel,
   providerStatus,
+  executionMode,
+  activeModelLabel,
+  localRuntime,
   onCreateSession,
   onOpenProject,
-  onOpenInspector
+  onOpenInspector,
+  onOpenModelSelector,
 }: TopBarProps): JSX.Element {
   const workspaceRoot = settings?.workspaceRoot;
   const repoName = workspaceMeta?.repoName ?? workspaceRoot?.split('/').filter(Boolean).pop() ?? 'workspace';
@@ -28,13 +46,23 @@ export function TopBar({
   return (
     <header className="topbar-clean">
       <div className="topbar-clean-brand">
-        <h1>Codex Command Center</h1>
+        <h1>AI Command Center</h1>
         <div className="topbar-clean-repo">
           <span>{repoName}</span>
           <span className="topbar-separator" aria-hidden="true">•</span>
           <span>{branch}</span>
+          {workspaceMeta?.dirty ? <span className="workspace-dirty">dirty</span> : null}
         </div>
       </div>
+
+      <button type="button" className="model-switcher-button" onClick={onOpenModelSelector}>
+        <span className="model-switcher-label">IA Ativa</span>
+        <strong>{activeModelLabel}</strong>
+        <span>
+          {modeLabel(executionMode)}
+          {executionMode === 'local' && localRuntime ? ` • ${localRuntime.state.replace('_', ' ')}` : ` • ${provider}`}
+        </span>
+      </button>
 
       <div className={`provider-summary provider-${providerStatus?.state ?? 'unavailable'}`}>
         <span className="provider-summary-name">{provider}</span>
@@ -56,7 +84,7 @@ export function TopBar({
           Projeto
         </button>
         <button className="btn-modern btn-modern-primary" type="button" onClick={onOpenInspector}>
-          Settings / Inspector
+          Inspector
         </button>
       </div>
     </header>

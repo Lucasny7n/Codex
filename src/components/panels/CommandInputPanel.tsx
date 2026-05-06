@@ -9,6 +9,11 @@ interface CommandInputPanelProps {
   onRequestPrivilegedAction: (actionId: string, args: Record<string, unknown>, dryRun: boolean) => Promise<void>;
   actionJsonExamples: Record<string, string>;
   orderDisabledReason?: string;
+  executionMode?: 'cloud' | 'local';
+  activeModelLabel?: string;
+  providerLabel?: string;
+  runtimeState?: string;
+  onOpenModelSelector?: () => void;
 }
 
 type InputMode = 'order' | 'terminal' | 'action';
@@ -20,7 +25,12 @@ export function CommandInputPanel({
   onExecuteCommand,
   onRequestPrivilegedAction,
   actionJsonExamples,
-  orderDisabledReason
+  orderDisabledReason,
+  executionMode = 'cloud',
+  activeModelLabel = 'modelo não selecionado',
+  providerLabel,
+  runtimeState,
+  onOpenModelSelector,
 }: CommandInputPanelProps): JSX.Element {
   const [mode, setMode] = useState<InputMode>('order');
   const [prompt, setPrompt] = useState('');
@@ -29,7 +39,7 @@ export function CommandInputPanel({
   const [actionArgsText, setActionArgsText] = useState('{}');
   const [actionDryRun, setActionDryRun] = useState(true);
 
-  const [error, setError] = useState<string>();
+  const [sendError, setSendError] = useState<string>();
   const [copyState, setCopyState] = useState<'idle' | 'copied' | 'failed'>('idle');
 
   const activeActionId = selectedActionId || privilegedActions[0]?.id || '';
@@ -40,7 +50,7 @@ export function CommandInputPanel({
 
   const selectedAction = useMemo(
     () => privilegedActions.find((action) => action.id === activeActionId),
-    [activeActionId, privilegedActions]
+    [activeActionId, privilegedActions],
   );
 
   const canSubmit =
@@ -50,7 +60,7 @@ export function CommandInputPanel({
       (mode === 'action' && activeActionId.length > 0));
 
   const handleSend = async () => {
-    setError(undefined);
+    setSendError(undefined);
     if (mode === 'order') {
       await onSendOrder(prompt);
       setPrompt('');
@@ -61,17 +71,18 @@ export function CommandInputPanel({
       let args: Record<string, unknown>;
       try {
         if (!activeActionId) {
-          setError('Escolha uma ação antes de solicitar permissão.');
+          setSendError('Escolha uma ação antes de solicitar permissão.');
           return;
         }
         const parsed: unknown = JSON.parse(displayedActionArgsText);
         if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
-          setError('JSON de argumentos precisa ser um objeto.');
+          setSendError('JSON de argumentos precisa ser um objeto.');
           return;
         }
         args = parsed as Record<string, unknown>;
-      } catch {
-        setError('JSON de argumentos inválido. Verifique o formato.');
+      } catch (cause) {
+        const detail = cause instanceof Error ? cause.message : 'erro de parse desconhecido';
+        setSendError(`JSON de argumentos inválido. Verifique o formato. Detalhe: ${detail}`);
         return;
       }
       await onRequestPrivilegedAction(activeActionId, args, actionDryRun);
@@ -79,15 +90,16 @@ export function CommandInputPanel({
   };
 
   const handleCopyJson = async () => {
-    setError(undefined);
+    setSendError(undefined);
     setCopyState('idle');
     try {
       await navigator.clipboard.writeText(displayedActionArgsText);
       setCopyState('copied');
       window.setTimeout(() => setCopyState('idle'), 1400);
-    } catch {
+    } catch (cause) {
       setCopyState('failed');
-      setError('Não foi possível copiar o JSON.');
+      const detail = cause instanceof Error ? cause.message : 'clipboard indisponível';
+      setSendError(`Não foi possível copiar o JSON. Detalhe: ${detail}`);
     }
   };
 
@@ -95,41 +107,53 @@ export function CommandInputPanel({
     <section className="command-input-panel">
       <div className="command-panel-header">
         <div>
-          <h2>Ordem e Execução</h2>
-          <p>Envie trabalho, rode comandos ou solicite ações controladas.</p>
+          <h2>Comando Principal</h2>
+          <p>Fluxo unificado para ordens, terminal e ações controladas.</p>
         </div>
-        {busy ? <span className="live-chip">processando</span> : <span className="live-chip idle">pronto</span>}
+        <div className="command-context-badges">
+          <span className="live-chip">{busy ? 'executando' : 'pronto'}</span>
+          <span className="context-chip">{executionMode === 'local' ? 'Local' : 'Nuvem'}</span>
+          <span className="context-chip">{activeModelLabel}</span>
+          {runtimeState ? <span className="context-chip">runtime: {runtimeState.replace('_', ' ')}</span> : null}
+          {!runtimeState && providerLabel ? <span className="context-chip">provider: {providerLabel}</span> : null}
+        </div>
       </div>
 
-      <div className="mode-selector" role="tablist" aria-label="Modo de entrada">
-        <button 
-          className={`mode-tab ${mode === 'order' ? 'active' : ''}`} 
-          type="button"
-          onClick={() => setMode('order')}
-        >
-          Ordem
-        </button>
-        <button 
-          className={`mode-tab ${mode === 'terminal' ? 'active' : ''}`} 
-          type="button"
-          onClick={() => setMode('terminal')}
-        >
-          Terminal
-        </button>
-        <button 
-          className={`mode-tab ${mode === 'action' ? 'active' : ''}`} 
-          type="button"
-          onClick={() => setMode('action')}
-        >
-          Ação
+      <div className="command-toolbar">
+        <div className="mode-selector" role="tablist" aria-label="Modo de entrada">
+          <button
+            className={`mode-tab ${mode === 'order' ? 'active' : ''}`}
+            type="button"
+            onClick={() => setMode('order')}
+          >
+            Ordem
+          </button>
+          <button
+            className={`mode-tab ${mode === 'terminal' ? 'active' : ''}`}
+            type="button"
+            onClick={() => setMode('terminal')}
+          >
+            Terminal
+          </button>
+          <button
+            className={`mode-tab ${mode === 'action' ? 'active' : ''}`}
+            type="button"
+            onClick={() => setMode('action')}
+          >
+            Ação
+          </button>
+        </div>
+
+        <button type="button" className="btn-modern" onClick={onOpenModelSelector} disabled={!onOpenModelSelector}>
+          Modelo / Execução
         </button>
       </div>
 
-      {error && (
+      {sendError ? (
         <div className="input-error-tip" role="alert">
-          {error}
+          {sendError}
         </div>
-      )}
+      ) : null}
 
       {mode === 'order' && orderDisabledReason ? (
         <div className="input-error-tip provider-blocked-tip" role="status">
@@ -138,34 +162,34 @@ export function CommandInputPanel({
       ) : null}
 
       <div className="input-container">
-        {mode === 'order' && (
+        {mode === 'order' ? (
           <textarea
             className="input-modern main-input"
-            placeholder="Descreva a tarefa com objetivo, risco e validação esperada."
+            placeholder="Descreva objetivo, restrições, risco e validação esperada."
             value={prompt}
-            onChange={(e) => setPrompt(e.target.value)}
+            onChange={(event) => setPrompt(event.target.value)}
             rows={3}
           />
-        )}
+        ) : null}
 
-        {mode === 'terminal' && (
+        {mode === 'terminal' ? (
           <textarea
             className="input-modern terminal-input"
             placeholder="Comando de terminal"
             value={command}
-            onChange={(e) => setCommand(e.target.value)}
+            onChange={(event) => setCommand(event.target.value)}
             rows={2}
           />
-        )}
+        ) : null}
 
-        {mode === 'action' && (
+        {mode === 'action' ? (
           <div className="privileged-input-stack">
-            <select 
-              className="input-modern" 
+            <select
+              className="input-modern"
               value={activeActionId}
-              onChange={(e) => {
-                setSelectedActionId(e.target.value);
-                setActionArgsText(actionJsonExamples[e.target.value] || '{}');
+              onChange={(event) => {
+                setSelectedActionId(event.target.value);
+                setActionArgsText(actionJsonExamples[event.target.value] || '{}');
               }}
             >
               {privilegedActions.map((action) => (
@@ -186,24 +210,20 @@ export function CommandInputPanel({
                 {selectedAction.rollbackHint ? <span>reversão: {selectedAction.rollbackHint}</span> : null}
               </div>
             ) : null}
-            
+
             <textarea
               className="input-modern args-input"
               value={displayedActionArgsText}
-              onChange={(e) => setActionArgsText(e.target.value)}
+              onChange={(event) => setActionArgsText(event.target.value)}
               rows={4}
             />
 
             <label className="checkbox-modern">
-              <input 
-                type="checkbox" 
-                checked={actionDryRun} 
-                onChange={(e) => setActionDryRun(e.target.checked)} 
-              />
+              <input type="checkbox" checked={actionDryRun} onChange={(event) => setActionDryRun(event.target.checked)} />
               Dry-run
             </label>
           </div>
-        )}
+        ) : null}
       </div>
 
       <div className="input-actions">
@@ -212,11 +232,7 @@ export function CommandInputPanel({
             {copyState === 'copied' ? 'JSON copiado' : copyState === 'failed' ? 'Falhou' : 'Copiar JSON'}
           </button>
         ) : null}
-        <button 
-          className="btn-modern btn-modern-primary" 
-          disabled={!canSubmit}
-          onClick={() => void handleSend()}
-        >
+        <button className="btn-modern btn-modern-primary" disabled={!canSubmit} onClick={() => void handleSend()}>
           {busy ? 'Processando...' : mode === 'action' ? 'Solicitar aprovação' : mode === 'terminal' ? 'Executar comando' : 'Enviar ordem'}
         </button>
       </div>

@@ -3,10 +3,17 @@ import {
   bootstrapState,
   createSession,
   decidePermission,
+  getAppHealthCheck,
   getBasePrompt,
+  getLocalRuntimeState,
+  installLocalModel,
+  installLocalRuntime,
+  listProviderCredentials,
   listPrivilegedActions,
   onCommandLog,
   onFileChanged,
+  onLocalModelProgress,
+  onLocalRuntimeState,
   onPermissionOutcome,
   onPermissionRaised,
   onPermissionResolved,
@@ -14,15 +21,38 @@ import {
   onStatusNote,
   openFileInVscode,
   openProjectInVscode,
-  requestPrivilegedAction,
+  removeLocalModel,
+  removeProviderCredential,
   requestExecution,
+  requestPrivilegedAction,
+  saveProviderCredential,
   sendOrderToAgent,
+  startLocalRuntime,
   testProviderConnection,
   updateBasePrompt,
-  updateSettings
+  updateSettings,
 } from './lib/api';
 import { shellQuote, trimMultiline } from './lib/format';
-import type { AppSettings, PrivilegedActionSpec, ProviderRuntimeStatus } from './types/domain';
+import {
+  modelRegistry,
+  type CloudModelProfile,
+  type LocalModelProfile,
+} from './lib/modelRegistry';
+import { translateError } from './lib/errorTranslator';
+import {
+  canSelectModel,
+  resolveModelStatus,
+} from './lib/providerStatus';
+import type {
+  AppHealthCheck,
+  AppSettings,
+  ExecutionMode,
+  LocalModelInstallProgress,
+  LocalRuntimeSnapshot,
+  PrivilegedActionSpec,
+  ProviderCredentialStatus,
+  ProviderRuntimeStatus,
+} from './types/domain';
 import { useAppStore } from './stores/appStore';
 
 import { AppShell } from './components/layout/AppShell';
@@ -35,7 +65,7 @@ import { StatusPanel } from './components/panels/StatusPanel';
 import { TasksPanel } from './components/panels/TasksPanel';
 import { PermissionsPanel } from './components/panels/PermissionsPanel';
 import { ChangedFilesPanel } from './components/panels/ChangedFilesPanel';
-import { SettingsPanel } from './components/panels/SettingsPanel';
+import { SettingsPanel, type SettingsTab } from './components/panels/SettingsPanel';
 import { MemoryPanel } from './components/panels/MemoryPanel';
 import { BasePromptPanel } from './components/panels/BasePromptPanel';
 import { OnboardingPanel } from './components/panels/OnboardingPanel';
@@ -43,6 +73,7 @@ import { CommandInputPanel } from './components/panels/CommandInputPanel';
 import { InspectorPanel } from './components/panels/InspectorPanel';
 import { TerminalDrawer } from './components/panels/TerminalDrawer';
 import { HelpDrawer } from './components/panels/HelpDrawer';
+import { ModelSelector } from './components/panels/ModelSelector';
 
 function applyTheme(accent: { accentPrimary: string; accentSecondary: string; background: string }): void {
   const root = document.documentElement;
@@ -76,8 +107,34 @@ function buildActionJsonExamples(settings?: AppSettings): Record<string, string>
     waydroid_stop: '{}',
     waydroid_status: '{}',
     hyprland_verify_config: `{\n  "configPath": "${home}/.config/hypr/hyprland.conf"\n}`,
-    hyprland_reload_user: '{}'
+    hyprland_reload_user: '{}',
   };
+}
+
+function pushHistory(settings: AppSettings, mode: ExecutionMode, providerId: string, modelId: string): AppSettings {
+  const entry = {
+    mode,
+    providerId,
+    modelId,
+    at: new Date().toISOString(),
+  };
+
+  const history = [
+    entry,
+    ...settings.modelSelectionHistory.filter(
+      (item) => !(item.mode === mode && item.providerId === providerId && item.modelId === modelId),
+    ),
+  ].slice(0, 30);
+
+  return {
+    ...settings,
+    modelSelectionHistory: history,
+  };
+}
+
+function isLocalModelInstalled(runtime: LocalRuntimeSnapshot | undefined, modelId: string): boolean {
+  if (!runtime) return false;
+  return runtime.installedModels.some((model) => model.id === modelId);
 }
 
 export default function App(): JSX.Element {
@@ -88,6 +145,14 @@ export default function App(): JSX.Element {
   const [selectedInspectorTab, setSelectedInspectorTab] = useState<InspectorTabId>('status');
   const [terminalOpen, setTerminalOpen] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false);
+  const [localRuntime, setLocalRuntime] = useState<LocalRuntimeSnapshot>();
+  const [localRuntimeLoading, setLocalRuntimeLoading] = useState(false);
+  const [modelActionBusyId, setModelActionBusyId] = useState<string>();
+  const [installationProgress, setInstallationProgress] = useState<Record<string, LocalModelInstallProgress>>({});
+  const [providerCredentials, setProviderCredentials] = useState<ProviderCredentialStatus[]>([]);
+  const [healthCheck, setHealthCheck] = useState<AppHealthCheck>();
+  const [healthLoading, setHealthLoading] = useState(false);
+  const [settingsTabRequest, setSettingsTabRequest] = useState<{ tab: SettingsTab; nonce: number }>();
 
   const {
     booted,
@@ -106,6 +171,9 @@ export default function App(): JSX.Element {
     changedFiles,
     pendingPermissions,
     permissionOutcomes,
+    selectedModelId,
+    executionMode,
+    modelSelectorOpen,
     setError,
     setLoading,
     bootstrap,
@@ -118,32 +186,68 @@ export default function App(): JSX.Element {
     removePermission,
     recordPermissionOutcome,
     updateSettings: syncSettings,
-    updateProviderStatus
+    updateProviderStatus,
+    selectModel,
+    setExecutionMode,
+    setModelSelectorOpen,
   } = useAppStore();
 
   const selectedSession = useMemo(
     () => sessions.find((session) => session.id === selectedSessionId),
-    [sessions, selectedSessionId]
+    [sessions, selectedSessionId],
   );
 
   const actionJsonExamples = useMemo(() => buildActionJsonExamples(settings), [settings]);
 
   const selectedProvider = useMemo(
     () => providers.find((provider) => provider.id === settings?.selectedProviderId),
-    [providers, settings?.selectedProviderId]
+    [providers, settings?.selectedProviderId],
   );
 
-  const selectedProviderStatus: ProviderRuntimeStatus | undefined = selectedProvider?.status ?? (settings
-    ? {
-        state: 'unavailable',
-        message: `Provider salvo \`${settings.selectedProviderId}\` não está registrado neste build.`,
-        checkedAt: new Date().toISOString()
-      }
-    : undefined);
+  const selectedProviderStatus: ProviderRuntimeStatus | undefined = useMemo(
+    () =>
+      selectedProvider?.status ??
+      (settings
+        ? {
+            state: 'unavailable',
+            message: `Provider salvo \`${settings.selectedProviderId}\` não está registrado neste build.`,
+            checkedAt: new Date().toISOString(),
+          }
+        : undefined),
+    [selectedProvider, settings],
+  );
 
-  const orderDisabledReason = selectedProviderStatus && !['ready', 'mock'].includes(selectedProviderStatus.state)
-    ? `Provider ${selectedProviderStatus.state}: ${selectedProviderStatus.message}`
-    : undefined;
+  const activeModel = useMemo(() => {
+    if (!selectedModelId && !settings?.selectedModelId) return undefined;
+    return modelRegistry.byId(selectedModelId ?? settings?.selectedModelId ?? '');
+  }, [selectedModelId, settings?.selectedModelId]);
+
+  const activeModelLabel = activeModel?.displayName ?? settings?.selectedModelId ?? 'modelo não selecionado';
+
+  const orderDisabledReason = useMemo(() => {
+    if (!settings) return 'Configurações não carregadas.';
+
+    if (executionMode === 'local') {
+      if (!localRuntime) return 'Runtime local ainda não carregado.';
+      if (localRuntime.state !== 'ready') {
+        const translated = translateError(localRuntime.problems[0] ?? localRuntime.state, localRuntime.message);
+        return `${translated.message} ${translated.actionLabel ? `Ação: ${translated.actionLabel}.` : ''}`;
+      }
+      const localModelId = settings.selectedLocalModelId ?? settings.selectedModelId;
+      if (!localModelId || !isLocalModelInstalled(localRuntime, localModelId)) {
+        const translated = translateError('model_missing');
+        return `${translated.message} ${translated.actionLabel}.`;
+      }
+      return undefined;
+    }
+
+    if (selectedProviderStatus && selectedProviderStatus.state !== 'ready') {
+      const translated = translateError(selectedProviderStatus.state, selectedProviderStatus.message);
+      return `${translated.message} ${translated.actionLabel ? `Ação: ${translated.actionLabel}.` : ''}`;
+    }
+
+    return undefined;
+  }, [executionMode, localRuntime, selectedProviderStatus, settings]);
 
   const workspacePath = (relativePath: string): string | undefined => {
     if (!settings?.workspaceRoot) return undefined;
@@ -169,6 +273,17 @@ export default function App(): JSX.Element {
           setBasePrompt(promptBase);
           setPrivilegedActions(actionCatalog);
         }
+        const credentials = await listProviderCredentials();
+        if (mounted) {
+          setProviderCredentials(credentials);
+        }
+
+        setLocalRuntimeLoading(true);
+        const runtimeSnapshot = await getLocalRuntimeState();
+        if (mounted) {
+          setLocalRuntime(runtimeSnapshot);
+          setLocalRuntimeLoading(false);
+        }
 
         unlisteners.push(await onStatusNote((note) => appendStatus(note)));
         unlisteners.push(await onCommandLog((chunk) => appendLog(chunk)));
@@ -177,12 +292,26 @@ export default function App(): JSX.Element {
         unlisteners.push(await onPermissionRaised((request) => addPermission(request)));
         unlisteners.push(await onPermissionResolved((requestId) => removePermission(requestId)));
         unlisteners.push(await onPermissionOutcome((outcome) => recordPermissionOutcome(outcome)));
+        unlisteners.push(
+          await onLocalRuntimeState((snapshot) => {
+            setLocalRuntime(snapshot);
+          }),
+        );
+        unlisteners.push(
+          await onLocalModelProgress((progress) => {
+            setInstallationProgress((current) => ({
+              ...current,
+              [progress.modelId]: progress,
+            }));
+          }),
+        );
       } catch (cause) {
         if (!mounted) return;
         setError(cause instanceof Error ? cause.message : 'Falha ao inicializar aplicação.');
       } finally {
         if (mounted) {
           setLoading(false);
+          setLocalRuntimeLoading(false);
         }
       }
     }
@@ -195,7 +324,18 @@ export default function App(): JSX.Element {
         unlisten();
       }
     };
-  }, [addPermission, appendLog, appendStatus, bootstrap, pushFileChange, recordPermissionOutcome, removePermission, setError, setLoading, upsertSession]);
+  }, [
+    addPermission,
+    appendLog,
+    appendStatus,
+    bootstrap,
+    pushFileChange,
+    recordPermissionOutcome,
+    removePermission,
+    setError,
+    setLoading,
+    upsertSession,
+  ]);
 
   useEffect(() => {
     if (theme) {
@@ -242,7 +382,7 @@ export default function App(): JSX.Element {
         sessionId,
         command: cleaned,
         cwd: settings?.workspaceRoot,
-        reason: 'Comando solicitado pelo usuário na central.'
+        reason: 'Comando solicitado pelo usuário na central.',
       });
       if (response.permissionRequest) {
         addPermission(response.permissionRequest);
@@ -261,7 +401,7 @@ export default function App(): JSX.Element {
         actionId,
         args,
         reason: 'Ação privilegiada solicitada pelo usuário no painel de permissões.',
-        dryRun
+        dryRun,
       });
       addPermission(request);
     } finally {
@@ -269,15 +409,74 @@ export default function App(): JSX.Element {
     }
   }
 
-  async function handleUpdateSettings(next: NonNullable<typeof settings>): Promise<void> {
+  async function applySettings(next: AppSettings): Promise<void> {
     const updated = await updateSettings(next);
     syncSettings(updated);
+  }
+
+  async function handleUpdateSettings(next: AppSettings): Promise<void> {
+    let normalized = next;
+    if (next.selectedProviderId === 'local-ollama') {
+      normalized = {
+        ...next,
+        executionMode: 'local',
+        selectedLocalModelId: next.selectedModelId,
+      };
+    } else if (next.executionMode === 'local') {
+      normalized = {
+        ...next,
+        executionMode: 'cloud',
+      };
+    }
+    await applySettings(normalized);
+  }
+
+  function openSettingsTab(tab: SettingsTab): void {
+    setSettingsTabRequest({ tab, nonce: Date.now() });
+    setSelectedInspectorTab('settings');
   }
 
   async function handleTestProvider(providerId: string): Promise<ProviderRuntimeStatus> {
     const status = await testProviderConnection(providerId);
     updateProviderStatus(providerId, status);
     return status;
+  }
+
+  async function refreshProviderCredentials(): Promise<void> {
+    const credentials = await listProviderCredentials();
+    setProviderCredentials(credentials);
+  }
+
+  async function handleSaveProviderCredential(providerId: string, key: string): Promise<ProviderCredentialStatus> {
+    const status = await saveProviderCredential(providerId, key);
+    await refreshProviderCredentials();
+    const runtimeStatus = await handleTestProvider(providerId);
+    if (runtimeStatus.state !== 'ready') {
+      setError(translateError(runtimeStatus.state, runtimeStatus.message).message);
+    } else {
+      setError(undefined);
+    }
+    return status;
+  }
+
+  async function handleRemoveProviderCredential(providerId: string): Promise<ProviderCredentialStatus> {
+    const status = await removeProviderCredential(providerId);
+    await refreshProviderCredentials();
+    const runtimeStatus = await handleTestProvider(providerId);
+    updateProviderStatus(providerId, runtimeStatus);
+    return status;
+  }
+
+  async function refreshHealthCheck(): Promise<AppHealthCheck> {
+    setHealthLoading(true);
+    try {
+      const snapshot = await getAppHealthCheck();
+      setHealthCheck(snapshot);
+      setLocalRuntime(snapshot.ollama);
+      return snapshot;
+    } finally {
+      setHealthLoading(false);
+    }
   }
 
   async function handlePermission(requestId: string, approve: boolean): Promise<void> {
@@ -299,13 +498,177 @@ export default function App(): JSX.Element {
         sessionId,
         command: `bash ${shellQuote(scriptPath)}`,
         cwd: settings.workspaceRoot,
-        reason: 'Checklist de ambiente acionado pelo painel Primeiros Passos.'
+        reason: 'Checklist de ambiente acionado pelo painel Primeiros Passos.',
       });
       if (response.permissionRequest) {
         addPermission(response.permissionRequest);
       }
     } finally {
       setBusy(false);
+    }
+  }
+
+  async function handleChangeMode(mode: ExecutionMode): Promise<void> {
+    if (!settings) return;
+    setExecutionMode(mode);
+
+    let next = { ...settings, executionMode: mode };
+    if (mode === 'local' && settings.selectedLocalModelId) {
+      next = {
+        ...next,
+        selectedProviderId: 'local-ollama',
+        selectedModelId: settings.selectedLocalModelId,
+      };
+    }
+
+    if (mode === 'cloud' && settings.selectedProviderId === 'local-ollama') {
+      const fallbackProvider = providers.find((provider) => provider.id !== 'local-ollama') ?? providers[0];
+      if (fallbackProvider) {
+        next = {
+          ...next,
+          selectedProviderId: fallbackProvider.id,
+          selectedModelId: fallbackProvider.models[0]?.id ?? next.selectedModelId,
+        };
+      }
+    }
+
+    await applySettings(next);
+  }
+
+  async function handleActivateCloud(model: CloudModelProfile): Promise<void> {
+    if (!settings) return;
+
+    const provider = providers.find((item) => item.id === model.providerId);
+    if (!provider) {
+      setError(`Provider ${model.providerLabel} não está registrado neste build.`);
+      return;
+    }
+
+    const status = resolveModelStatus(model, provider.status, localRuntime);
+    if (!canSelectModel(status)) {
+      const translated = translateError(status, provider.status.message);
+      setError(translated.message);
+      openSettingsTab('providers');
+      setModelSelectorOpen(false);
+      return;
+    }
+
+    setModelActionBusyId(model.id);
+    try {
+      const next = pushHistory(
+        {
+          ...settings,
+          executionMode: 'cloud',
+          selectedProviderId: model.providerId,
+          selectedModelId: model.modelId,
+        },
+        'cloud',
+        model.providerId,
+        model.modelId,
+      );
+
+      await applySettings(next);
+      setExecutionMode('cloud');
+      selectModel(model.id);
+      setModelSelectorOpen(false);
+    } finally {
+      setModelActionBusyId(undefined);
+    }
+  }
+
+  async function handleActivateLocal(model: LocalModelProfile): Promise<void> {
+    if (!settings) return;
+
+    const status = resolveModelStatus(model, selectedProviderStatus, localRuntime);
+    if (!canSelectModel(status)) {
+      const translated = translateError(status, localRuntime?.message);
+      setError(translated.message);
+      openSettingsTab('local');
+      setModelSelectorOpen(false);
+      return;
+    }
+
+    setModelActionBusyId(model.id);
+    try {
+      const next = pushHistory(
+        {
+          ...settings,
+          executionMode: 'local',
+          selectedProviderId: 'local-ollama',
+          selectedModelId: model.modelId,
+          selectedLocalModelId: model.modelId,
+        },
+        'local',
+        'local-ollama',
+        model.modelId,
+      );
+
+      await applySettings(next);
+      setExecutionMode('local');
+      selectModel(model.id);
+      setModelSelectorOpen(false);
+    } finally {
+      setModelActionBusyId(undefined);
+    }
+  }
+
+  async function refreshLocalRuntime(): Promise<void> {
+    const snapshot = await getLocalRuntimeState();
+    setLocalRuntime(snapshot);
+  }
+
+  async function handleInstallRuntime(): Promise<void> {
+    setModelActionBusyId('runtime');
+    try {
+      const snapshot = await installLocalRuntime();
+      setLocalRuntime(snapshot);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Falha ao instalar runtime local.');
+    } finally {
+      setModelActionBusyId(undefined);
+    }
+  }
+
+  async function handleStartRuntime(): Promise<void> {
+    setModelActionBusyId('runtime');
+    try {
+      const snapshot = await startLocalRuntime();
+      setLocalRuntime(snapshot);
+      if (snapshot.state !== 'ready') {
+        setError(translateError(snapshot.problems[0] ?? snapshot.state, snapshot.message).message);
+      } else {
+        setError(undefined);
+      }
+    } catch (cause) {
+      setError(translateError(cause instanceof Error ? cause.message : 'ollama_service_offline').message);
+    } finally {
+      setModelActionBusyId(undefined);
+    }
+  }
+
+  async function handleInstallLocalModel(model: LocalModelProfile): Promise<void> {
+    setModelActionBusyId(model.id);
+    try {
+      const snapshot = await installLocalModel(model.modelId);
+      setLocalRuntime(snapshot);
+      await handleActivateLocal(model);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Falha ao instalar modelo local.');
+      await refreshLocalRuntime();
+    } finally {
+      setModelActionBusyId(undefined);
+    }
+  }
+
+  async function handleRemoveLocalModel(model: LocalModelProfile): Promise<void> {
+    setModelActionBusyId(model.id);
+    try {
+      const snapshot = await removeLocalModel(model.modelId);
+      setLocalRuntime(snapshot);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Falha ao remover modelo local.');
+    } finally {
+      setModelActionBusyId(undefined);
     }
   }
 
@@ -332,7 +695,7 @@ export default function App(): JSX.Element {
   }
 
   if (loading) return <div className="centered" style={{ height: '100vh' }}>Inicializando central...</div>;
-  if (error) return <div className="centered error" style={{ height: '100vh' }}>{error}</div>;
+  if (error && !booted) return <div className="centered error" style={{ height: '100vh' }}>{error}</div>;
 
   return (
     <>
@@ -343,11 +706,15 @@ export default function App(): JSX.Element {
             workspaceMeta={workspaceMeta}
             providerLabel={selectedProvider?.label}
             providerStatus={selectedProviderStatus}
+            executionMode={executionMode}
+            activeModelLabel={activeModelLabel}
+            localRuntime={localRuntime}
             onCreateSession={() => void handleCreateSession()}
             onOpenProject={(root) => void openProjectInVscode(root)}
             onOpenInspector={() => {
               setSelectedInspectorTab('settings');
             }}
+            onOpenModelSelector={() => setModelSelectorOpen(true)}
           />
         }
         sidebarLeft={
@@ -387,6 +754,14 @@ export default function App(): JSX.Element {
               </div>
             ) : (
               <>
+                {error ? (
+                  <div className="actionable-error-banner" role="alert">
+                    <strong>{translateError(error).message}</strong>
+                    <button type="button" className="btn-modern" onClick={() => setError(undefined)}>
+                      Dispensar
+                    </button>
+                  </div>
+                ) : null}
                 <ChatPanel session={selectedSession} />
                 <CommandInputPanel
                   busy={busy}
@@ -396,6 +771,11 @@ export default function App(): JSX.Element {
                   onRequestPrivilegedAction={handleRequestPrivilegedAction}
                   actionJsonExamples={actionJsonExamples}
                   orderDisabledReason={orderDisabledReason}
+                  executionMode={executionMode}
+                  activeModelLabel={activeModelLabel}
+                  providerLabel={selectedProvider?.label}
+                  runtimeState={executionMode === 'local' ? localRuntime?.state : selectedProviderStatus?.state}
+                  onOpenModelSelector={() => setModelSelectorOpen(true)}
                 />
                 <TerminalDrawer logs={logs} open={terminalOpen} onToggle={() => setTerminalOpen((current) => !current)} />
               </>
@@ -422,11 +802,22 @@ export default function App(): JSX.Element {
             statusContent={<StatusPanel feed={statusFeed} />}
             settingsContent={
               <SettingsPanel
+                key={settingsTabRequest?.nonce ?? 'settings-panel'}
                 settings={settings}
                 providers={providers}
                 profiles={profiles}
+                credentials={providerCredentials}
+                localRuntime={localRuntime}
+                healthCheck={healthCheck}
+                healthLoading={healthLoading}
                 onChange={(next) => handleUpdateSettings(next)}
                 onTestProvider={(providerId) => handleTestProvider(providerId)}
+                onSaveProviderCredential={(providerId, key) => handleSaveProviderCredential(providerId, key)}
+                onRemoveProviderCredential={(providerId) => handleRemoveProviderCredential(providerId)}
+                onInstallRuntime={handleInstallRuntime}
+                onStartRuntime={handleStartRuntime}
+                onRunHealthCheck={refreshHealthCheck}
+                initialTab={settingsTabRequest?.tab}
               />
             }
             promptContent={
@@ -448,9 +839,33 @@ export default function App(): JSX.Element {
         }
       />
 
+      <ModelSelector
+        open={modelSelectorOpen}
+        mode={executionMode}
+        activeModelId={selectedModelId}
+        providers={providers}
+        localRuntime={localRuntime}
+        installationProgress={installationProgress}
+        busyModelId={modelActionBusyId}
+        onClose={() => setModelSelectorOpen(false)}
+        onModeChange={(mode) => {
+          void handleChangeMode(mode);
+        }}
+        onActivateCloud={handleActivateCloud}
+        onActivateLocal={handleActivateLocal}
+        onInstallLocalModel={handleInstallLocalModel}
+        onRemoveLocalModel={handleRemoveLocalModel}
+        onInstallRuntime={handleInstallRuntime}
+        onStartRuntime={handleStartRuntime}
+        onConfigureProvider={(providerId) => {
+          openSettingsTab(providerId === 'local-ollama' ? 'local' : 'providers');
+          setModelSelectorOpen(false);
+        }}
+      />
+
       <HelpDrawer
         open={helpOpen}
-        busy={busy}
+        busy={busy || localRuntimeLoading}
         onClose={() => setHelpOpen(false)}
         onOpenGuide={handleOpenGuide}
         onOpenQuickstart={handleOpenQuickstart}

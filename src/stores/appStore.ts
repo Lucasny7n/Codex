@@ -4,15 +4,16 @@ import type {
   AgentSession,
   AppSettings,
   CommandLogChunk,
+  ExecutionMode,
   FileChangeEntry,
+  MemorySnapshot,
   PermissionOutcome,
   PermissionRequest,
   ProviderDescriptor,
   ProviderRuntimeStatus,
   StatusNote,
-  MemorySnapshot,
   SystemTheme,
-  WorkspaceMeta
+  WorkspaceMeta,
 } from '../types/domain';
 
 interface AppStoreState {
@@ -32,6 +33,9 @@ interface AppStoreState {
   statusFeed: StatusNote[];
   pendingPermissions: PermissionRequest[];
   permissionOutcomes: PermissionOutcome[];
+  selectedModelId?: string;
+  executionMode: ExecutionMode;
+  modelSelectorOpen: boolean;
   setLoading: (value: boolean) => void;
   setError: (value?: string) => void;
   bootstrap: (payload: {
@@ -54,6 +58,9 @@ interface AppStoreState {
   recordPermissionOutcome: (outcome: PermissionOutcome) => void;
   updateSettings: (settings: AppSettings) => void;
   updateProviderStatus: (providerId: string, status: ProviderRuntimeStatus) => void;
+  selectModel: (modelId: string) => void;
+  setExecutionMode: (mode: ExecutionMode) => void;
+  setModelSelectorOpen: (open: boolean) => void;
 }
 
 function dedupeByPath(changes: FileChangeEntry[]): FileChangeEntry[] {
@@ -62,6 +69,13 @@ function dedupeByPath(changes: FileChangeEntry[]): FileChangeEntry[] {
     seen.set(item.path, item);
   }
   return Array.from(seen.values()).sort((a, b) => b.at.localeCompare(a.at)).slice(0, 200);
+}
+
+function resolveActiveModelId(settings: AppSettings): string {
+  if (settings.executionMode === 'local') {
+    return settings.selectedLocalModelId ?? settings.selectedModelId;
+  }
+  return settings.selectedModelId;
 }
 
 export const useAppStore = create<AppStoreState>((set, get) => ({
@@ -75,6 +89,9 @@ export const useAppStore = create<AppStoreState>((set, get) => ({
   statusFeed: [],
   pendingPermissions: [],
   permissionOutcomes: [],
+  selectedModelId: undefined,
+  executionMode: 'cloud',
+  modelSelectorOpen: false,
   setLoading: (value) => set({ loading: value }),
   setError: (value) => set({ error: value }),
   bootstrap: (payload) =>
@@ -90,7 +107,9 @@ export const useAppStore = create<AppStoreState>((set, get) => ({
       providers: payload.providers,
       profiles: payload.agentProfiles,
       memory: payload.memory,
-      theme: payload.theme
+      theme: payload.theme,
+      executionMode: payload.settings.executionMode,
+      selectedModelId: resolveActiveModelId(payload.settings),
     }),
   upsertSession: (session) => {
     const current = get().sessions;
@@ -98,7 +117,7 @@ export const useAppStore = create<AppStoreState>((set, get) => ({
     if (index === -1) {
       set({
         sessions: [session, ...current].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)),
-        selectedSessionId: get().selectedSessionId ?? session.id
+        selectedSessionId: get().selectedSessionId ?? session.id,
       });
       return;
     }
@@ -127,17 +146,25 @@ export const useAppStore = create<AppStoreState>((set, get) => ({
   recordPermissionOutcome: (outcome) => {
     set({ permissionOutcomes: [outcome, ...get().permissionOutcomes].slice(0, 100) });
   },
-  updateSettings: (settings) => set({ settings }),
+  updateSettings: (settings) =>
+    set({
+      settings,
+      executionMode: settings.executionMode,
+      selectedModelId: resolveActiveModelId(settings),
+    }),
   updateProviderStatus: (providerId, status) =>
     set({
       providers: get().providers.map((provider) =>
         provider.id === providerId
           ? {
               ...provider,
-              enabled: status.state === 'ready' || status.state === 'mock',
-              status
+              enabled: status.state === 'ready',
+              status,
             }
-          : provider
-      )
-    })
+          : provider,
+      ),
+    }),
+  selectModel: (modelId) => set({ selectedModelId: modelId }),
+  setExecutionMode: (mode) => set({ executionMode: mode }),
+  setModelSelectorOpen: (open) => set({ modelSelectorOpen: open }),
 }));

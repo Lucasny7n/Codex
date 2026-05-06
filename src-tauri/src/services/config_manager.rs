@@ -50,7 +50,16 @@ impl ConfigManager {
     pub fn load_or_create_settings(&self) -> AppResult<AppSettings> {
         if self.settings_path.exists() {
             let raw = fs::read_to_string(&self.settings_path)?;
-            let settings: AppSettings = serde_json::from_str(&raw)?;
+            let mut settings: AppSettings = serde_json::from_str(&raw)?;
+            if settings.local_models_root.trim().is_empty() {
+                settings.local_models_root = self
+                    .home_dir()
+                    .join(".codex/models")
+                    .to_string_lossy()
+                    .to_string();
+            }
+            fs::create_dir_all(&settings.local_models_root)?;
+            self.save_settings(&settings)?;
             return Ok(settings);
         }
 
@@ -61,6 +70,7 @@ impl ConfigManager {
                 .ok_or_else(|| AppError::Message("HOME inválido".to_owned()))?
                 .to_owned(),
         );
+        fs::create_dir_all(&defaults.local_models_root)?;
         self.save_settings(&defaults)?;
         Ok(defaults)
     }
@@ -86,6 +96,10 @@ impl ConfigManager {
 
     pub fn memory_dir(&self) -> &Path {
         &self.memory_dir
+    }
+
+    pub fn credentials_path(&self) -> PathBuf {
+        self.data_root.join("credentials.json")
     }
 
     pub fn home_dir(&self) -> PathBuf {

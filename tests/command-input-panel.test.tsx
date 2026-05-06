@@ -16,7 +16,7 @@ describe('CommandInputPanel', () => {
       />,
     );
 
-    fireEvent.change(screen.getByPlaceholderText('Descreva a tarefa com objetivo, risco e validação esperada.'), {
+    fireEvent.change(screen.getByPlaceholderText('Descreva objetivo, restrições, risco e validação esperada.'), {
       target: { value: 'rode uma tarefa' }
     });
 

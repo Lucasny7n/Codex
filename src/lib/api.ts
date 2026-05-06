@@ -14,7 +14,11 @@ import type {
   AgentSession,
   PermissionRequest,
   AppSettings,
-  ProviderRuntimeStatus
+  AppHealthCheck,
+  ProviderRuntimeStatus,
+  ProviderCredentialStatus,
+  LocalRuntimeSnapshot,
+  LocalModelInstallProgress
 } from '../types/domain';
 
 export async function bootstrapState(): Promise<BootstrapPayload> {
@@ -39,6 +43,42 @@ export async function requestExecution(input: ExecutionRequestInput): Promise<Ex
 
 export async function testProviderConnection(providerId: string): Promise<ProviderRuntimeStatus> {
   return invoke('test_provider_connection', { providerId });
+}
+
+export async function listProviderCredentials(): Promise<ProviderCredentialStatus[]> {
+  return invoke('list_provider_credentials');
+}
+
+export async function saveProviderCredential(providerId: string, key: string): Promise<ProviderCredentialStatus> {
+  return invoke('save_provider_credential', { providerId, key });
+}
+
+export async function removeProviderCredential(providerId: string): Promise<ProviderCredentialStatus> {
+  return invoke('remove_provider_credential', { providerId });
+}
+
+export async function getAppHealthCheck(): Promise<AppHealthCheck> {
+  return invoke('get_app_health_check');
+}
+
+export async function getLocalRuntimeState(): Promise<LocalRuntimeSnapshot> {
+  return invoke('get_local_runtime_state');
+}
+
+export async function startLocalRuntime(): Promise<LocalRuntimeSnapshot> {
+  return invoke('start_local_runtime');
+}
+
+export async function installLocalRuntime(): Promise<LocalRuntimeSnapshot> {
+  return invoke('install_local_runtime');
+}
+
+export async function installLocalModel(modelId: string): Promise<LocalRuntimeSnapshot> {
+  return invoke('install_local_model', { modelId });
+}
+
+export async function removeLocalModel(modelId: string): Promise<LocalRuntimeSnapshot> {
+  return invoke('remove_local_model', { modelId });
 }
 
 export async function listPrivilegedActions(): Promise<PrivilegedActionSpec[]> {
@@ -111,4 +151,14 @@ export async function onPermissionResolved(handler: (requestId: string) => void)
 
 export async function onPermissionOutcome(handler: (outcome: PermissionOutcome) => void): Promise<UnlistenFn> {
   return listen<PermissionOutcome>('permission-outcome', (event) => handler(event.payload));
+}
+
+export async function onLocalRuntimeState(handler: (snapshot: LocalRuntimeSnapshot) => void): Promise<UnlistenFn> {
+  return listen<LocalRuntimeSnapshot>('local-runtime-state', (event) => handler(event.payload));
+}
+
+export async function onLocalModelProgress(
+  handler: (progress: LocalModelInstallProgress) => void,
+): Promise<UnlistenFn> {
+  return listen<LocalModelInstallProgress>('local-model-progress', (event) => handler(event.payload));
 }

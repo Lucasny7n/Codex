@@ -5,21 +5,21 @@ interface MemoryPanelProps {
 }
 
 function ListSection({ title, items }: { title: string; items: string[] }): JSX.Element {
-  const visibleItems = items.slice(0, 4);
-  const hiddenCount = Math.max(items.length - visibleItems.length, 0);
-
   return (
     <div className="memory-block">
       <div className="memory-block-header">
         <h4>{title}</h4>
-        <span>{items.length}</span>
+        <span className="memory-block-count">{items.length}</span>
       </div>
-      <ul>
-        {visibleItems.map((item, index) => (
-          <li key={`${title}-${index}`}>{item}</li>
-        ))}
-        {hiddenCount > 0 ? <li className="muted">+{hiddenCount} itens</li> : null}
-      </ul>
+      {items.length > 0 ? (
+        <ul className="memory-items" aria-label={title}>
+          {items.map((item, index) => (
+            <li key={`${title}-${index}`}>{item}</li>
+          ))}
+        </ul>
+      ) : (
+        <p className="memory-empty">Sem itens registrados.</p>
+      )}
     </div>
   );
 }
@@ -45,7 +45,7 @@ export function MemoryPanel({ memory }: MemoryPanelProps): JSX.Element {
         <h2>Contexto ~/.codex</h2>
       </header>
       <div className="panel-body scroll-y memory-layout">
-        <p className="muted">{memory.profileSummary}</p>
+        <p className="memory-summary">{memory.profileSummary}</p>
         <ListSection title="Preferências" items={memory.userPreferences} />
         <ListSection title="Projetos" items={memory.activeProjects} />
         <ListSection title="Correções Importantes" items={memory.importantFixHistory} />

@@ -1,7 +1,16 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import type { ComponentProps } from 'react';
 import { describe, expect, it, vi } from 'vitest';
 import { SettingsPanel } from '../src/components/panels/SettingsPanel';
-import type { AgentProfile, AppSettings, ProviderDescriptor, ProviderRuntimeStatus } from '../src/types/domain';
+import type {
+  AgentProfile,
+  AppHealthCheck,
+  AppSettings,
+  LocalRuntimeSnapshot,
+  ProviderCredentialStatus,
+  ProviderDescriptor,
+  ProviderRuntimeStatus
+} from '../src/types/domain';
 
 const readyStatus: ProviderRuntimeStatus = {
   state: 'ready',
@@ -26,7 +35,11 @@ function settings(): AppSettings {
     selectedModelId: 'gemini-cli-default',
     selectedAgentId: 'equilibrado',
     preferredShell: '/usr/bin/bash',
-    autoApproveSafeRead: true
+    autoApproveSafeRead: true,
+    executionMode: 'cloud',
+    selectedLocalModelId: undefined,
+    modelSelectionHistory: [],
+    localModelsRoot: '/tmp/.codex/models'
   };
 }
 
@@ -80,38 +93,102 @@ function profiles(): AgentProfile[] {
   ];
 }
 
+function credentials(): ProviderCredentialStatus[] {
+  return [];
+}
+
+function localRuntime(): LocalRuntimeSnapshot {
+  return {
+    state: 'ready',
+    message: 'Ollama pronto',
+    modelsDir: '/tmp/.codex/models',
+    installedModels: [],
+    installed: true,
+    serviceActive: true,
+    apiReachable: true,
+    apiUrl: 'http://127.0.0.1:11434',
+    canUsePacman: true,
+    hasPkexec: true,
+    hasSudo: true,
+    diskOk: true,
+    problems: [],
+    repairActions: [],
+    at: new Date().toISOString()
+  };
+}
+
+function health(): AppHealthCheck {
+  return {
+    baseDir: '/tmp/workspace',
+    expectedBaseDir: '/tmp/workspace',
+    correctBaseDir: true,
+    nodeOk: true,
+    npmOk: true,
+    cargoOk: true,
+    tauriOk: true,
+    providers: [],
+    ollama: localRuntime(),
+    recentErrors: [],
+    overallStatus: 'ok',
+    actions: []
+  };
+}
+
+function renderSettings(overrides: Partial<ComponentProps<typeof SettingsPanel>> = {}) {
+  return render(
+    <SettingsPanel
+      settings={settings()}
+      providers={providers()}
+      profiles={profiles()}
+      credentials={credentials()}
+      localRuntime={localRuntime()}
+      healthCheck={health()}
+      healthLoading={false}
+      onChange={vi.fn()}
+      onTestProvider={vi.fn()}
+      onSaveProviderCredential={vi.fn()}
+      onRemoveProviderCredential={vi.fn()}
+      onInstallRuntime={vi.fn()}
+      onStartRuntime={vi.fn()}
+      onRunHealthCheck={vi.fn()}
+      {...overrides}
+    />,
+  );
+}
+
 describe('SettingsPanel', () => {
   it('mostra status real do provider selecionado', () => {
-    render(
-      <SettingsPanel
-        settings={settings()}
-        providers={providers()}
-        profiles={profiles()}
-        onChange={vi.fn()}
-        onTestProvider={vi.fn()}
-      />,
-    );
+    renderSettings();
 
+    fireEvent.click(screen.getByText('IA / Providers'));
     expect(screen.getByText('Gemini CLI instalado.')).toBeInTheDocument();
     expect(screen.getByText('0.41.1')).toBeInTheDocument();
-    expect(screen.getByText('Testar provider')).toBeInTheDocument();
+    expect(screen.getAllByText('Testar conexão')[0]).toBeInTheDocument();
   });
 
   it('mostra erro inline quando teste do provider falha', async () => {
-    render(
-      <SettingsPanel
-        settings={settings()}
-        providers={providers()}
-        profiles={profiles()}
-        onChange={vi.fn()}
-        onTestProvider={vi.fn().mockResolvedValue(errorStatus)}
-      />,
-    );
+    renderSettings({ onTestProvider: vi.fn().mockResolvedValue(errorStatus) });
 
-    fireEvent.click(screen.getByText('Testar provider'));
+    fireEvent.click(screen.getByText('IA / Providers'));
+    fireEvent.click(screen.getAllByText('Testar conexão')[0]);
 
     await waitFor(() => {
-      expect(screen.getByRole('alert')).toHaveTextContent('Teste do Gemini CLI falhou de forma controlada.');
+      expect(screen.getByRole('alert')).toHaveTextContent('Provider indisponível');
     });
+  });
+
+  it('renderiza abas essenciais', () => {
+    renderSettings();
+
+    expect(screen.getByText('Geral')).toBeInTheDocument();
+    expect(screen.getByText('IA / Providers')).toBeInTheDocument();
+    expect(screen.getByText('Modelos locais')).toBeInTheDocument();
+    expect(screen.getByText('Logs & Diagnóstico')).toBeInTheDocument();
+  });
+
+  it('abre aba solicitada pelo seletor de modelos', () => {
+    renderSettings({ initialTab: 'providers' });
+
+    expect(screen.getByText('Gemini CLI instalado.')).toBeInTheDocument();
   });
 });

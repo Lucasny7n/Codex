@@ -5,11 +5,13 @@ use uuid::Uuid;
 
 use crate::error::{AppError, ErrorPayload};
 use crate::models::{
-    AgentSession, AppSettings, BootstrapPayload, CommandLogChunk, ExecutionRequestInput,
-    ExecutionResponse, LogStream, PendingIntentKind, PermissionDecision, PermissionOutcome,
-    PermissionOutcomeStatus, PermissionRequest, PrivilegedActionRequestInput, PrivilegedActionSpec,
-    ProviderGenerateRequest, ProviderRuntimeStatus, SessionStatus, StatusKind, TaskStatus,
-    WorkspaceMeta,
+    ActionableError, ActionableErrorSeverity, AgentSession, AppHealthAction, AppHealthCheck,
+    AppHealthOverallStatus, AppHealthProvider, AppSettings, BootstrapPayload, CommandLogChunk,
+    ExecutionRequestInput, ExecutionResponse, LocalModelInstallProgress, LocalRuntimeSnapshot,
+    LogStream, PendingIntentKind, PermissionDecision, PermissionOutcome, PermissionOutcomeStatus,
+    PermissionRequest, PrivilegedActionRequestInput, PrivilegedActionSpec,
+    ProviderCredentialStatus, ProviderGenerateRequest, ProviderRuntimeStatus, ProviderStatusState,
+    SessionStatus, StatusKind, TaskStatus, WorkspaceMeta,
 };
 use crate::services::privileged_actions;
 use crate::services::privileged_helper_client::HelperRequest;
@@ -84,6 +86,31 @@ fn git_output<const N: usize>(root: &str, args: [&str; N]) -> Option<String> {
     Some(String::from_utf8_lossy(&output.stdout).trim().to_owned())
 }
 
+fn command_ok<const N: usize>(program: &str, args: [&str; N]) -> bool {
+    Command::new(program)
+        .args(args)
+        .output()
+        .ok()
+        .is_some_and(|output| output.status.success())
+}
+
+fn actionable_error(
+    code: &str,
+    severity: ActionableErrorSeverity,
+    message: &str,
+    action_label: &str,
+    technical_details: Option<String>,
+) -> ActionableError {
+    ActionableError {
+        code: code.to_owned(),
+        severity,
+        message: message.to_owned(),
+        action_label: Some(action_label.to_owned()),
+        action_target: None,
+        technical_details,
+    }
+}
+
 #[tauri::command]
 pub fn list_sessions(
     state: State<AppState>,
@@ -113,6 +140,213 @@ pub async fn test_provider_connection(
         .test_connection(&provider_id)
         .await
         .map_err(map_err)
+}
+
+#[tauri::command]
+pub async fn get_local_runtime_state(
+    state: State<'_, AppState>,
+) -> Result<LocalRuntimeSnapshot, ErrorPayload> {
+    let settings = state.settings();
+    Ok(state.local_runtime_service.snapshot(&settings).await)
+}
+
+#[tauri::command]
+pub async fn start_local_runtime(
+    app: AppHandle,
+    state: State<'_, AppState>,
+) -> Result<LocalRuntimeSnapshot, ErrorPayload> {
+    let settings = state.settings();
+    let snapshot = state
+        .local_runtime_service
+        .start_runtime(&settings)
+        .await
+        .map_err(map_err)?;
+    let _ = app.emit("local-runtime-state", snapshot.clone());
+    Ok(snapshot)
+}
+
+#[tauri::command]
+pub fn list_provider_credentials(
+    state: State<AppState>,
+) -> Result<Vec<ProviderCredentialStatus>, ErrorPayload> {
+    let ids = state
+        .provider_registry
+        .providers()
+        .into_iter()
+        .filter(|provider| provider.configurable)
+        .map(|provider| provider.id)
+        .collect::<Vec<_>>();
+    Ok(state.credential_store.statuses(&ids))
+}
+
+#[tauri::command]
+pub fn save_provider_credential(
+    state: State<AppState>,
+    provider_id: String,
+    key: String,
+) -> Result<ProviderCredentialStatus, ErrorPayload> {
+    state
+        .credential_store
+        .save(&provider_id, &key)
+        .map_err(map_err)
+}
+
+#[tauri::command]
+pub fn remove_provider_credential(
+    state: State<AppState>,
+    provider_id: String,
+) -> Result<ProviderCredentialStatus, ErrorPayload> {
+    state.credential_store.remove(&provider_id).map_err(map_err)
+}
+
+#[tauri::command]
+pub async fn get_app_health_check(
+    state: State<'_, AppState>,
+) -> Result<AppHealthCheck, ErrorPayload> {
+    let settings = state.settings();
+    let base_dir = settings.workspace_root.clone();
+    let expected_base_dir = state
+        .config_manager
+        .home_dir()
+        .join("Codex-Codex")
+        .to_string_lossy()
+        .to_string();
+    let providers = state
+        .provider_registry
+        .providers()
+        .into_iter()
+        .map(|provider| AppHealthProvider {
+            has_key: state.credential_store.exists(&provider.id),
+            status: provider.status,
+            id: provider.id,
+        })
+        .collect::<Vec<_>>();
+    let ollama = state.local_runtime_service.snapshot(&settings).await;
+    let branch =
+        git_output(&base_dir, ["branch", "--show-current"]).filter(|value| !value.is_empty());
+    let node_ok = command_ok("node", ["--version"]);
+    let npm_ok = command_ok("npm", ["--version"]);
+    let cargo_ok = command_ok("cargo", ["--version"]);
+    let tauri_ok = command_ok("npm", ["run", "tauri", "--", "--version"]);
+    let correct_base_dir = base_dir == expected_base_dir;
+
+    let mut actions = Vec::new();
+    let mut recent_errors = Vec::new();
+    if !correct_base_dir {
+        actions.push(AppHealthAction {
+            label: "Abrir ~/Codex-Codex".to_owned(),
+            command: Some(format!("cd {expected_base_dir}")),
+        });
+        recent_errors.push(actionable_error(
+            "wrong_workspace",
+            ActionableErrorSeverity::Error,
+            "Workspace ativo não é ~/Codex-Codex.",
+            "Corrigir base",
+            Some(format!("base atual: {base_dir}")),
+        ));
+    }
+
+    for provider in &providers {
+        if !matches!(provider.status.state, ProviderStatusState::Ready) {
+            actions.push(AppHealthAction {
+                label: format!("Configurar {}", provider.id),
+                command: provider.status.command.clone(),
+            });
+        }
+    }
+
+    for action in &ollama.repair_actions {
+        actions.push(AppHealthAction {
+            label: action.clone(),
+            command: Some(action.clone()),
+        });
+    }
+
+    let has_error = !correct_base_dir
+        || !node_ok
+        || !npm_ok
+        || !cargo_ok
+        || matches!(ollama.state, crate::models::LocalRuntimeState::Error);
+    let has_warning = !actions.is_empty()
+        || !tauri_ok
+        || !matches!(ollama.state, crate::models::LocalRuntimeState::Ready);
+    let overall_status = if has_error {
+        AppHealthOverallStatus::Error
+    } else if has_warning {
+        AppHealthOverallStatus::Warning
+    } else {
+        AppHealthOverallStatus::Ok
+    };
+
+    Ok(AppHealthCheck {
+        base_dir,
+        expected_base_dir,
+        correct_base_dir,
+        branch,
+        node_ok,
+        npm_ok,
+        cargo_ok,
+        tauri_ok,
+        providers,
+        ollama,
+        recent_errors,
+        overall_status,
+        actions,
+    })
+}
+
+#[tauri::command]
+pub async fn install_local_runtime(
+    app: AppHandle,
+    state: State<'_, AppState>,
+) -> Result<LocalRuntimeSnapshot, ErrorPayload> {
+    let settings = state.settings();
+    let snapshot = state
+        .local_runtime_service
+        .install_runtime(&settings)
+        .await
+        .map_err(map_err)?;
+    let _ = app.emit("local-runtime-state", snapshot.clone());
+    Ok(snapshot)
+}
+
+#[tauri::command]
+pub async fn install_local_model(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    model_id: String,
+) -> Result<LocalRuntimeSnapshot, ErrorPayload> {
+    let settings = state.settings();
+    let snapshot = state
+        .local_runtime_service
+        .install_model(
+            &settings,
+            &model_id,
+            |progress: LocalModelInstallProgress| {
+                let _ = app.emit("local-model-progress", progress);
+            },
+        )
+        .await
+        .map_err(map_err)?;
+
+    let _ = app.emit("local-runtime-state", snapshot.clone());
+    Ok(snapshot)
+}
+
+#[tauri::command]
+pub async fn remove_local_model(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    model_id: String,
+) -> Result<LocalRuntimeSnapshot, ErrorPayload> {
+    let settings = state.settings();
+    let snapshot = state
+        .local_runtime_service
+        .remove_model(&settings, &model_id)
+        .await
+        .map_err(map_err)?;
+    let _ = app.emit("local-runtime-state", snapshot.clone());
+    Ok(snapshot)
 }
 
 #[tauri::command]
@@ -364,6 +598,10 @@ mod agent_order_tests {
             selected_agent_id: "equilibrado".to_owned(),
             preferred_shell: "/usr/bin/bash".to_owned(),
             auto_approve_safe_read: true,
+            execution_mode: crate::models::ExecutionMode::Cloud,
+            selected_local_model_id: None,
+            model_selection_history: Vec::new(),
+            local_models_root: "/tmp/.codex/models".to_owned(),
         }
     }
 
@@ -371,7 +609,7 @@ mod agent_order_tests {
     async fn send_order_to_agent_adds_provider_response() {
         let dir = temp_sessions_dir();
         let session_manager = Arc::new(SessionManager::new(&dir).expect("manager deve iniciar"));
-        let provider_registry = Arc::new(ProviderRegistry::new());
+        let provider_registry = Arc::new(ProviderRegistry::new_with_mock_for_tests());
         let session = session_manager
             .create_session("teste")
             .expect("sessão deve ser criada");

@@ -191,6 +191,10 @@ mod tests {
             selected_agent_id: "equilibrado".to_owned(),
             preferred_shell: "/usr/bin/bash".to_owned(),
             auto_approve_safe_read: true,
+            execution_mode: crate::models::ExecutionMode::Cloud,
+            selected_local_model_id: None,
+            model_selection_history: Vec::new(),
+            local_models_root: "/tmp/.codex/models".to_owned(),
         }
     }
 

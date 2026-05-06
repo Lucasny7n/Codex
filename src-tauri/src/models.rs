@@ -196,6 +196,21 @@ pub enum ProviderStatusState {
     Ready,
     Running,
     Error,
+    RequiresApiKey,
+    RequiresLogin,
+    RequiresOauth,
+    RequiresCliAuth,
+    NotInstalled,
+    ServiceOffline,
+    ApiUnreachable,
+    ModelMissing,
+    Installing,
+    Pulling,
+    Testing,
+    QuotaExceeded,
+    RateLimited,
+    Misconfigured,
+    Experimental,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -221,6 +236,16 @@ pub struct ProviderDescriptor {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct ProviderCredentialStatus {
+    pub provider_id: String,
+    pub has_credential: bool,
+    pub masked_key: Option<String>,
+    pub source: Option<String>,
+    pub checked_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct SystemTheme {
     pub source: String,
     pub accent_primary: String,
@@ -238,6 +263,28 @@ pub struct WorkspaceMeta {
     pub dirty: bool,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ExecutionMode {
+    Cloud,
+    Local,
+}
+
+impl Default for ExecutionMode {
+    fn default() -> Self {
+        Self::Cloud
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ModelSelectionHistoryEntry {
+    pub mode: ExecutionMode,
+    pub provider_id: String,
+    pub model_id: String,
+    pub at: String,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AppSettings {
@@ -248,6 +295,14 @@ pub struct AppSettings {
     pub selected_agent_id: String,
     pub preferred_shell: String,
     pub auto_approve_safe_read: bool,
+    #[serde(default)]
+    pub execution_mode: ExecutionMode,
+    #[serde(default)]
+    pub selected_local_model_id: Option<String>,
+    #[serde(default)]
+    pub model_selection_history: Vec<ModelSelectionHistoryEntry>,
+    #[serde(default = "default_local_models_root")]
+    pub local_models_root: String,
 }
 
 impl AppSettings {
@@ -260,8 +315,19 @@ impl AppSettings {
             selected_agent_id: "equilibrado".to_owned(),
             preferred_shell: "/usr/bin/bash".to_owned(),
             auto_approve_safe_read: true,
+            execution_mode: ExecutionMode::Cloud,
+            selected_local_model_id: None,
+            model_selection_history: Vec::new(),
+            local_models_root: format!("{home}/.codex/models"),
         }
     }
+}
+
+fn default_local_models_root() -> String {
+    if let Ok(home) = std::env::var("HOME") {
+        return format!("{home}/.codex/models");
+    }
+    "~/.codex/models".to_owned()
 }
 
 fn default_workspace_root(home: &str) -> String {
@@ -295,6 +361,71 @@ pub struct BootstrapPayload {
     pub agent_profiles: Vec<AgentProfile>,
     pub memory: MemorySnapshot,
     pub theme: SystemTheme,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum LocalRuntimeState {
+    Ready,
+    NotConfigured,
+    Unavailable,
+    Running,
+    Installing,
+    ServiceOffline,
+    ApiUnreachable,
+    Error,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LocalInstalledModel {
+    pub id: String,
+    pub size: Option<String>,
+    pub modified_at: Option<String>,
+    pub digest: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LocalRuntimeSnapshot {
+    pub state: LocalRuntimeState,
+    pub message: String,
+    pub command: Option<String>,
+    pub version: Option<String>,
+    pub runtime_path: Option<String>,
+    pub install_command: Option<String>,
+    pub models_dir: String,
+    pub installed_models: Vec<LocalInstalledModel>,
+    pub active_model_id: Option<String>,
+    pub installed: bool,
+    pub service_active: bool,
+    pub api_reachable: bool,
+    pub api_url: String,
+    pub can_use_pacman: bool,
+    pub has_pkexec: bool,
+    pub has_sudo: bool,
+    pub disk_ok: Option<bool>,
+    pub problems: Vec<String>,
+    pub repair_actions: Vec<String>,
+    pub at: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum LocalModelInstallState {
+    Running,
+    Completed,
+    Error,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LocalModelInstallProgress {
+    pub model_id: String,
+    pub state: LocalModelInstallState,
+    pub progress_percent: Option<u8>,
+    pub message: String,
+    pub at: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -343,6 +474,66 @@ pub struct StatusNote {
     pub title: String,
     pub detail: String,
     pub at: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ActionableErrorSeverity {
+    Info,
+    Warning,
+    Error,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ActionableError {
+    pub code: String,
+    pub severity: ActionableErrorSeverity,
+    pub message: String,
+    pub action_label: Option<String>,
+    pub action_target: Option<String>,
+    pub technical_details: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AppHealthProvider {
+    pub id: String,
+    pub status: ProviderRuntimeStatus,
+    pub has_key: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AppHealthAction {
+    pub label: String,
+    pub command: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AppHealthOverallStatus {
+    Ok,
+    Warning,
+    Error,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AppHealthCheck {
+    pub base_dir: String,
+    pub expected_base_dir: String,
+    pub correct_base_dir: bool,
+    pub branch: Option<String>,
+    pub node_ok: bool,
+    pub npm_ok: bool,
+    pub cargo_ok: bool,
+    pub tauri_ok: bool,
+    pub providers: Vec<AppHealthProvider>,
+    pub ollama: LocalRuntimeSnapshot,
+    pub recent_errors: Vec<ActionableError>,
+    pub overall_status: AppHealthOverallStatus,
+    pub actions: Vec<AppHealthAction>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

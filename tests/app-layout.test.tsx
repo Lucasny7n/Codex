@@ -10,9 +10,16 @@ vi.mock('../src/lib/api', () => ({
   createSession: vi.fn(),
   decidePermission: vi.fn(),
   getBasePrompt: vi.fn(),
+  getAppHealthCheck: vi.fn(),
+  getLocalRuntimeState: vi.fn(),
+  installLocalModel: vi.fn(),
+  installLocalRuntime: vi.fn(),
+  listProviderCredentials: vi.fn(),
   listPrivilegedActions: vi.fn(),
   onCommandLog: vi.fn(),
   onFileChanged: vi.fn(),
+  onLocalModelProgress: vi.fn(),
+  onLocalRuntimeState: vi.fn(),
   onPermissionOutcome: vi.fn(),
   onPermissionRaised: vi.fn(),
   onPermissionResolved: vi.fn(),
@@ -20,9 +27,13 @@ vi.mock('../src/lib/api', () => ({
   onStatusNote: vi.fn(),
   openFileInVscode: vi.fn(),
   openProjectInVscode: vi.fn(),
+  removeLocalModel: vi.fn(),
+  removeProviderCredential: vi.fn(),
   requestPrivilegedAction: vi.fn(),
   requestExecution: vi.fn(),
+  saveProviderCredential: vi.fn(),
   sendOrderToAgent: vi.fn(),
+  startLocalRuntime: vi.fn(),
   testProviderConnection: vi.fn(),
   updateBasePrompt: vi.fn(),
   updateSettings: vi.fn()
@@ -50,7 +61,11 @@ function payload(sessions: AgentSession[]): BootstrapPayload {
       selectedModelId: 'mock-development-model',
       selectedAgentId: 'equilibrado',
       preferredShell: '/usr/bin/bash',
-      autoApproveSafeRead: true
+      autoApproveSafeRead: true,
+      executionMode: 'cloud',
+      selectedLocalModelId: undefined,
+      modelSelectionHistory: [],
+      localModelsRoot: '/tmp/.codex/models'
     },
     workspaceMeta: {
       root: '/tmp/workspace',
@@ -124,15 +139,38 @@ describe('App layout visibility', () => {
       changedFiles: [],
       statusFeed: [],
       pendingPermissions: [],
-      permissionOutcomes: []
+      permissionOutcomes: [],
+      selectedModelId: undefined,
+      executionMode: 'cloud',
+      modelSelectorOpen: false
     });
 
     const mockedApi = vi.mocked(api);
     mockedApi.getBasePrompt.mockResolvedValue('prompt base');
     mockedApi.listPrivilegedActions.mockResolvedValue([]);
+    mockedApi.listProviderCredentials.mockResolvedValue([]);
+    mockedApi.getLocalRuntimeState.mockResolvedValue({
+      state: 'ready',
+      message: 'Runtime pronto',
+      modelsDir: '/tmp/.codex/models',
+      installedModels: [],
+      installed: true,
+      serviceActive: true,
+      apiReachable: true,
+      apiUrl: 'http://127.0.0.1:11434',
+      canUsePacman: true,
+      hasPkexec: true,
+      hasSudo: true,
+      diskOk: true,
+      problems: [],
+      repairActions: [],
+      at: new Date().toISOString()
+    });
     mockedApi.onStatusNote.mockResolvedValue(() => undefined);
     mockedApi.onCommandLog.mockResolvedValue(() => undefined);
     mockedApi.onFileChanged.mockResolvedValue(() => undefined);
+    mockedApi.onLocalRuntimeState.mockResolvedValue(() => undefined);
+    mockedApi.onLocalModelProgress.mockResolvedValue(() => undefined);
     mockedApi.onSessionChanged.mockResolvedValue(() => undefined);
     mockedApi.onPermissionRaised.mockResolvedValue(() => undefined);
     mockedApi.onPermissionResolved.mockResolvedValue(() => undefined);
