@@ -8,7 +8,11 @@ App desktop (Tauri v2 + Rust + React/TypeScript) para operar agentes tipo Codex 
 - Onboarding no app implementado: painel `Primeiros Passos` com ações rápidas.
 
 ## Visual
-Screenshot pendente: `docs/images/command-center-main.png`.
+O projeto conta com uma interface moderna (Modern UI) baseada em um Design System proprietário com:
+- Preto puro e acentos em azul sistema.
+- Layout de 3 colunas com scroll independente.
+- Seletor de modo de input (Ordem, Terminal, Ação).
+- Justificativa técnica integrada nas respostas.
 
 ## Funcionalidades
 - Sessões com histórico.
@@ -17,16 +21,12 @@ Screenshot pendente: `docs/images/command-center-main.png`.
 - Ações privilegiadas por `action_id` (sem shell root arbitrário).
 - Aprovação `Sim/Não` com risco, alvo e reversão.
 - Dry-run para simulação segura.
-- Logs de execução e resultados.
+- Logs de execução e resultados (Terminal Moderno).
 - Integração direta com VS Code.
 - Memórias e prompt base em `~/.codex`.
 
-## Arquitetura (resumo)
-- Frontend: React + Zustand.
-- Backend: Rust (Tauri commands + services).
-- Camadas: session manager, permission manager, command executor, privileged helper client, provider adapters, memory manager e VS Code bridge.
-
-Detalhes: [ARCHITECTURE.md](docs/ARCHITECTURE.md)
+## Roadmap: Squad IA
+O projeto está sendo preparado para suportar múltiplos agentes coordenados (Architect, Builder, Reviewer, Tester). Veja [MULTI_AGENT_PLAN.md](docs/MULTI_AGENT_PLAN.md) para detalhes.
 
 ## Rodar em desenvolvimento
 ```bash

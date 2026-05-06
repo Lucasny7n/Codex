@@ -16,6 +16,11 @@ export function SessionsPanel({ sessions, selectedSessionId, onSelect }: Session
         <Badge tone="info">{sessions.length}</Badge>
       </header>
       <div className="panel-body scroll-y compact-list">
+        {sessions.length === 0 ? (
+          <div className="centered muted text-xs" style={{ padding: 'var(--space-lg) 0' }}>
+            Nenhuma sessão iniciada.
+          </div>
+        ) : null}
         {sessions.map((session) => (
           <button
             key={session.id}

@@ -19,6 +19,11 @@ export function TasksPanel({ session }: TasksPanelProps): JSX.Element {
         <h2>Tarefas</h2>
       </header>
       <div className="panel-body scroll-y compact-list">
+        {!session || (session.tasks ?? []).length === 0 ? (
+          <div className="centered muted text-xs" style={{ padding: 'var(--space-lg) 0' }}>
+            Nenhuma tarefa ativa.
+          </div>
+        ) : null}
         {(session?.tasks ?? []).map((task) => (
           <div key={task.id} className="list-item static">
             <div className="row-between">

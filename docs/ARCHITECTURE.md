@@ -10,7 +10,9 @@
 ## Camadas
 
 1. UI (`src/components`)
-- Painéis: sessões, conversa, tarefas, status, permissões, logs, arquivos alterados, configurações.
+- Layout: `AppShell` (grade de 3 colunas), `TopBar`.
+- Painéis: sessões, conversa (`ChatPanel`), tarefas, status, permissões, logs, arquivos alterados, configurações.
+- Design System: `tokens.css`, `layout.css`, `components.css` (modular e baseado em variáveis CSS).
 - Onboarding/ajuda: painel `Primeiros Passos` com ações rápidas para docs, logs, VS Code e check de ambiente.
 
 2. Session Engine (`src-tauri/src/services/session_manager.rs`)

@@ -41,7 +41,7 @@ export function ChatPanel({ session }: ChatPanelProps): JSX.Element {
             <div className="message-content">{message.content}</div>
             {message.reasoningSummary && (
               <div className="reasoning-box">
-                <header>Raciocínio</header>
+                <header>Justificativa Técnica</header>
                 <div className="reasoning-content">{message.reasoningSummary}</div>
               </div>
             )}

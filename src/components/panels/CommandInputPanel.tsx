@@ -27,7 +27,10 @@ export function CommandInputPanel({
   const [actionArgsText, setActionArgsText] = useState('{}');
   const [actionDryRun, setActionDryRun] = useState(true);
 
+  const [error, setError] = useState<string>();
+
   const handleSend = async () => {
+    setError(undefined);
     if (mode === 'order') {
       await onSendOrder(prompt);
       setPrompt('');
@@ -39,13 +42,18 @@ export function CommandInputPanel({
         const args = JSON.parse(actionArgsText);
         await onRequestPrivilegedAction(selectedActionId, args, actionDryRun);
       } catch {
-        alert('JSON inválido');
+        setError('JSON de argumentos inválido. Verifique o formato.');
       }
     }
   };
 
   return (
     <section className="command-input-panel">
+      {error && (
+        <div className="input-error-tip">
+          {error}
+        </div>
+      )}
       <div className="mode-selector">
         <button 
           className={`mode-tab ${mode === 'order' ? 'active' : ''}`} 

@@ -97,52 +97,6 @@ pre,
   gap: var(--space-sm);
 }
 
-.list-item {
-  padding: var(--space-sm);
-  border-radius: var(--radius-sm);
-  border: 1px solid var(--border-subtle);
-  background-color: var(--bg-elevated);
-  transition: all 0.2s ease;
-}
-
-.list-item:hover {
-  background-color: var(--bg-surface);
-  border-color: var(--accent);
-}
-
-/* Chat Styles */
-.chat-list {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-md);
-}
-
-.chat-item {
-  padding: var(--space-md);
-  border-radius: var(--radius-md);
-  border: 1px solid var(--border-subtle);
-  background-color: var(--bg-elevated);
-}
-
-.role-assistant {
-  border-left: 3px solid var(--accent);
-}
-
-.role-user {
-  border-left: 3px solid var(--color-ok);
-}
-
-/* Terminal Modern */
-.terminal-output {
-  background-color: #000;
-  color: var(--text-main);
-  padding: var(--space-md);
-  border-radius: var(--radius-sm);
-  font-size: 0.85rem;
-  line-height: 1.5;
-  border: 1px solid var(--border-subtle);
-}
-
 /* Utils */
 .muted { color: var(--text-muted); }
 .text-xs { font-size: 0.75rem; }
