@@ -1,0 +1,43 @@
+:root {
+  /* Cores Base - Pure Black & Deep Navy */
+  --bg-app: #000000;
+  --bg-surface: #0a0a0b;
+  --bg-panel: #0f0f11;
+  --bg-elevated: #161618;
+  
+  /* Cores de Destaque - System Blue */
+  --accent: #2d95ec;
+  --accent-glow: rgba(45, 149, 236, 0.15);
+  --accent-muted: #1a5a8e;
+  
+  /* Texto */
+  --text-main: #f0f0f0;
+  --text-muted: #88888e;
+  --text-dim: #55555a;
+  
+  /* Semântica */
+  --color-ok: #5ad19a;
+  --color-warn: #ffcc66;
+  --color-danger: #ff6f7b;
+  --color-info: #7cc2ff;
+  
+  /* Geometria */
+  --radius-lg: 12px;
+  --radius-md: 8px;
+  --radius-sm: 4px;
+  
+  /* Espaçamento */
+  --space-xs: 4px;
+  --space-sm: 8px;
+  --space-md: 16px;
+  --space-lg: 24px;
+  
+  /* Sombras */
+  --shadow-subtle: 0 4px 12px rgba(0, 0, 0, 0.5);
+  --shadow-strong: 0 12px 32px rgba(0, 0, 0, 0.8);
+  
+  /* Bordas */
+  --border-subtle: rgba(255, 255, 255, 0.06);
+  --border-main: rgba(255, 255, 255, 0.1);
+  --border-accent: rgba(45, 149, 236, 0.3);
+}
