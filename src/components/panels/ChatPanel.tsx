@@ -9,33 +9,46 @@ interface ChatPanelProps {
 export function ChatPanel({ session }: ChatPanelProps): JSX.Element {
   if (!session) {
     return (
-      <section className="panel">
-        <header className="panel-header">
-          <h2>Conversa</h2>
-        </header>
-        <div className="panel-body centered muted">Nenhuma sessão selecionada.</div>
+      <section className="panel-chat-empty">
+        <div className="muted">Nenhuma sessão selecionada.</div>
       </section>
     );
   }
 
   return (
-    <section className="panel">
-      <header className="panel-header">
-        <h2>Conversa</h2>
+    <section className="panel-chat">
+      <header className="chat-header-modern">
+        <div className="agent-identity">
+          <div className="agent-avatar">C</div>
+          <div>
+            <h3>Codex Agent</h3>
+            <div className="agent-status-row">
+              <span className={`status-dot ${session.status}`} />
+              <span className="text-xs muted">{session.status.replace('_', ' ')}</span>
+            </div>
+          </div>
+        </div>
         <Badge tone="neutral">{session.messages.length} mensagens</Badge>
       </header>
-      <div className="panel-body scroll-y chat-list">
+
+      <div className="chat-messages scroll-y">
         {session.messages.map((message) => (
-          <article key={message.id} className={`chat-item role-${message.role}`}>
-            <div className="chat-head">
-              <span>{message.role}</span>
-              <small>{formatDateTime(message.createdAt)}</small>
+          <article key={message.id} className={`message-bubble role-${message.role}`}>
+            <div className="message-meta">
+              <span className="message-sender">{message.role === 'assistant' ? 'Codex' : 'Você'}</span>
+              <span className="text-xs muted">{formatDateTime(message.createdAt)}</span>
             </div>
-            <p>{message.content}</p>
-            {message.reasoningSummary ? <pre className="reasoning">{message.reasoningSummary}</pre> : null}
+            <div className="message-content">{message.content}</div>
+            {message.reasoningSummary && (
+              <div className="reasoning-box">
+                <header>Justificativa Técnica</header>
+                <div className="reasoning-content">{message.reasoningSummary}</div>
+              </div>
+            )}
           </article>
         ))}
       </div>
     </section>
   );
 }
+

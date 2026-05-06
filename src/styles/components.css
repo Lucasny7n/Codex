@@ -1,0 +1,408 @@
+.panel-modern {
+  background-color: var(--bg-panel);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-main);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  transition: border-color 0.2s ease;
+}
+
+.panel-modern:hover {
+  border-color: var(--border-accent);
+}
+
+.panel-header-modern {
+  padding: var(--space-sm) var(--space-md);
+  border-bottom: 1px solid var(--border-subtle);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.panel-header-modern h2 {
+  font-size: 0.85rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
+  margin: 0;
+}
+
+.panel-body-modern {
+  padding: var(--space-md);
+  flex: 1;
+}
+
+/* Botões Modernos */
+.btn-modern {
+  background-color: var(--bg-elevated);
+  border: 1px solid var(--border-main);
+  border-radius: var(--radius-sm);
+  color: var(--text-main);
+  padding: 6px 12px;
+  font-size: 0.85rem;
+  font-weight: 500;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  transition: all 0.2s ease;
+}
+
+.btn-modern:hover {
+  background-color: var(--bg-surface);
+  border-color: var(--accent);
+}
+
+.btn-modern-primary {
+  background-color: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+
+.btn-modern-primary:hover {
+  background-color: var(--accent-muted);
+  border-color: var(--accent-muted);
+}
+
+/* Inputs */
+.input-modern {
+  background-color: var(--bg-elevated);
+  border: 1px solid var(--border-main);
+  border-radius: var(--radius-sm);
+  color: var(--text-main);
+  padding: 8px 12px;
+  font-family: inherit;
+  width: 100%;
+}
+
+/* TopBar Modern */
+.topbar-modern {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: var(--space-sm) var(--space-lg);
+  background-color: var(--bg-app);
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.topbar-brand {
+  display: flex;
+  align-items: center;
+  gap: var(--space-md);
+}
+
+.topbar-brand h1 {
+  font-size: 1rem;
+  font-family: 'Sora', sans-serif;
+  font-weight: 700;
+  margin: 0;
+  background: linear-gradient(to right, var(--text-main), var(--text-muted));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.topbar-actions {
+  display: flex;
+  gap: var(--space-sm);
+}
+
+/* Command Input Panel */
+.command-input-panel {
+  background-color: var(--bg-surface);
+  border-top: 1px solid var(--border-subtle);
+  padding: var(--space-md);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-md);
+}
+
+.mode-selector {
+  display: flex;
+  gap: var(--space-sm);
+  padding-bottom: var(--space-sm);
+}
+
+.mode-tab {
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  font-size: 0.8rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding: 4px 8px;
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+  transition: all 0.2s ease;
+}
+
+.mode-tab:hover {
+  color: var(--text-main);
+}
+
+.mode-tab.active {
+  color: var(--accent);
+  border-bottom-color: var(--accent);
+}
+
+.main-input, .terminal-input, .args-input {
+  background-color: var(--bg-elevated);
+  resize: vertical;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.9rem;
+}
+
+.checkbox-modern {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.input-actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.input-error-tip {
+  padding: var(--space-sm) var(--space-md);
+  background-color: rgba(255, 111, 123, 0.1);
+  border: 1px solid var(--color-danger);
+  border-radius: var(--radius-sm);
+  color: var(--color-danger);
+  font-size: 0.8rem;
+  font-weight: 500;
+}
+
+/* Badges */
+/* Chat Panel Modern */
+.panel-chat {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  background-color: var(--bg-surface);
+}
+
+.panel-chat-empty {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-color: var(--bg-surface);
+}
+
+.chat-header-modern {
+  padding: var(--space-md);
+  border-bottom: 1px solid var(--border-subtle);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.agent-identity {
+  display: flex;
+  align-items: center;
+  gap: var(--space-md);
+}
+
+.agent-avatar {
+  width: 36px;
+  height: 36px;
+  background-color: var(--accent);
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  color: #fff;
+}
+
+.agent-identity h3 {
+  margin: 0;
+  font-size: 0.95rem;
+  font-family: 'Sora', sans-serif;
+}
+
+.agent-status-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 2px;
+}
+
+.status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background-color: var(--text-dim);
+}
+
+.status-dot.idle { background-color: var(--color-ok); }
+.status-dot.executing { background-color: var(--accent); animation: pulse 1.5s infinite; }
+.status-dot.waiting_approval { background-color: var(--color-warn); }
+.status-dot.error { background-color: var(--color-danger); }
+
+@keyframes pulse {
+  0% { opacity: 1; }
+  50% { opacity: 0.4; }
+  100% { opacity: 1; }
+}
+
+.chat-messages {
+  flex: 1;
+  padding: var(--space-md);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-lg);
+}
+
+.message-bubble {
+  max-width: 85%;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-xs);
+}
+
+.role-user {
+  align-self: flex-end;
+}
+
+.message-meta {
+  display: flex;
+  gap: var(--space-sm);
+  align-items: baseline;
+}
+
+.message-sender {
+  font-weight: 600;
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  color: var(--accent);
+}
+
+.role-user .message-sender {
+  color: var(--color-ok);
+  order: 1;
+}
+
+.role-user .message-meta {
+  justify-content: flex-end;
+}
+
+.message-content {
+  background-color: var(--bg-elevated);
+  padding: var(--space-md);
+  border-radius: var(--radius-md);
+  line-height: 1.6;
+  font-size: 0.95rem;
+  white-space: pre-wrap;
+  border: 1px solid var(--border-subtle);
+}
+
+.role-user .message-content {
+  background-color: var(--bg-panel);
+  border-color: rgba(90, 209, 154, 0.2);
+}
+
+.reasoning-box {
+  margin-top: var(--space-sm);
+  background-color: #000;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+}
+
+.reasoning-box header {
+  padding: 4px 8px;
+  background-color: var(--bg-elevated);
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.reasoning-content {
+  padding: var(--space-sm);
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  white-space: pre-wrap;
+}
+
+/* Terminal Modern */
+.terminal-output {
+  background-color: #000;
+  color: var(--text-main);
+  padding: var(--space-md);
+  border-radius: var(--radius-sm);
+  font-size: 0.85rem;
+  line-height: 1.5;
+  border: 1px solid var(--border-subtle);
+}
+
+.terminal-line {
+  display: flex;
+  gap: var(--space-md);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.03);
+  padding: 2px 0;
+}
+
+.terminal-line .timestamp {
+  color: var(--text-dim);
+  font-size: 0.75rem;
+  min-width: 80px;
+}
+
+.stream-stderr .line {
+  color: var(--color-danger);
+}
+
+.stream-meta .line {
+  color: var(--color-info);
+}
+
+/* Permission System Modern */
+.permission-card {
+  background-color: var(--bg-elevated);
+  border: 1px solid var(--border-main);
+  border-radius: var(--radius-md);
+  padding: var(--space-md);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+  transition: transform 0.2s ease;
+}
+
+.permission-card:hover {
+  border-color: var(--accent);
+}
+
+.permission-outcome {
+  border-style: dashed;
+  opacity: 0.8;
+}
+
+.permission-guidance {
+  background-color: rgba(45, 149, 236, 0.05);
+  border: 1px solid var(--border-accent);
+  border-radius: var(--radius-md);
+  padding: var(--space-md);
+  font-size: 0.85rem;
+}
+
+.command-preview {
+  background-color: #000;
+  border-radius: var(--radius-sm);
+  padding: var(--space-sm) var(--space-md);
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.8rem;
+  color: var(--accent-2);
+  border: 1px solid var(--border-subtle);
+  overflow-x: auto;
+}
+
+

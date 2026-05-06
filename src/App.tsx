@@ -23,6 +23,9 @@ import {
 import { trimMultiline } from './lib/format';
 import type { PrivilegedActionSpec } from './types/domain';
 import { useAppStore } from './stores/appStore';
+
+import { AppShell } from './components/layout/AppShell';
+import { TopBar } from './components/layout/TopBar';
 import { SessionsPanel } from './components/panels/SessionsPanel';
 import { ChatPanel } from './components/panels/ChatPanel';
 import { StatusPanel } from './components/panels/StatusPanel';
@@ -34,6 +37,7 @@ import { SettingsPanel } from './components/panels/SettingsPanel';
 import { MemoryPanel } from './components/panels/MemoryPanel';
 import { BasePromptPanel } from './components/panels/BasePromptPanel';
 import { OnboardingPanel } from './components/panels/OnboardingPanel';
+import { CommandInputPanel } from './components/panels/CommandInputPanel';
 
 const ACTION_JSON_EXAMPLES: Record<string, string> = {
   systemctl_enable_service: '{\n  "service": "fstrim.timer"\n}',
@@ -61,16 +65,10 @@ function applyTheme(accent: { accentPrimary: string; accentSecondary: string; ba
 }
 
 export default function App(): JSX.Element {
-  const [prompt, setPrompt] = useState('');
-  const [command, setCommand] = useState('');
   const [basePrompt, setBasePrompt] = useState('');
   const [savingBasePrompt, setSavingBasePrompt] = useState(false);
   const [busy, setBusy] = useState(false);
   const [privilegedActions, setPrivilegedActions] = useState<PrivilegedActionSpec[]>([]);
-  const [selectedActionId, setSelectedActionId] = useState('');
-  const [actionArgsText, setActionArgsText] = useState('{}');
-  const [actionDryRun, setActionDryRun] = useState(true);
-  const [copiedActionId, setCopiedActionId] = useState<string>();
 
   const {
     booted,
@@ -106,11 +104,7 @@ export default function App(): JSX.Element {
     () => sessions.find((session) => session.id === selectedSessionId),
     [sessions, selectedSessionId]
   );
-  const selectedPrivilegedAction = useMemo(
-    () => privilegedActions.find((action) => action.id === selectedActionId),
-    [privilegedActions, selectedActionId]
-  );
-  const selectedActionExample = ACTION_JSON_EXAMPLES[selectedActionId] ?? '{}';
+  
   const shouldHighlightOnboarding = booted && sessions.length === 0;
 
   useEffect(() => {
@@ -129,7 +123,6 @@ export default function App(): JSX.Element {
         if (mounted) {
           setBasePrompt(promptBase);
           setPrivilegedActions(actionCatalog);
-          setSelectedActionId(actionCatalog[0]?.id ?? '');
         }
 
         unlisteners.push(await onStatusNote((note) => appendStatus(note)));
@@ -181,7 +174,7 @@ export default function App(): JSX.Element {
     selectSession(created.id);
   }
 
-  async function handleSendPrompt(): Promise<void> {
+  async function handleSendPrompt(prompt: string): Promise<void> {
     const cleaned = trimMultiline(prompt);
     if (!cleaned) return;
     setBusy(true);
@@ -189,13 +182,12 @@ export default function App(): JSX.Element {
       const sessionId = await ensureSession();
       const updated = await appendUserMessage(sessionId, cleaned);
       upsertSession(updated);
-      setPrompt('');
     } finally {
       setBusy(false);
     }
   }
 
-  async function handleExecuteCommand(): Promise<void> {
+  async function handleExecuteCommand(command: string): Promise<void> {
     const cleaned = trimMultiline(command);
     if (!cleaned) return;
     setBusy(true);
@@ -207,12 +199,26 @@ export default function App(): JSX.Element {
         cwd: settings?.workspaceRoot,
         reason: 'Comando solicitado pelo usuário na central.'
       });
-      if (!response.approvalRequired) {
-        setCommand('');
-      }
       if (response.permissionRequest) {
         addPermission(response.permissionRequest);
       }
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function handleRequestPrivilegedAction(actionId: string, args: Record<string, unknown>, dryRun: boolean): Promise<void> {
+    setBusy(true);
+    try {
+      const sessionId = await ensureSession();
+      const request = await requestPrivilegedAction({
+        sessionId,
+        actionId,
+        args,
+        reason: 'Ação privilegiada solicitada pelo usuário no painel de permissões.',
+        dryRun
+      });
+      addPermission(request);
     } finally {
       setBusy(false);
     }
@@ -246,245 +252,82 @@ export default function App(): JSX.Element {
     }
   }
 
-  async function handleCopyActionExample(): Promise<void> {
-    try {
-      if (navigator.clipboard?.writeText) {
-        await navigator.clipboard.writeText(selectedActionExample);
-      } else {
-        const textarea = document.createElement('textarea');
-        textarea.value = selectedActionExample;
-        textarea.setAttribute('readonly', 'true');
-        textarea.style.position = 'fixed';
-        textarea.style.opacity = '0';
-        document.body.appendChild(textarea);
-        textarea.select();
-        const copied = document.execCommand('copy');
-        document.body.removeChild(textarea);
-        if (!copied) {
-          throw new Error('clipboard indisponível');
-        }
-      }
-
-      const actionId = selectedActionId;
-      setCopiedActionId(actionId);
-      window.setTimeout(() => {
-        setCopiedActionId((current) => (current === actionId ? undefined : current));
-      }, 1600);
-    } catch (cause) {
-      setError(cause instanceof Error ? `Falha ao copiar JSON: ${cause.message}` : 'Falha ao copiar JSON.');
-    }
-  }
-
-  async function handleRequestPrivilegedAction(): Promise<void> {
-    if (!selectedActionId) {
-      setError('Selecione uma ação privilegiada.');
-      return;
-    }
-
-    let parsedArgs: Record<string, unknown>;
-    try {
-      parsedArgs = JSON.parse(actionArgsText) as Record<string, unknown>;
-    } catch {
-      setError('Argumentos JSON inválidos para ação privilegiada.');
-      return;
-    }
-
-    setBusy(true);
-    try {
-      const sessionId = await ensureSession();
-      const request = await requestPrivilegedAction({
-        sessionId,
-        actionId: selectedActionId,
-        args: parsedArgs,
-        reason: 'Ação privilegiada solicitada pelo usuário no painel de permissões.',
-        dryRun: actionDryRun
-      });
-      addPermission(request);
-    } finally {
-      setBusy(false);
-    }
-  }
+  if (loading) return <div className="centered" style={{ height: '100vh' }}>Inicializando central...</div>;
+  if (error) return <div className="centered error" style={{ height: '100vh' }}>{error}</div>;
 
   return (
-    <div className="app-root">
-      <header className="topbar">
-        <div>
-          <h1>Codex Command Center</h1>
-          <p>
-            cockpit de agentes com execução controlada, memórias em <code>~/.codex</code> e fluxo de VS Code.
-          </p>
-        </div>
-        <div className="top-actions">
-          <button className="btn" type="button" onClick={() => void handleCreateSession()}>
-            Nova sessão
-          </button>
-          <button className="btn" type="button" onClick={() => void openProjectInVscode(settings?.workspaceRoot ?? '/home/lucas/Codex')}>
-            Abrir projeto no VS Code
-          </button>
-          <button
-            className="btn"
-            type="button"
-            onClick={() => {
-              const latest = changedFiles[0]?.path;
-              if (latest) {
-                void openFileInVscode(latest);
+    <AppShell
+      header={
+        <TopBar 
+          settings={settings}
+          onCreateSession={() => void handleCreateSession()}
+          onOpenProject={(root) => void openProjectInVscode(root)}
+          onOpenLastFile={(path) => void openFileInVscode(path)}
+          lastChangedFilePath={changedFiles[0]?.path}
+        />
+      }
+      sidebarLeft={
+        <>
+          <SessionsPanel sessions={sessions} selectedSessionId={selectedSessionId} onSelect={selectSession} />
+          <TasksPanel session={selectedSession} />
+          <MemoryPanel memory={memory} />
+        </>
+      }
+      main={
+        <>
+          <ChatPanel session={selectedSession} />
+          <CommandInputPanel 
+            busy={busy}
+            privilegedActions={privilegedActions}
+            onSendOrder={handleSendPrompt}
+            onExecuteCommand={handleExecuteCommand}
+            onRequestPrivilegedAction={handleRequestPrivilegedAction}
+            actionJsonExamples={ACTION_JSON_EXAMPLES}
+          />
+          <TerminalPanel logs={logs} />
+        </>
+      }
+      sidebarRight={
+        <>
+          <PermissionsPanel
+            requests={pendingPermissions}
+            outcomes={permissionOutcomes}
+            onApprove={(requestId) => void handlePermission(requestId, true)}
+            onReject={(requestId) => void handlePermission(requestId, false)}
+          />
+          <OnboardingPanel
+            busy={busy}
+            highlight={shouldHighlightOnboarding}
+            onOpenGuide={() => void openFileInVscode('/home/lucas/Codex/docs/GUIA_DE_USO.md')}
+            onOpenQuickstart={() => void openFileInVscode('/home/lucas/Codex/docs/QUICKSTART.md')}
+            onOpenWorkspace={() => void openProjectInVscode(settings?.workspaceRoot ?? '/home/lucas/Codex')}
+            onOpenCodexRoot={() => void openProjectInVscode(settings?.codexRoot ?? '/home/lucas/.codex')}
+            onOpenLogs={() => void openProjectInVscode(`${settings?.codexRoot ?? '/home/lucas/.codex'}/codex-ui/logs`)}
+            onRunCheckEnvironment={() => void handleRunCheckEnvironment()}
+          />
+          <ChangedFilesPanel entries={changedFiles} onOpen={(path) => void openFileInVscode(path)} />
+          <StatusPanel feed={statusFeed} />
+          <SettingsPanel
+            settings={settings}
+            providers={providers}
+            profiles={profiles}
+            onChange={(next) => handleUpdateSettings(next)}
+          />
+          <BasePromptPanel
+            content={basePrompt}
+            saving={savingBasePrompt}
+            onChange={setBasePrompt}
+            onSave={async () => {
+              setSavingBasePrompt(true);
+              try {
+                await updateBasePrompt(basePrompt);
+              } finally {
+                setSavingBasePrompt(false);
               }
             }}
-          >
-            Abrir último arquivo alterado
-          </button>
-        </div>
-      </header>
-
-      {loading ? <div className="blocking-state">Inicializando central...</div> : null}
-      {!loading && error ? <div className="blocking-state error">{error}</div> : null}
-
-      {booted && !error ? (
-        <main className="app-grid">
-          <aside className="col-left">
-            <SessionsPanel sessions={sessions} selectedSessionId={selectedSessionId} onSelect={selectSession} />
-            <TasksPanel session={selectedSession} />
-            <MemoryPanel memory={memory} />
-          </aside>
-
-          <section className="col-main">
-            <ChatPanel session={selectedSession} />
-
-            <section className="panel input-panel">
-              <header className="panel-header">
-                <h2>Ordem e Execução</h2>
-              </header>
-              <div className="panel-body input-stack">
-                <label>
-                  Ordem para o agente
-                  <textarea
-                    rows={3}
-                    placeholder="ex.: diagnostique o projeto e implemente integração X"
-                    value={prompt}
-                    onChange={(event) => setPrompt(event.target.value)}
-                  />
-                </label>
-                <button className="btn btn-primary" type="button" disabled={busy} onClick={() => void handleSendPrompt()}>
-                  Enviar ordem
-                </button>
-
-                <label>
-                  Comando de terminal
-                  <textarea
-                    rows={2}
-                    placeholder="ex.: npm run test"
-                    value={command}
-                    onChange={(event) => setCommand(event.target.value)}
-                  />
-                </label>
-                <button className="btn btn-primary" type="button" disabled={busy} onClick={() => void handleExecuteCommand()}>
-                  Executar via camada de permissão
-                </button>
-
-                <div className="privileged-box">
-                  <h3>Ação Privilegiada (via helper/pkexec)</h3>
-                  <label>
-                    Ação
-                    <select value={selectedActionId} onChange={(event) => setSelectedActionId(event.target.value)}>
-                      {privilegedActions.map((action) => (
-                        <option key={action.id} value={action.id}>
-                          {action.title} ({action.riskLevel})
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                  {selectedPrivilegedAction ? (
-                    <>
-                      <p className="muted">
-                        {selectedPrivilegedAction.description} | risco {selectedPrivilegedAction.riskLevel} | alvo padrão:{' '}
-                        {selectedPrivilegedAction.targetHint}
-                      </p>
-                      <p className="muted">
-                        Exemplo JSON para essa ação:
-                      </p>
-                      <pre className="json-example">{selectedActionExample}</pre>
-                      <div className="row-actions">
-                        <button
-                          type="button"
-                          className="btn btn-ghost"
-                          onClick={() => void handleCopyActionExample()}
-                        >
-                          {copiedActionId === selectedActionId ? 'Copiado!' : 'Copiar JSON de exemplo'}
-                        </button>
-                        <button
-                          type="button"
-                          className="btn btn-ghost"
-                          onClick={() => setActionArgsText(selectedActionExample)}
-                        >
-                          Usar exemplo no campo JSON
-                        </button>
-                      </div>
-                    </>
-                  ) : null}
-                  <label>
-                    Argumentos JSON
-                    <textarea
-                      rows={4}
-                      placeholder='{"service":"waydroid-container.service"}'
-                      value={actionArgsText}
-                      onChange={(event) => setActionArgsText(event.target.value)}
-                    />
-                  </label>
-                  <label className="checkbox-row">
-                    <input type="checkbox" checked={actionDryRun} onChange={(event) => setActionDryRun(event.target.checked)} />
-                    executar em dry-run
-                  </label>
-                  <button className="btn btn-primary" type="button" disabled={busy} onClick={() => void handleRequestPrivilegedAction()}>
-                    Solicitar ação privilegiada
-                  </button>
-                </div>
-              </div>
-            </section>
-
-            <TerminalPanel logs={logs} />
-          </section>
-
-          <aside className="col-right">
-            <PermissionsPanel
-              requests={pendingPermissions}
-              outcomes={permissionOutcomes}
-              onApprove={(requestId) => void handlePermission(requestId, true)}
-              onReject={(requestId) => void handlePermission(requestId, false)}
-            />
-            <OnboardingPanel
-              busy={busy}
-              highlight={shouldHighlightOnboarding}
-              onOpenGuide={() => void openFileInVscode('/home/lucas/Codex/docs/GUIA_DE_USO.md')}
-              onOpenQuickstart={() => void openFileInVscode('/home/lucas/Codex/docs/QUICKSTART.md')}
-              onOpenWorkspace={() => void openProjectInVscode(settings?.workspaceRoot ?? '/home/lucas/Codex')}
-              onOpenCodexRoot={() => void openProjectInVscode(settings?.codexRoot ?? '/home/lucas/.codex')}
-              onOpenLogs={() => void openProjectInVscode(`${settings?.codexRoot ?? '/home/lucas/.codex'}/codex-ui/logs`)}
-              onRunCheckEnvironment={() => void handleRunCheckEnvironment()}
-            />
-            <ChangedFilesPanel entries={changedFiles} onOpen={(path) => void openFileInVscode(path)} />
-            <StatusPanel feed={statusFeed} />
-            <SettingsPanel
-              settings={settings}
-              providers={providers}
-              profiles={profiles}
-              onChange={(next) => handleUpdateSettings(next)}
-            />
-            <BasePromptPanel
-              content={basePrompt}
-              saving={savingBasePrompt}
-              onChange={setBasePrompt}
-              onSave={async () => {
-                setSavingBasePrompt(true);
-                try {
-                  await updateBasePrompt(basePrompt);
-                } finally {
-                  setSavingBasePrompt(false);
-                }
-              }}
-            />
-          </aside>
-        </main>
-      ) : null}
-    </div>
+          />
+        </>
+      }
+    />
   );
 }
