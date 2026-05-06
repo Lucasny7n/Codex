@@ -1,0 +1,11 @@
+node_modules/
+dist/
+dist-ssr/
+.vscode/
+.idea/
+.DS_Store
+*.log
+coverage/
+src-tauri/target/
+src-tauri/gen/
+.codex-command-center/

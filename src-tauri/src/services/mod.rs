@@ -1,0 +1,11 @@
+pub mod command_executor;
+pub mod config_manager;
+pub mod file_watcher;
+pub mod memory_manager;
+pub mod permission_manager;
+pub mod privileged_actions;
+pub mod privileged_helper_client;
+pub mod provider_adapters;
+pub mod provider_registry;
+pub mod session_manager;
+pub mod vscode_bridge;

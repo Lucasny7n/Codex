@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Codex Command Center
+Comment=Central de comando para agentes tipo Codex
+Exec=/home/lucas/Codex/scripts/run-codex-command-center.sh
+Icon=/home/lucas/Codex/src-tauri/icons/128x128.png
+Terminal=false
+Categories=Development;Utility;
+StartupNotify=true

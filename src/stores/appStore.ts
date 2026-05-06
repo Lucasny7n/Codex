@@ -1,0 +1,125 @@
+import { create } from 'zustand';
+import type {
+  AgentProfile,
+  AgentSession,
+  AppSettings,
+  CommandLogChunk,
+  FileChangeEntry,
+  PermissionOutcome,
+  PermissionRequest,
+  ProviderDescriptor,
+  StatusNote,
+  MemorySnapshot,
+  SystemTheme
+} from '../types/domain';
+
+interface AppStoreState {
+  booted: boolean;
+  loading: boolean;
+  error?: string;
+  settings?: AppSettings;
+  providers: ProviderDescriptor[];
+  profiles: AgentProfile[];
+  memory?: MemorySnapshot;
+  theme?: SystemTheme;
+  sessions: AgentSession[];
+  selectedSessionId?: string;
+  logs: CommandLogChunk[];
+  changedFiles: FileChangeEntry[];
+  statusFeed: StatusNote[];
+  pendingPermissions: PermissionRequest[];
+  permissionOutcomes: PermissionOutcome[];
+  setLoading: (value: boolean) => void;
+  setError: (value?: string) => void;
+  bootstrap: (payload: {
+    settings: AppSettings;
+    sessions: AgentSession[];
+    pendingPermissions: PermissionRequest[];
+    providers: ProviderDescriptor[];
+    agentProfiles: AgentProfile[];
+    memory: MemorySnapshot;
+    theme: SystemTheme;
+  }) => void;
+  upsertSession: (session: AgentSession) => void;
+  selectSession: (sessionId: string) => void;
+  appendLog: (chunk: CommandLogChunk) => void;
+  appendStatus: (status: StatusNote) => void;
+  pushFileChange: (change: FileChangeEntry) => void;
+  addPermission: (request: PermissionRequest) => void;
+  removePermission: (requestId: string) => void;
+  recordPermissionOutcome: (outcome: PermissionOutcome) => void;
+  updateSettings: (settings: AppSettings) => void;
+}
+
+function dedupeByPath(changes: FileChangeEntry[]): FileChangeEntry[] {
+  const seen = new Map<string, FileChangeEntry>();
+  for (const item of changes) {
+    seen.set(item.path, item);
+  }
+  return Array.from(seen.values()).sort((a, b) => b.at.localeCompare(a.at)).slice(0, 200);
+}
+
+export const useAppStore = create<AppStoreState>((set, get) => ({
+  booted: false,
+  loading: true,
+  providers: [],
+  profiles: [],
+  sessions: [],
+  logs: [],
+  changedFiles: [],
+  statusFeed: [],
+  pendingPermissions: [],
+  permissionOutcomes: [],
+  setLoading: (value) => set({ loading: value }),
+  setError: (value) => set({ error: value }),
+  bootstrap: (payload) =>
+    set({
+      booted: true,
+      loading: false,
+      error: undefined,
+      settings: payload.settings,
+      sessions: payload.sessions,
+      selectedSessionId: payload.sessions[0]?.id,
+      pendingPermissions: payload.pendingPermissions,
+      providers: payload.providers,
+      profiles: payload.agentProfiles,
+      memory: payload.memory,
+      theme: payload.theme
+    }),
+  upsertSession: (session) => {
+    const current = get().sessions;
+    const index = current.findIndex((candidate) => candidate.id === session.id);
+    if (index === -1) {
+      set({
+        sessions: [session, ...current].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)),
+        selectedSessionId: get().selectedSessionId ?? session.id
+      });
+      return;
+    }
+    const next = [...current];
+    next[index] = session;
+    next.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+    set({ sessions: next });
+  },
+  selectSession: (sessionId) => set({ selectedSessionId: sessionId }),
+  appendLog: (chunk) => set({ logs: [...get().logs, chunk].slice(-2500) }),
+  appendStatus: (status) => set({ statusFeed: [status, ...get().statusFeed].slice(0, 500) }),
+  pushFileChange: (change) => {
+    const next = dedupeByPath([change, ...get().changedFiles]);
+    set({ changedFiles: next });
+  },
+  addPermission: (request) => {
+    const existing = get().pendingPermissions;
+    if (existing.some((entry) => entry.id === request.id)) {
+      return;
+    }
+    set({ pendingPermissions: [request, ...existing] });
+  },
+  removePermission: (requestId) => {
+    set({ pendingPermissions: get().pendingPermissions.filter((entry) => entry.id !== requestId) });
+  },
+  recordPermissionOutcome: (outcome) => {
+    set({ permissionOutcomes: [outcome, ...get().permissionOutcomes].slice(0, 100) });
+  },
+  updateSettings: (settings) => set({ settings })
+}));
