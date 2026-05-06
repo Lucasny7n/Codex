@@ -9,57 +9,95 @@
 
 .app-main-grid {
   flex: 1;
-  display: grid;
-  grid-template-columns: 260px 1fr 320px;
-  gap: 1px;
-  background-color: var(--border-subtle);
   min-height: 0;
+  display: grid;
+  grid-template-columns: 232px minmax(0, 1fr) 360px;
+  gap: 0;
+  border-top: 1px solid var(--border-subtle);
+}
+
+.app-main-grid-no-right {
+  grid-template-columns: 232px minmax(0, 1fr);
 }
 
 .app-column {
-  background-color: var(--bg-app);
+  min-height: 0;
   display: flex;
   flex-direction: column;
   gap: var(--space-md);
-  padding: var(--space-md);
   overflow-y: auto;
-  scrollbar-width: thin;
-  min-height: 0;
+  padding: var(--space-md);
+  background-color: #030406;
+  border-right: 1px solid var(--border-subtle);
+}
+
+.app-sidebar-left {
+  padding-right: var(--space-sm);
+}
+
+.app-sidebar-right {
+  border-right: 0;
+  border-left: 1px solid var(--border-subtle);
+  background-color: #03050a;
+  padding-left: var(--space-sm);
 }
 
 .app-column-center {
-  background-color: var(--bg-surface);
+  min-height: 0;
+  overflow: hidden;
   padding: 0;
-  display: grid;
-  grid-template-rows: minmax(0, 1fr) auto minmax(180px, 25vh);
-  gap: 1px;
-  background-color: var(--border-subtle);
+  background-color: var(--bg-surface);
+}
+
+.left-sidebar-stack {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
   min-height: 0;
 }
 
-.app-column-center > * {
-  background-color: var(--bg-surface);
+.main-workspace {
+  height: 100%;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
 }
 
-@media (max-width: 1600px) {
+.onboarding-empty-state {
+  flex: 1;
+  min-height: 0;
+  padding: var(--space-lg);
+  display: flex;
+}
+
+.onboarding-empty-state .onboarding-panel {
+  flex: 1;
+}
+
+@media (max-width: 1500px) {
   .app-main-grid {
-    grid-template-columns: 240px 1fr 300px;
+    grid-template-columns: 216px minmax(0, 1fr) 330px;
   }
 }
 
-@media (max-width: 1280px) {
-  .app-main-grid {
-    grid-template-columns: 220px 1fr 280px;
-  }
-}
-
-@media (max-width: 1024px) {
-  .app-main-grid {
+@media (max-width: 1240px) {
+  .app-main-grid,
+  .app-main-grid-no-right {
     grid-template-columns: 1fr;
-    overflow-y: auto;
   }
+
   .app-column {
-    overflow-y: visible;
-    height: auto;
+    border-right: 0;
+    border-left: 0;
+    border-bottom: 1px solid var(--border-subtle);
+  }
+
+  .app-sidebar-left,
+  .app-sidebar-right {
+    padding: var(--space-md);
+  }
+
+  .app-column-center {
+    min-height: 60vh;
   }
 }

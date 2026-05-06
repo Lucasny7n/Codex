@@ -22,16 +22,17 @@ import {
   updateSettings
 } from './lib/api';
 import { shellQuote, trimMultiline } from './lib/format';
-import type { AgentSession, AppSettings, PrivilegedActionSpec, ProviderRuntimeStatus } from './types/domain';
+import type { AppSettings, PrivilegedActionSpec, ProviderRuntimeStatus } from './types/domain';
 import { useAppStore } from './stores/appStore';
 
 import { AppShell } from './components/layout/AppShell';
 import { TopBar } from './components/layout/TopBar';
+import { type InspectorTabId } from './components/layout/InspectorTabs';
+import { CollapsibleSection } from './components/common/CollapsibleSection';
 import { SessionsPanel } from './components/panels/SessionsPanel';
 import { ChatPanel } from './components/panels/ChatPanel';
 import { StatusPanel } from './components/panels/StatusPanel';
 import { TasksPanel } from './components/panels/TasksPanel';
-import { TerminalPanel } from './components/panels/TerminalPanel';
 import { PermissionsPanel } from './components/panels/PermissionsPanel';
 import { ChangedFilesPanel } from './components/panels/ChangedFilesPanel';
 import { SettingsPanel } from './components/panels/SettingsPanel';
@@ -39,6 +40,9 @@ import { MemoryPanel } from './components/panels/MemoryPanel';
 import { BasePromptPanel } from './components/panels/BasePromptPanel';
 import { OnboardingPanel } from './components/panels/OnboardingPanel';
 import { CommandInputPanel } from './components/panels/CommandInputPanel';
+import { InspectorPanel } from './components/panels/InspectorPanel';
+import { TerminalDrawer } from './components/panels/TerminalDrawer';
+import { HelpDrawer } from './components/panels/HelpDrawer';
 
 function applyTheme(accent: { accentPrimary: string; accentSecondary: string; background: string }): void {
   const root = document.documentElement;
@@ -76,23 +80,14 @@ function buildActionJsonExamples(settings?: AppSettings): Record<string, string>
   };
 }
 
-type VisualSessionState = 'idle' | 'planning' | 'running' | 'waiting_permission' | 'error' | 'done';
-
-function getVisualSessionState(session?: AgentSession): VisualSessionState {
-  if (!session) return 'idle';
-  if (session.status === 'error') return 'error';
-  if (session.status === 'waiting_approval') return 'waiting_permission';
-  if (session.status === 'planning') return 'planning';
-  if (session.status === 'executing' || session.status === 'diagnosing') return 'running';
-  if (session.tasks.length > 0 && session.tasks.every((task) => task.status === 'done')) return 'done';
-  return 'idle';
-}
-
 export default function App(): JSX.Element {
   const [basePrompt, setBasePrompt] = useState('');
   const [savingBasePrompt, setSavingBasePrompt] = useState(false);
   const [busy, setBusy] = useState(false);
   const [privilegedActions, setPrivilegedActions] = useState<PrivilegedActionSpec[]>([]);
+  const [selectedInspectorTab, setSelectedInspectorTab] = useState<InspectorTabId>('status');
+  const [terminalOpen, setTerminalOpen] = useState(false);
+  const [helpOpen, setHelpOpen] = useState(false);
 
   const {
     booted,
@@ -138,11 +133,6 @@ export default function App(): JSX.Element {
     [providers, settings?.selectedProviderId]
   );
 
-  const selectedModel = useMemo(
-    () => selectedProvider?.models.find((model) => model.id === settings?.selectedModelId),
-    [selectedProvider, settings?.selectedModelId]
-  );
-
   const selectedProviderStatus: ProviderRuntimeStatus | undefined = selectedProvider?.status ?? (settings
     ? {
         state: 'unavailable',
@@ -155,19 +145,12 @@ export default function App(): JSX.Element {
     ? `Provider ${selectedProviderStatus.state}: ${selectedProviderStatus.message}`
     : undefined;
 
-  const selectedProfile = useMemo(
-    () => profiles.find((profile) => profile.id === settings?.selectedAgentId),
-    [profiles, settings?.selectedAgentId]
-  );
-
-  const visualSessionState = getVisualSessionState(selectedSession);
-
   const workspacePath = (relativePath: string): string | undefined => {
     if (!settings?.workspaceRoot) return undefined;
     return `${settings.workspaceRoot.replace(/\/$/, '')}/${relativePath}`;
   };
-  
-  const shouldHighlightOnboarding = booted && sessions.length === 0;
+
+  const showOnboardingEmptyState = booted && sessions.length === 0;
 
   useEffect(() => {
     let mounted = true;
@@ -326,103 +309,156 @@ export default function App(): JSX.Element {
     }
   }
 
+  function handleOpenGuide(): void {
+    const path = workspacePath('docs/GUIA_DE_USO.md');
+    if (path) void openFileInVscode(path);
+  }
+
+  function handleOpenQuickstart(): void {
+    const path = workspacePath('docs/QUICKSTART.md');
+    if (path) void openFileInVscode(path);
+  }
+
+  function handleOpenWorkspace(): void {
+    if (settings?.workspaceRoot) void openProjectInVscode(settings.workspaceRoot);
+  }
+
+  function handleOpenCodexRoot(): void {
+    if (settings?.codexRoot) void openProjectInVscode(settings.codexRoot);
+  }
+
+  function handleOpenLogs(): void {
+    if (settings?.codexRoot) void openProjectInVscode(`${settings.codexRoot}/codex-ui/logs`);
+  }
+
   if (loading) return <div className="centered" style={{ height: '100vh' }}>Inicializando central...</div>;
   if (error) return <div className="centered error" style={{ height: '100vh' }}>{error}</div>;
 
   return (
-    <AppShell
-      header={
-        <TopBar 
-          settings={settings}
-          workspaceMeta={workspaceMeta}
-          providerLabel={selectedProvider?.label}
-          modelLabel={selectedModel?.label}
-          profileLabel={selectedProfile?.label}
-          sessionState={visualSessionState}
-          providerStatus={selectedProviderStatus}
-          pendingPermissions={pendingPermissions.length}
-          onCreateSession={() => void handleCreateSession()}
-          onOpenProject={(root) => void openProjectInVscode(root)}
-          onOpenLastFile={(path) => void openFileInVscode(path)}
-          lastChangedFilePath={changedFiles[0]?.path}
-        />
-      }
-      sidebarLeft={
-        <>
-          <SessionsPanel sessions={sessions} selectedSessionId={selectedSessionId} onSelect={selectSession} />
-          <TasksPanel session={selectedSession} />
-          <MemoryPanel memory={memory} />
-        </>
-      }
-      main={
-        <>
-          <ChatPanel session={selectedSession} />
-          <CommandInputPanel 
-            busy={busy}
-            privilegedActions={privilegedActions}
-            onSendOrder={handleSendPrompt}
-            onExecuteCommand={handleExecuteCommand}
-            onRequestPrivilegedAction={handleRequestPrivilegedAction}
-            actionJsonExamples={actionJsonExamples}
-            orderDisabledReason={orderDisabledReason}
-          />
-          <TerminalPanel logs={logs} />
-        </>
-      }
-      sidebarRight={
-        <>
-          <PermissionsPanel
-            requests={pendingPermissions}
-            outcomes={permissionOutcomes}
-            onApprove={(requestId) => void handlePermission(requestId, true)}
-            onReject={(requestId) => void handlePermission(requestId, false)}
-          />
-          <OnboardingPanel
-            busy={busy}
-            highlight={shouldHighlightOnboarding}
-            onOpenGuide={() => {
-              const path = workspacePath('docs/GUIA_DE_USO.md');
-              if (path) void openFileInVscode(path);
-            }}
-            onOpenQuickstart={() => {
-              const path = workspacePath('docs/QUICKSTART.md');
-              if (path) void openFileInVscode(path);
-            }}
-            onOpenWorkspace={() => {
-              if (settings?.workspaceRoot) void openProjectInVscode(settings.workspaceRoot);
-            }}
-            onOpenCodexRoot={() => {
-              if (settings?.codexRoot) void openProjectInVscode(settings.codexRoot);
-            }}
-            onOpenLogs={() => {
-              if (settings?.codexRoot) void openProjectInVscode(`${settings.codexRoot}/codex-ui/logs`);
-            }}
-            onRunCheckEnvironment={() => void handleRunCheckEnvironment()}
-          />
-          <ChangedFilesPanel entries={changedFiles} onOpen={(path) => void openFileInVscode(path)} />
-          <StatusPanel feed={statusFeed} />
-          <SettingsPanel
+    <>
+      <AppShell
+        header={
+          <TopBar
             settings={settings}
-            providers={providers}
-            profiles={profiles}
-            onChange={(next) => handleUpdateSettings(next)}
-            onTestProvider={(providerId) => handleTestProvider(providerId)}
-          />
-          <BasePromptPanel
-            content={basePrompt}
-            saving={savingBasePrompt}
-            onChange={setBasePrompt}
-            onSave={async () => {
-              setSavingBasePrompt(true);
-              try {
-                await updateBasePrompt(basePrompt);
-              } finally {
-                setSavingBasePrompt(false);
-              }
+            workspaceMeta={workspaceMeta}
+            providerLabel={selectedProvider?.label}
+            providerStatus={selectedProviderStatus}
+            onCreateSession={() => void handleCreateSession()}
+            onOpenProject={(root) => void openProjectInVscode(root)}
+            onOpenInspector={() => {
+              setSelectedInspectorTab('settings');
             }}
           />
-        </>
-      }
-    />
+        }
+        sidebarLeft={
+          <div className="left-sidebar-stack">
+            <SessionsPanel sessions={sessions} selectedSessionId={selectedSessionId} onSelect={selectSession} />
+            <CollapsibleSection
+              title="Tarefas"
+              description="Timeline da sessão"
+              defaultOpen={Boolean(selectedSession?.tasks.length)}
+              badge={selectedSession?.tasks.length ?? 0}
+            >
+              <TasksPanel session={selectedSession} />
+            </CollapsibleSection>
+            <CollapsibleSection
+              title="Memória"
+              description="Snapshot do contexto"
+              badge={memory ? 1 : 0}
+            >
+              <MemoryPanel memory={memory} />
+            </CollapsibleSection>
+          </div>
+        }
+        main={
+          <div className="main-workspace">
+            {showOnboardingEmptyState ? (
+              <div className="onboarding-empty-state" data-testid="onboarding-empty-state">
+                <OnboardingPanel
+                  busy={busy}
+                  highlight
+                  onOpenGuide={handleOpenGuide}
+                  onOpenQuickstart={handleOpenQuickstart}
+                  onOpenWorkspace={handleOpenWorkspace}
+                  onOpenCodexRoot={handleOpenCodexRoot}
+                  onOpenLogs={handleOpenLogs}
+                  onRunCheckEnvironment={() => void handleRunCheckEnvironment()}
+                />
+              </div>
+            ) : (
+              <>
+                <ChatPanel session={selectedSession} />
+                <CommandInputPanel
+                  busy={busy}
+                  privilegedActions={privilegedActions}
+                  onSendOrder={handleSendPrompt}
+                  onExecuteCommand={handleExecuteCommand}
+                  onRequestPrivilegedAction={handleRequestPrivilegedAction}
+                  actionJsonExamples={actionJsonExamples}
+                  orderDisabledReason={orderDisabledReason}
+                />
+                <TerminalDrawer logs={logs} open={terminalOpen} onToggle={() => setTerminalOpen((current) => !current)} />
+              </>
+            )}
+          </div>
+        }
+        sidebarRight={
+          <InspectorPanel
+            selectedTab={selectedInspectorTab}
+            onSelectTab={setSelectedInspectorTab}
+            pendingApprovals={pendingPermissions.length}
+            changedFiles={changedFiles.length}
+            statusNotes={statusFeed.length}
+            onOpenHelp={() => setHelpOpen(true)}
+            approvalsContent={
+              <PermissionsPanel
+                requests={pendingPermissions}
+                outcomes={permissionOutcomes}
+                onApprove={(requestId) => void handlePermission(requestId, true)}
+                onReject={(requestId) => void handlePermission(requestId, false)}
+              />
+            }
+            filesContent={<ChangedFilesPanel entries={changedFiles} onOpen={(path) => void openFileInVscode(path)} />}
+            statusContent={<StatusPanel feed={statusFeed} />}
+            settingsContent={
+              <SettingsPanel
+                settings={settings}
+                providers={providers}
+                profiles={profiles}
+                onChange={(next) => handleUpdateSettings(next)}
+                onTestProvider={(providerId) => handleTestProvider(providerId)}
+              />
+            }
+            promptContent={
+              <BasePromptPanel
+                content={basePrompt}
+                saving={savingBasePrompt}
+                onChange={setBasePrompt}
+                onSave={async () => {
+                  setSavingBasePrompt(true);
+                  try {
+                    await updateBasePrompt(basePrompt);
+                  } finally {
+                    setSavingBasePrompt(false);
+                  }
+                }}
+              />
+            }
+          />
+        }
+      />
+
+      <HelpDrawer
+        open={helpOpen}
+        busy={busy}
+        onClose={() => setHelpOpen(false)}
+        onOpenGuide={handleOpenGuide}
+        onOpenQuickstart={handleOpenQuickstart}
+        onOpenWorkspace={handleOpenWorkspace}
+        onOpenCodexRoot={handleOpenCodexRoot}
+        onOpenLogs={handleOpenLogs}
+        onRunCheckEnvironment={() => void handleRunCheckEnvironment()}
+      />
+    </>
   );
 }

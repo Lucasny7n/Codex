@@ -34,18 +34,13 @@ pre,
 
 /* Painéis Baseados em Tokens */
 .panel {
-  background-color: var(--bg-panel);
-  border: 1px solid var(--border-main);
-  border-radius: var(--radius-md);
+  background-color: #060a11;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  transition: border-color 0.2s ease;
-  min-height: 0; /* Important for flex containers */
-}
-
-.panel:hover {
-  border-color: var(--border-accent);
+  min-height: 0;
 }
 
 .panel-header {
@@ -58,10 +53,8 @@ pre,
 }
 
 .panel-header h2 {
-  font-size: 0.8rem;
+  font-size: 0.82rem;
   font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
   color: var(--text-muted);
   margin: 0;
 }
@@ -110,12 +103,4 @@ pre,
 .centered { display: flex; align-items: center; justify-content: center; }
 .row-between { display: flex; justify-content: space-between; align-items: center; }
 .row-actions { display: flex; gap: var(--space-sm); }
-.panel-attention { border-color: var(--accent); box-shadow: 0 0 10px var(--accent-glow); }
-.first-run-badge { 
-  background-color: var(--accent); 
-  color: #fff; 
-  font-size: 0.65rem; 
-  padding: 2px 6px; 
-  border-radius: 4px; 
-  text-transform: uppercase;
-}
+.panel-attention { border-color: rgba(157, 202, 255, 0.4); }

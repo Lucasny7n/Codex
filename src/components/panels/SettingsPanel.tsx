@@ -101,7 +101,7 @@ export function SettingsPanel({
       <div className="panel-body form-stack">
         <section className="settings-section">
           <div className="settings-section-header">
-            <strong>Providers</strong>
+            <strong>Provider</strong>
             <span>Runner real ou mock explicitamente marcado.</span>
           </div>
 
@@ -162,8 +162,8 @@ export function SettingsPanel({
 
         <section className="settings-section">
           <div className="settings-section-header">
-            <strong>Modelos e agentes</strong>
-            <span>Seleção salva, sem fingir disponibilidade.</span>
+            <strong>Modelo</strong>
+            <span>Modelo do provider selecionado.</span>
           </div>
 
           <label>
@@ -181,6 +181,13 @@ export function SettingsPanel({
               ))}
             </select>
           </label>
+        </section>
+
+        <section className="settings-section">
+          <div className="settings-section-header">
+            <strong>Agente</strong>
+            <span>Perfil de execução do agente.</span>
+          </div>
 
           <label>
             Perfil do agente
@@ -199,17 +206,9 @@ export function SettingsPanel({
 
         <section className="settings-section">
           <div className="settings-section-header">
-            <strong>Avançado</strong>
-            <span>Execução local e permissões de leitura.</span>
+            <strong>Permissões</strong>
+            <span>Comportamento de aprovação automática segura.</span>
           </div>
-
-          <label>
-            Shell padrão
-            <input
-              value={settings.preferredShell}
-              onChange={async (event) => onChange({ ...settings, preferredShell: event.target.value })}
-            />
-          </label>
 
           <label className="checkbox-row">
             <input
@@ -218,6 +217,36 @@ export function SettingsPanel({
               onChange={async (event) => onChange({ ...settings, autoApproveSafeRead: event.target.checked })}
             />
             auto-aprovar leitura segura
+          </label>
+        </section>
+
+        <section className="settings-section">
+          <div className="settings-section-header">
+            <strong>Aparência</strong>
+            <span>Tema End-4 escuro com acento azul.</span>
+          </div>
+
+          <div className="provider-status-card">
+            <div className="row-between">
+              <strong>Tema ativo</strong>
+              <span>Escuro</span>
+            </div>
+            <p>Visual minimalista com foco em conversa e inspector.</p>
+          </div>
+        </section>
+
+        <section className="settings-section">
+          <div className="settings-section-header">
+            <strong>Avançado</strong>
+            <span>Execução local e shell padrão.</span>
+          </div>
+
+          <label>
+            Shell padrão
+            <input
+              value={settings.preferredShell}
+              onChange={async (event) => onChange({ ...settings, preferredShell: event.target.value })}
+            />
           </label>
         </section>
       </div>
