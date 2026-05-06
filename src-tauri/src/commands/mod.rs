@@ -1,17 +1,20 @@
-use std::{fs, path::Path, process::Command};
+use std::{fs, path::Path, process::Command, sync::Arc};
 
 use tauri::{AppHandle, Emitter, State};
 use uuid::Uuid;
 
 use crate::error::{AppError, ErrorPayload};
 use crate::models::{
-    BootstrapPayload, ExecutionRequestInput, ExecutionResponse, PendingIntentKind,
-    PermissionDecision, PermissionOutcome, PermissionOutcomeStatus, PermissionRequest,
-    PrivilegedActionRequestInput, PrivilegedActionSpec, SessionStatus, StatusKind, TaskStatus,
+    AgentSession, AppSettings, BootstrapPayload, CommandLogChunk, ExecutionRequestInput,
+    ExecutionResponse, LogStream, PendingIntentKind, PermissionDecision, PermissionOutcome,
+    PermissionOutcomeStatus, PermissionRequest, PrivilegedActionRequestInput, PrivilegedActionSpec,
+    ProviderGenerateRequest, ProviderRuntimeStatus, SessionStatus, StatusKind, TaskStatus,
     WorkspaceMeta,
 };
 use crate::services::privileged_actions;
 use crate::services::privileged_helper_client::HelperRequest;
+use crate::services::provider_registry::ProviderRegistry;
+use crate::services::session_manager::SessionManager;
 use crate::state::AppState;
 
 fn map_err(error: AppError) -> ErrorPayload {
@@ -101,6 +104,18 @@ pub fn list_privileged_actions() -> Result<Vec<PrivilegedActionSpec>, ErrorPaylo
 }
 
 #[tauri::command]
+pub async fn test_provider_connection(
+    state: State<'_, AppState>,
+    provider_id: String,
+) -> Result<ProviderRuntimeStatus, ErrorPayload> {
+    state
+        .provider_registry
+        .test_connection(&provider_id)
+        .await
+        .map_err(map_err)
+}
+
+#[tauri::command]
 pub fn create_session(
     app: AppHandle,
     state: State<AppState>,
@@ -127,6 +142,263 @@ pub fn append_user_message(
         .map_err(map_err)?;
     let _ = app.emit("session-changed", session.clone());
     Ok(session)
+}
+
+#[tauri::command]
+pub async fn send_order_to_agent(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    session_id: String,
+    content: String,
+) -> Result<AgentSession, ErrorPayload> {
+    run_agent_order(
+        Some(&app),
+        state.session_manager.clone(),
+        state.provider_registry.clone(),
+        state.settings(),
+        session_id,
+        content,
+    )
+    .await
+    .map_err(map_err)
+}
+
+async fn run_agent_order(
+    app: Option<&AppHandle>,
+    session_manager: Arc<SessionManager>,
+    provider_registry: Arc<ProviderRegistry>,
+    settings: AppSettings,
+    session_id: String,
+    content: String,
+) -> crate::error::AppResult<AgentSession> {
+    let prompt = content.trim();
+    if prompt.is_empty() {
+        return Err(AppError::Message("Ordem vazia.".to_owned()));
+    }
+
+    let session = session_manager.append_user_message(&session_id, prompt)?;
+    emit_session(app, &session);
+
+    let provider_id = settings.selected_provider_id.clone();
+    let model_id = settings.selected_model_id.clone();
+    let provider_label = provider_registry
+        .providers()
+        .into_iter()
+        .find(|provider| provider.id == provider_id)
+        .map(|provider| provider.label)
+        .unwrap_or_else(|| provider_id.clone());
+    let provider_state = provider_registry
+        .provider_status(&provider_id)
+        .map(|status| format!("{:?}", status.state))
+        .unwrap_or_else(|| "Unavailable".to_owned());
+
+    if let Some(session) = session_manager.update_status(
+        &session_id,
+        SessionStatus::Executing,
+        Some("Enviar ordem ao provider"),
+        Some(TaskStatus::Running),
+        Some(format!(
+            "{provider_label} / {model_id} / estado: {provider_state}"
+        )),
+    )? {
+        emit_session(app, &session);
+    }
+
+    emit_status_note(
+        app,
+        session_manager.make_status_note(
+            &session_id,
+            StatusKind::Info,
+            "Provider em execução",
+            &format!("{provider_label} receberá a ordem selecionada."),
+        ),
+    );
+
+    let request = ProviderGenerateRequest {
+        provider_id: provider_id.clone(),
+        model_id,
+        prompt: prompt.to_owned(),
+        workspace_root: settings.workspace_root,
+    };
+
+    match provider_registry.generate_response(request).await {
+        Ok(result) => {
+            emit_provider_logs(app, &session_id, &result);
+            emit_status_note(
+                app,
+                session_manager.make_status_note(
+                    &session_id,
+                    StatusKind::Success,
+                    "Resposta do provider recebida",
+                    result
+                        .status
+                        .command
+                        .as_deref()
+                        .unwrap_or("Provider sem comando externo."),
+                ),
+            );
+
+            let session = session_manager
+                .append_assistant_message(
+                    &session_id,
+                    &result.content,
+                    Some(result.status.message),
+                    SessionStatus::Idle,
+                )?
+                .ok_or_else(|| AppError::Message("Sessão não encontrada".to_owned()))?;
+            emit_session(app, &session);
+            Ok(session)
+        }
+        Err(cause) => {
+            let detail = cause.to_string();
+            emit_status_note(
+                app,
+                session_manager.make_status_note(
+                    &session_id,
+                    StatusKind::Error,
+                    "Provider falhou",
+                    &detail,
+                ),
+            );
+
+            let message = format!("Provider não configurado ou indisponível.\n\nDetalhe: {detail}");
+            let session = session_manager
+                .append_assistant_message(
+                    &session_id,
+                    &message,
+                    Some(
+                        "Falha controlada do provider; nenhuma resposta simulada foi usada."
+                            .to_owned(),
+                    ),
+                    SessionStatus::Error,
+                )?
+                .ok_or_else(|| AppError::Message("Sessão não encontrada".to_owned()))?;
+            emit_session(app, &session);
+            Ok(session)
+        }
+    }
+}
+
+fn emit_session(app: Option<&AppHandle>, session: &AgentSession) {
+    if let Some(app) = app {
+        let _ = app.emit("session-changed", session.clone());
+    }
+}
+
+fn emit_status_note(app: Option<&AppHandle>, note: crate::models::StatusNote) {
+    if let Some(app) = app {
+        let _ = app.emit("status-note", note);
+    }
+}
+
+fn emit_provider_logs(
+    app: Option<&AppHandle>,
+    session_id: &str,
+    result: &crate::models::ProviderRunResult,
+) {
+    let Some(app) = app else {
+        return;
+    };
+    let execution_id = Uuid::new_v4().to_string();
+
+    if let Some(command) = &result.command {
+        let _ = app.emit(
+            "command-log",
+            CommandLogChunk {
+                execution_id: execution_id.clone(),
+                session_id: session_id.to_owned(),
+                stream: LogStream::Meta,
+                line: format!("provider command: {command}"),
+                at: crate::models::now_iso(),
+            },
+        );
+    }
+
+    if let Some(stdout) = &result.stdout {
+        for line in stdout.lines() {
+            let _ = app.emit(
+                "command-log",
+                CommandLogChunk {
+                    execution_id: execution_id.clone(),
+                    session_id: session_id.to_owned(),
+                    stream: LogStream::Stdout,
+                    line: line.to_owned(),
+                    at: crate::models::now_iso(),
+                },
+            );
+        }
+    }
+
+    if let Some(stderr) = &result.stderr {
+        for line in stderr.lines() {
+            let _ = app.emit(
+                "command-log",
+                CommandLogChunk {
+                    execution_id: execution_id.clone(),
+                    session_id: session_id.to_owned(),
+                    stream: LogStream::Stderr,
+                    line: line.to_owned(),
+                    at: crate::models::now_iso(),
+                },
+            );
+        }
+    }
+}
+
+#[cfg(test)]
+mod agent_order_tests {
+    use super::*;
+
+    fn temp_sessions_dir() -> std::path::PathBuf {
+        let dir = std::env::temp_dir().join(format!("codex-agent-order-test-{}", Uuid::new_v4()));
+        fs::create_dir_all(&dir).expect("deve criar diretório temporário");
+        dir
+    }
+
+    fn mock_settings(workspace_root: String) -> AppSettings {
+        AppSettings {
+            workspace_root,
+            codex_root: "/tmp/codex-root".to_owned(),
+            selected_provider_id: "mock-development".to_owned(),
+            selected_model_id: "mock-development-model".to_owned(),
+            selected_agent_id: "equilibrado".to_owned(),
+            preferred_shell: "/usr/bin/bash".to_owned(),
+            auto_approve_safe_read: true,
+        }
+    }
+
+    #[tokio::test]
+    async fn send_order_to_agent_adds_provider_response() {
+        let dir = temp_sessions_dir();
+        let session_manager = Arc::new(SessionManager::new(&dir).expect("manager deve iniciar"));
+        let provider_registry = Arc::new(ProviderRegistry::new());
+        let session = session_manager
+            .create_session("teste")
+            .expect("sessão deve ser criada");
+
+        let updated = run_agent_order(
+            None,
+            session_manager,
+            provider_registry,
+            mock_settings(dir.to_string_lossy().to_string()),
+            session.id,
+            "crie um plano curto".to_owned(),
+        )
+        .await
+        .expect("ordem mock deve responder");
+
+        assert!(updated.messages.iter().any(|message| matches!(
+            message.role,
+            crate::models::ChatRole::User
+        ) && message.content
+            == "crie um plano curto"));
+        assert!(updated.messages.iter().any(|message| matches!(
+            message.role,
+            crate::models::ChatRole::Assistant
+        ) && message.content.starts_with("[MOCK]")));
+
+        let _ = fs::remove_dir_all(dir);
+    }
 }
 
 #[tauri::command]

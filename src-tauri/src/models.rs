@@ -187,6 +187,27 @@ pub struct ModelDescriptor {
     pub supports_tools: bool,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ProviderStatusState {
+    Mock,
+    Unavailable,
+    NotConfigured,
+    Ready,
+    Running,
+    Error,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProviderRuntimeStatus {
+    pub state: ProviderStatusState,
+    pub message: String,
+    pub command: Option<String>,
+    pub version: Option<String>,
+    pub checked_at: String,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ProviderDescriptor {
@@ -194,6 +215,7 @@ pub struct ProviderDescriptor {
     pub label: String,
     pub configurable: bool,
     pub enabled: bool,
+    pub status: ProviderRuntimeStatus,
     pub models: Vec<ModelDescriptor>,
 }
 
@@ -233,8 +255,8 @@ impl AppSettings {
         Self {
             workspace_root: default_workspace_root(home),
             codex_root: format!("{home}/.codex"),
-            selected_provider_id: "openai".to_owned(),
-            selected_model_id: "gpt-5.5".to_owned(),
+            selected_provider_id: "gemini-cli".to_owned(),
+            selected_model_id: "gemini-cli-default".to_owned(),
             selected_agent_id: "equilibrado".to_owned(),
             preferred_shell: "/usr/bin/bash".to_owned(),
             auto_approve_safe_read: true,
@@ -290,6 +312,26 @@ pub struct ExecutionResponse {
     pub execution_id: Option<String>,
     pub approval_required: bool,
     pub permission_request: Option<PermissionRequest>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProviderGenerateRequest {
+    pub provider_id: String,
+    pub model_id: String,
+    pub prompt: String,
+    pub workspace_root: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProviderRunResult {
+    pub content: String,
+    pub status: ProviderRuntimeStatus,
+    pub command: Option<String>,
+    pub stdout: Option<String>,
+    pub stderr: Option<String>,
+    pub exit_code: Option<i32>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

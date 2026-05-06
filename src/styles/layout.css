@@ -1,101 +1,65 @@
 .app-shell {
-  width: 100%;
-  height: 100dvh;
+  height: 100vh;
   display: flex;
   flex-direction: column;
-  background: var(--bg-app);
+  background-color: var(--bg-app);
   color: var(--text-main);
   overflow: hidden;
 }
 
 .app-main-grid {
   flex: 1;
-  min-height: 0;
   display: grid;
-  grid-template-columns:
-    minmax(250px, var(--left-rail-width))
-    minmax(520px, 1fr)
-    minmax(320px, var(--right-rail-width));
+  grid-template-columns: 260px 1fr 320px;
   gap: 1px;
-  background: var(--border-subtle);
-  border-top: 1px solid var(--border-subtle);
-}
-
-.app-column,
-.app-column-center {
-  min-width: 0;
+  background-color: var(--border-subtle);
   min-height: 0;
 }
 
 .app-column {
-  background: var(--bg-app);
+  background-color: var(--bg-app);
   display: flex;
   flex-direction: column;
   gap: var(--space-md);
   padding: var(--space-md);
   overflow-y: auto;
-  scrollbar-gutter: stable;
+  scrollbar-width: thin;
+  min-height: 0;
 }
 
 .app-column-center {
-  background: var(--border-subtle);
+  background-color: var(--bg-surface);
+  padding: 0;
   display: grid;
-  grid-template-rows: minmax(0, 1fr) auto minmax(150px, 22vh);
+  grid-template-rows: minmax(0, 1fr) auto minmax(180px, 25vh);
   gap: 1px;
-  overflow: hidden;
+  background-color: var(--border-subtle);
+  min-height: 0;
 }
 
 .app-column-center > * {
-  min-width: 0;
-  min-height: 0;
-  background: var(--bg-surface);
+  background-color: var(--bg-surface);
 }
 
-.app-sidebar-left .sessions-panel {
-  min-height: 210px;
-}
-
-.app-sidebar-left .tasks-panel {
-  min-height: 170px;
-}
-
-.app-sidebar-left .memory-panel {
-  flex: 1;
-  min-height: 220px;
-}
-
-.app-sidebar-right .approval-panel {
-  min-height: 260px;
-}
-
-@media (max-width: 1440px) {
+@media (max-width: 1600px) {
   .app-main-grid {
-    grid-template-columns: minmax(230px, 270px) minmax(500px, 1fr) minmax(300px, 340px);
+    grid-template-columns: 240px 1fr 300px;
   }
 }
 
-@media (max-width: 1180px) {
-  .app-shell {
-    overflow: auto;
-  }
-
+@media (max-width: 1280px) {
   .app-main-grid {
-    display: flex;
-    flex-direction: column;
-    overflow: visible;
+    grid-template-columns: 220px 1fr 280px;
   }
+}
 
-  .app-column,
-  .app-column-center {
-    overflow: visible;
+@media (max-width: 1024px) {
+  .app-main-grid {
+    grid-template-columns: 1fr;
+    overflow-y: auto;
   }
-
-  .app-column-center {
-    display: flex;
-    flex-direction: column;
-  }
-
-  .terminal-panel {
-    min-height: 220px;
+  .app-column {
+    overflow-y: visible;
+    height: auto;
   }
 }

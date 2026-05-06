@@ -94,21 +94,13 @@ impl SessionManager {
             reasoning_summary: None,
         });
 
-        let summary = "Plano curto: diagnosticar contexto real, validar dependências/estado atual, executar em etapas pequenas com rollback.".to_owned();
-
-        session.messages.push(ChatMessage {
-            id: Uuid::new_v4().to_string(),
-            role: ChatRole::Assistant,
-            content: "Recebido. Vou seguir com diagnóstico antes de alterar.".to_owned(),
-            created_at: now_iso(),
-            reasoning_summary: Some(summary),
-        });
-
         session.tasks.push(SessionTask {
             id: Uuid::new_v4().to_string(),
-            title: "Diagnosticar contexto da solicitação".to_owned(),
+            title: "Enviar ordem ao provider configurado".to_owned(),
             status: TaskStatus::Pending,
-            detail: Some("Listar estado atual, riscos e plano antes da execução.".to_owned()),
+            detail: Some(
+                "A resposta será gerada pelo provider selecionado ou marcada como erro.".to_owned(),
+            ),
         });
         session.status = SessionStatus::Planning;
         session.updated_at = now_iso();
@@ -201,5 +193,44 @@ impl SessionManager {
             detail: detail.to_owned(),
             at: now_iso(),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn temp_sessions_dir() -> PathBuf {
+        let dir =
+            std::env::temp_dir().join(format!("codex-session-manager-test-{}", Uuid::new_v4()));
+        fs::create_dir_all(&dir).expect("deve criar diretório temporário");
+        dir
+    }
+
+    #[test]
+    fn append_user_message_does_not_inject_fixed_assistant_response() {
+        let dir = temp_sessions_dir();
+        let manager = SessionManager::new(&dir).expect("manager deve iniciar");
+        let session = manager
+            .create_session("teste")
+            .expect("sessão deve ser criada");
+        let updated = manager
+            .append_user_message(&session.id, "rodar fluxo real")
+            .expect("mensagem deve ser adicionada");
+
+        let assistant_messages = updated
+            .messages
+            .iter()
+            .filter(|message| matches!(message.role, ChatRole::Assistant))
+            .count();
+
+        assert_eq!(assistant_messages, 0);
+        assert!(updated
+            .messages
+            .iter()
+            .any(|message| matches!(message.role, ChatRole::User)
+                && message.content == "rodar fluxo real"));
+
+        let _ = fs::remove_dir_all(dir);
     }
 }

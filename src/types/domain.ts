@@ -106,11 +106,22 @@ export interface ModelDescriptor {
   supportsTools: boolean;
 }
 
+export type ProviderStatusState = 'mock' | 'unavailable' | 'not_configured' | 'ready' | 'running' | 'error';
+
+export interface ProviderRuntimeStatus {
+  state: ProviderStatusState;
+  message: string;
+  command?: string;
+  version?: string;
+  checkedAt: string;
+}
+
 export interface ProviderDescriptor {
   id: string;
   label: string;
   configurable: boolean;
   enabled: boolean;
+  status: ProviderRuntimeStatus;
   models: ModelDescriptor[];
 }
 

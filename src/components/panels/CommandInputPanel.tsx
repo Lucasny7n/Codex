@@ -8,6 +8,7 @@ interface CommandInputPanelProps {
   onExecuteCommand: (command: string) => Promise<void>;
   onRequestPrivilegedAction: (actionId: string, args: Record<string, unknown>, dryRun: boolean) => Promise<void>;
   actionJsonExamples: Record<string, string>;
+  orderDisabledReason?: string;
 }
 
 type InputMode = 'order' | 'terminal' | 'action';
@@ -18,7 +19,8 @@ export function CommandInputPanel({
   onSendOrder,
   onExecuteCommand,
   onRequestPrivilegedAction,
-  actionJsonExamples
+  actionJsonExamples,
+  orderDisabledReason
 }: CommandInputPanelProps): JSX.Element {
   const [mode, setMode] = useState<InputMode>('order');
   const [prompt, setPrompt] = useState('');
@@ -43,7 +45,7 @@ export function CommandInputPanel({
 
   const canSubmit =
     !busy &&
-    ((mode === 'order' && prompt.trim().length > 0) ||
+    ((mode === 'order' && prompt.trim().length > 0 && !orderDisabledReason) ||
       (mode === 'terminal' && command.trim().length > 0) ||
       (mode === 'action' && activeActionId.length > 0));
 
@@ -128,6 +130,12 @@ export function CommandInputPanel({
           {error}
         </div>
       )}
+
+      {mode === 'order' && orderDisabledReason ? (
+        <div className="input-error-tip provider-blocked-tip" role="status">
+          {orderDisabledReason}
+        </div>
+      ) : null}
 
       <div className="input-container">
         {mode === 'order' && (

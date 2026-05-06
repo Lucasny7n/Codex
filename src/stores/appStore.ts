@@ -8,6 +8,7 @@ import type {
   PermissionOutcome,
   PermissionRequest,
   ProviderDescriptor,
+  ProviderRuntimeStatus,
   StatusNote,
   MemorySnapshot,
   SystemTheme,
@@ -52,6 +53,7 @@ interface AppStoreState {
   removePermission: (requestId: string) => void;
   recordPermissionOutcome: (outcome: PermissionOutcome) => void;
   updateSettings: (settings: AppSettings) => void;
+  updateProviderStatus: (providerId: string, status: ProviderRuntimeStatus) => void;
 }
 
 function dedupeByPath(changes: FileChangeEntry[]): FileChangeEntry[] {
@@ -125,5 +127,17 @@ export const useAppStore = create<AppStoreState>((set, get) => ({
   recordPermissionOutcome: (outcome) => {
     set({ permissionOutcomes: [outcome, ...get().permissionOutcomes].slice(0, 100) });
   },
-  updateSettings: (settings) => set({ settings })
+  updateSettings: (settings) => set({ settings }),
+  updateProviderStatus: (providerId, status) =>
+    set({
+      providers: get().providers.map((provider) =>
+        provider.id === providerId
+          ? {
+              ...provider,
+              enabled: status.state === 'ready' || status.state === 'mock',
+              status
+            }
+          : provider
+      )
+    })
 }));

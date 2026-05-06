@@ -1,4 +1,8 @@
-use crate::models::{AgentMode, AgentProfile, ProviderDescriptor};
+use crate::error::AppResult;
+use crate::models::{
+    AgentMode, AgentProfile, ProviderDescriptor, ProviderGenerateRequest, ProviderRunResult,
+    ProviderRuntimeStatus,
+};
 use crate::services::provider_adapters::ProviderAdapterRegistry;
 
 #[derive(Default)]
@@ -15,6 +19,21 @@ impl ProviderRegistry {
 
     pub fn providers(&self) -> Vec<ProviderDescriptor> {
         self.adapters.descriptors()
+    }
+
+    pub fn provider_status(&self, provider_id: &str) -> Option<ProviderRuntimeStatus> {
+        self.adapters.status(provider_id)
+    }
+
+    pub async fn test_connection(&self, provider_id: &str) -> AppResult<ProviderRuntimeStatus> {
+        self.adapters.test_connection(provider_id).await
+    }
+
+    pub async fn generate_response(
+        &self,
+        request: ProviderGenerateRequest,
+    ) -> AppResult<ProviderRunResult> {
+        self.adapters.generate_response(request).await
     }
 
     pub fn agent_profiles(&self) -> Vec<AgentProfile> {

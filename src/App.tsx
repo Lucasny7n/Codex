@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
-  appendUserMessage,
   bootstrapState,
   createSession,
   decidePermission,
@@ -17,11 +16,13 @@ import {
   openProjectInVscode,
   requestPrivilegedAction,
   requestExecution,
+  sendOrderToAgent,
+  testProviderConnection,
   updateBasePrompt,
   updateSettings
 } from './lib/api';
 import { shellQuote, trimMultiline } from './lib/format';
-import type { AgentSession, AppSettings, PrivilegedActionSpec } from './types/domain';
+import type { AgentSession, AppSettings, PrivilegedActionSpec, ProviderRuntimeStatus } from './types/domain';
 import { useAppStore } from './stores/appStore';
 
 import { AppShell } from './components/layout/AppShell';
@@ -121,7 +122,8 @@ export default function App(): JSX.Element {
     addPermission,
     removePermission,
     recordPermissionOutcome,
-    updateSettings: syncSettings
+    updateSettings: syncSettings,
+    updateProviderStatus
   } = useAppStore();
 
   const selectedSession = useMemo(
@@ -140,6 +142,18 @@ export default function App(): JSX.Element {
     () => selectedProvider?.models.find((model) => model.id === settings?.selectedModelId),
     [selectedProvider, settings?.selectedModelId]
   );
+
+  const selectedProviderStatus: ProviderRuntimeStatus | undefined = selectedProvider?.status ?? (settings
+    ? {
+        state: 'unavailable',
+        message: `Provider salvo \`${settings.selectedProviderId}\` não está registrado neste build.`,
+        checkedAt: new Date().toISOString()
+      }
+    : undefined);
+
+  const orderDisabledReason = selectedProviderStatus && !['ready', 'mock'].includes(selectedProviderStatus.state)
+    ? `Provider ${selectedProviderStatus.state}: ${selectedProviderStatus.message}`
+    : undefined;
 
   const selectedProfile = useMemo(
     () => profiles.find((profile) => profile.id === settings?.selectedAgentId),
@@ -228,7 +242,7 @@ export default function App(): JSX.Element {
     setBusy(true);
     try {
       const sessionId = await ensureSession();
-      const updated = await appendUserMessage(sessionId, cleaned);
+      const updated = await sendOrderToAgent(sessionId, cleaned);
       upsertSession(updated);
     } finally {
       setBusy(false);
@@ -277,6 +291,12 @@ export default function App(): JSX.Element {
     syncSettings(updated);
   }
 
+  async function handleTestProvider(providerId: string): Promise<ProviderRuntimeStatus> {
+    const status = await testProviderConnection(providerId);
+    updateProviderStatus(providerId, status);
+    return status;
+  }
+
   async function handlePermission(requestId: string, approve: boolean): Promise<void> {
     await decidePermission(requestId, approve ? 'allow_once' : 'deny_once');
     removePermission(requestId);
@@ -319,6 +339,7 @@ export default function App(): JSX.Element {
           modelLabel={selectedModel?.label}
           profileLabel={selectedProfile?.label}
           sessionState={visualSessionState}
+          providerStatus={selectedProviderStatus}
           pendingPermissions={pendingPermissions.length}
           onCreateSession={() => void handleCreateSession()}
           onOpenProject={(root) => void openProjectInVscode(root)}
@@ -343,6 +364,7 @@ export default function App(): JSX.Element {
             onExecuteCommand={handleExecuteCommand}
             onRequestPrivilegedAction={handleRequestPrivilegedAction}
             actionJsonExamples={actionJsonExamples}
+            orderDisabledReason={orderDisabledReason}
           />
           <TerminalPanel logs={logs} />
         </>
@@ -384,6 +406,7 @@ export default function App(): JSX.Element {
             providers={providers}
             profiles={profiles}
             onChange={(next) => handleUpdateSettings(next)}
+            onTestProvider={(providerId) => handleTestProvider(providerId)}
           />
           <BasePromptPanel
             content={basePrompt}

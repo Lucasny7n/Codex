@@ -13,7 +13,8 @@ import type {
   FileChangeEntry,
   AgentSession,
   PermissionRequest,
-  AppSettings
+  AppSettings,
+  ProviderRuntimeStatus
 } from '../types/domain';
 
 export async function bootstrapState(): Promise<BootstrapPayload> {
@@ -28,8 +29,16 @@ export async function appendUserMessage(sessionId: string, content: string): Pro
   return invoke('append_user_message', { sessionId, content });
 }
 
+export async function sendOrderToAgent(sessionId: string, content: string): Promise<AgentSession> {
+  return invoke('send_order_to_agent', { sessionId, content });
+}
+
 export async function requestExecution(input: ExecutionRequestInput): Promise<ExecutionResponse> {
   return invoke('request_execution', { input });
+}
+
+export async function testProviderConnection(providerId: string): Promise<ProviderRuntimeStatus> {
+  return invoke('test_provider_connection', { providerId });
 }
 
 export async function listPrivilegedActions(): Promise<PrivilegedActionSpec[]> {

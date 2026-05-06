@@ -1,4 +1,4 @@
-import type { AppSettings, WorkspaceMeta } from '../../types/domain';
+import type { AppSettings, ProviderRuntimeStatus, WorkspaceMeta } from '../../types/domain';
 
 type VisualSessionState = 'idle' | 'planning' | 'running' | 'waiting_permission' | 'error' | 'done';
 
@@ -9,6 +9,7 @@ interface TopBarProps {
   modelLabel?: string;
   profileLabel?: string;
   sessionState?: VisualSessionState;
+  providerStatus?: ProviderRuntimeStatus;
   pendingPermissions: number;
   onCreateSession: () => void;
   onOpenProject: (root: string) => void;
@@ -23,6 +24,7 @@ export function TopBar({
   modelLabel,
   profileLabel,
   sessionState = 'idle',
+  providerStatus,
   pendingPermissions,
   onCreateSession,
   onOpenProject,
@@ -36,6 +38,7 @@ export function TopBar({
   const provider = providerLabel ?? settings?.selectedProviderId ?? 'provider';
   const profile = profileLabel ?? settings?.selectedAgentId ?? 'perfil';
   const statusLabel = sessionState.replace('_', ' ');
+  const providerStatusLabel = providerStatus?.state.replace('_', ' ') ?? 'indisponível';
 
   return (
     <header className="topbar-modern">
@@ -51,7 +54,9 @@ export function TopBar({
         <span className="meta-pill meta-branch">{branch}</span>
         {workspaceMeta?.dirty ? <span className="meta-pill meta-warn">mudanças locais</span> : null}
         <span className={`meta-pill status-pill status-${sessionState}`}>{statusLabel}</span>
-        <span className="meta-pill">{provider}</span>
+        <span className={`meta-pill provider-pill provider-${providerStatus?.state ?? 'unavailable'}`}>
+          {provider}: {providerStatusLabel}
+        </span>
         <span className="meta-pill">{model}</span>
         <span className="meta-pill">{profile}</span>
         {pendingPermissions > 0 ? <span className="meta-pill meta-warn">{pendingPermissions} aprovações</span> : null}
