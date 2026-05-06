@@ -23,9 +23,34 @@ export function CommandInputPanel({
   const [mode, setMode] = useState<InputMode>('order');
   const [prompt, setPrompt] = useState('');
   const [command, setCommand] = useState('');
-  const [selectedActionId, setSelectedActionId] = useState(privilegedActions[0]?.id ?? '');
+  const [selectedActionId, setSelectedActionId] = useState('');
   const [actionArgsText, setActionArgsText] = useState('{}');
   const [actionDryRun, setActionDryRun] = useState(true);
+  const [copyFeedback, setCopyFeedback] = useState(false);
+
+  const [error, setError] = useState<string>();
+
+  // Sincroniza ação selecionada quando o catálogo carregar sem usar useEffect (evita cascading renders)
+  const [prevActions, setPrevActions] = useState(privilegedActions);
+  if (privilegedActions !== prevActions) {
+    setPrevActions(privilegedActions);
+    if (privilegedActions.length > 0 && !selectedActionId) {
+      const firstId = privilegedActions[0].id;
+      setSelectedActionId(firstId);
+      setActionArgsText(actionJsonExamples[firstId] || '{}');
+    }
+  }
+
+  const handleCopyExample = async () => {
+    const example = actionJsonExamples[selectedActionId] || '{}';
+    try {
+      await navigator.clipboard.writeText(example);
+      setCopyFeedback(true);
+      setTimeout(() => setCopyFeedback(false), 2000);
+    } catch {
+      // Fallback silencioso se clipboard falhar
+    }
+  };
 
   const [error, setError] = useState<string>();
 
@@ -38,9 +63,20 @@ export function CommandInputPanel({
       await onExecuteCommand(command);
       setCommand('');
     } else {
+      if (!selectedActionId) {
+        setError('Nenhuma ação selecionada.');
+        return;
+      }
       try {
-        const args = JSON.parse(actionArgsText);
-        await onRequestPrivilegedAction(selectedActionId, args, actionDryRun);
+        const parsed = JSON.parse(actionArgsText);
+        
+        // Validação rigorosa: deve ser objeto puro, não array, null, string, etc.
+        if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
+          setError('JSON inválido: os argumentos devem ser um objeto {}.');
+          return;
+        }
+
+        await onRequestPrivilegedAction(selectedActionId, parsed, actionDryRun);
       } catch {
         setError('JSON de argumentos inválido. Verifique o formato.');
       }
@@ -98,20 +134,31 @@ export function CommandInputPanel({
 
         {mode === 'action' && (
           <div className="privileged-input-stack">
-            <select 
-              className="input-modern" 
-              value={selectedActionId} 
-              onChange={(e) => {
-                setSelectedActionId(e.target.value);
-                setActionArgsText(actionJsonExamples[e.target.value] || '{}');
-              }}
-            >
-              {privilegedActions.map((action) => (
-                <option key={action.id} value={action.id}>
-                  {action.title}
-                </option>
-              ))}
-            </select>
+            <div className="action-select-row" style={{ display: 'flex', gap: '8px' }}>
+              <select 
+                className="input-modern" 
+                value={selectedActionId} 
+                onChange={(e) => {
+                  setSelectedActionId(e.target.value);
+                  setActionArgsText(actionJsonExamples[e.target.value] || '{}');
+                }}
+              >
+                {!selectedActionId && <option value="">Selecione uma ação...</option>}
+                {privilegedActions.map((action) => (
+                  <option key={action.id} value={action.id}>
+                    {action.title}
+                  </option>
+                ))}
+              </select>
+              <button 
+                className="btn-modern" 
+                title="Copiar JSON de exemplo"
+                onClick={handleCopyExample}
+                disabled={!selectedActionId}
+              >
+                {copyFeedback ? 'Copiado!' : 'Exemplo'}
+              </button>
+            </div>
             
             <textarea
               className="input-modern args-input"
@@ -135,7 +182,7 @@ export function CommandInputPanel({
       <div className="input-actions">
         <button 
           className="btn-modern btn-modern-primary" 
-          disabled={busy || (mode === 'order' && !prompt) || (mode === 'terminal' && !command)}
+          disabled={busy || (mode === 'order' && !prompt) || (mode === 'terminal' && !command) || (mode === 'action' && !selectedActionId)}
           onClick={handleSend}
         >
           {busy ? 'Processando...' : mode === 'action' ? 'Solicitar Permissão' : 'Executar'}
