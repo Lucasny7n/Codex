@@ -3,10 +3,13 @@ import type {
   ExecutionMode,
   LocalModelInstallProgress,
   LocalRuntimeSnapshot,
+  ProviderCredentialStatus,
   ProviderDescriptor,
 } from '../../types/domain';
 import {
   capabilityLabel,
+  localCompatibility,
+  localCompatibilityLabel,
   modelRegistry,
   type CloudModelProfile,
   type LocalModelProfile,
@@ -26,6 +29,7 @@ interface ModelSelectorProps {
   mode: ExecutionMode;
   activeModelId?: string;
   providers: ProviderDescriptor[];
+  credentials: ProviderCredentialStatus[];
   localRuntime?: LocalRuntimeSnapshot;
   installationProgress: Record<string, LocalModelInstallProgress>;
   busyModelId?: string;
@@ -43,8 +47,9 @@ interface ModelSelectorProps {
 const FILTER_OPTIONS: Array<{ id: string; label: string }> = [
   { id: 'recomendado', label: 'Recomendados' },
   { id: 'codigo', label: 'Código' },
-  { id: 'gratis', label: 'Grátis' },
+  { id: 'gratis', label: 'Grátis/baixo custo' },
   { id: 'instalado', label: 'Instalados' },
+  { id: 'compatível', label: 'Compatíveis com meu PC' },
   { id: 'requer-config', label: 'Requer config' },
   { id: 'rapido', label: 'Rápidos' },
 ];
@@ -63,9 +68,16 @@ function tagsForRow(model: ModelProfile): string[] {
   if (model.recommended) tags.push('recomendado');
   if (model.capabilities.coding >= 4) tags.push('código');
   if (model.capabilities.speed >= 4) tags.push('rápido');
-  if (model.mode === 'local') tags.push(model.ramRequirement);
+  if (model.mode === 'local') tags.push(localCompatibilityLabel(localCompatibility(model)));
   if (model.mode === 'cloud' && model.freeTierAvailable) tags.push('baixo custo');
   return tags.slice(0, 3);
+}
+
+function profileLabel(providerId: string, credentials: ProviderCredentialStatus[]): string {
+  const credential = credentials.find((item) => item.providerId === providerId);
+  if (providerId === 'local-ollama') return 'Local';
+  if (credential?.hasCredential) return `Padrão (${credential.source ?? 'local'})`;
+  return 'Sem profile pronto';
 }
 
 export function ModelSelector({
@@ -73,6 +85,7 @@ export function ModelSelector({
   mode,
   activeModelId,
   providers,
+  credentials,
   localRuntime,
   installationProgress,
   busyModelId,
@@ -96,10 +109,15 @@ export function ModelSelector({
   }, [providers]);
 
   const filteredItems = useMemo(() => {
-    const withoutInstalledFilter = filters.filter((tag) => tag !== 'instalado');
+    const withoutInstalledFilter = filters.filter((tag) => tag !== 'instalado' && tag !== 'compatível');
     const items = modelRegistry.search(mode, query, withoutInstalledFilter);
-    if (mode === 'local' && filters.includes('instalado')) {
-      return items.filter((item) => item.mode === 'local' && isInstalledLocal(item, localRuntime));
+    if (mode === 'local') {
+      return items.filter((item) => {
+        if (item.mode !== 'local') return false;
+        if (filters.includes('instalado') && !isInstalledLocal(item, localRuntime)) return false;
+        if (filters.includes('compatível') && !['recommended', 'compatible'].includes(localCompatibility(item))) return false;
+        return true;
+      });
     }
     return items;
   }, [mode, query, filters, localRuntime]);
@@ -195,13 +213,16 @@ export function ModelSelector({
               : resolvePrimaryAction(status);
             const active = activeModelId === model.id || activeModelId === model.modelId;
             const selectable = canSelectModel(status);
+            const compatibility = model.mode === 'local' ? localCompatibility(model) : undefined;
+            const blocksInstall = compatibility === 'not_recommended' && status === 'model_missing';
+            const displayedAction = blocksInstall ? 'Não recomendado' : actionLabel;
 
             return (
               <article key={model.id} className={`model-row ${active ? 'active' : ''}`}>
                 <div className="model-row-main">
                   <div>
                     <h3>{model.displayName}</h3>
-                    <p>{model.providerLabel}</p>
+                    <p>{model.providerLabel} · {profileLabel(model.providerId, credentials)}</p>
                   </div>
                   <span className={`model-status status-${statusClass(status)} tone-${statusTone(status)}`}>
                     {status.replace('_', ' ')}
@@ -216,7 +237,7 @@ export function ModelSelector({
                 <button
                   type="button"
                   className={`btn-modern ${selectable ? 'btn-modern-primary' : ''}`}
-                  disabled={busyModelId === model.id || status === 'pulling' || status === 'unavailable'}
+                  disabled={busyModelId === model.id || status === 'pulling' || status === 'unavailable' || blocksInstall}
                   onClick={() => {
                     if (model.mode === 'cloud') {
                       if (selectable) void onActivateCloud(model);
@@ -229,7 +250,7 @@ export function ModelSelector({
                     else if (selectable) void onActivateLocal(model);
                   }}
                 >
-                  {busyModelId === model.id ? 'Processando' : actionLabel}
+                  {busyModelId === model.id ? 'Processando' : displayedAction}
                 </button>
 
                 <details className="model-details model-row-details">
@@ -246,7 +267,11 @@ export function ModelSelector({
                   <p><strong>Caveats:</strong> {model.caveats.join(' • ')}</p>
                   {getUnavailableReason(status) ? <p><strong>Motivo:</strong> {getUnavailableReason(status)}</p> : null}
                   {model.mode === 'local' ? (
-                    <p><strong>Hardware:</strong> RAM {model.ramRequirement}, VRAM {model.vramRequirement}, disco {model.diskRequirement}</p>
+                    <>
+                      <p><strong>Hardware:</strong> RAM {model.ramRequirement}, VRAM {model.vramRequirement}, disco {model.diskRequirement}</p>
+                      <p><strong>Compatibilidade:</strong> {localCompatibilityLabel(localCompatibility(model))}. Base: Ryzen 5 5500, RX 7600, 16 GB RAM.</p>
+                      <p><strong>Velocidade esperada:</strong> {model.expectedPerformance}</p>
+                    </>
                   ) : null}
                   {model.mode === 'local' && isInstalledLocal(model, localRuntime) ? (
                     <button

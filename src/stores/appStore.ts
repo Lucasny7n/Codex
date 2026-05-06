@@ -49,7 +49,8 @@ interface AppStoreState {
     theme: SystemTheme;
   }) => void;
   upsertSession: (session: AgentSession) => void;
-  selectSession: (sessionId: string) => void;
+  removeSession: (sessionId: string) => void;
+  selectSession: (sessionId?: string) => void;
   appendLog: (chunk: CommandLogChunk) => void;
   appendStatus: (status: StatusNote) => void;
   pushFileChange: (change: FileChangeEntry) => void;
@@ -102,7 +103,7 @@ export const useAppStore = create<AppStoreState>((set, get) => ({
       settings: payload.settings,
       workspaceMeta: payload.workspaceMeta,
       sessions: payload.sessions,
-      selectedSessionId: payload.sessions[0]?.id,
+      selectedSessionId: undefined,
       pendingPermissions: payload.pendingPermissions,
       providers: payload.providers,
       profiles: payload.agentProfiles,
@@ -125,6 +126,13 @@ export const useAppStore = create<AppStoreState>((set, get) => ({
     next[index] = session;
     next.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
     set({ sessions: next });
+  },
+  removeSession: (sessionId) => {
+    const next = get().sessions.filter((session) => session.id !== sessionId);
+    set({
+      sessions: next,
+      selectedSessionId: get().selectedSessionId === sessionId ? undefined : get().selectedSessionId,
+    });
   },
   selectSession: (sessionId) => set({ selectedSessionId: sessionId }),
   appendLog: (chunk) => set({ logs: [...get().logs, chunk].slice(-2500) }),

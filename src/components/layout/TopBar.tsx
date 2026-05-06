@@ -71,7 +71,7 @@ export function TopBar({
 
       <div className="topbar-clean-actions">
         <button className="btn-modern" type="button" onClick={onCreateSession}>
-          Nova sessão
+          Nova conversa
         </button>
         <button
           className="btn-modern"

@@ -6,11 +6,11 @@ interface MemoryPanelProps {
 
 function ListSection({ title, items }: { title: string; items: string[] }): JSX.Element {
   return (
-    <div className="memory-block">
-      <div className="memory-block-header">
+    <details className="memory-block" open>
+      <summary className="memory-block-header">
         <h4>{title}</h4>
         <span className="memory-block-count">{items.length}</span>
-      </div>
+      </summary>
       {items.length > 0 ? (
         <ul className="memory-items" aria-label={title}>
           {items.map((item, index) => (
@@ -20,8 +20,28 @@ function ListSection({ title, items }: { title: string; items: string[] }): JSX.
       ) : (
         <p className="memory-empty">Sem itens registrados.</p>
       )}
-    </div>
+    </details>
   );
+}
+
+function memoryAsText(memory: MemorySnapshot): string {
+  return [
+    '# Snapshot de memória',
+    '',
+    memory.profileSummary,
+    '',
+    '## Preferências',
+    ...memory.userPreferences.map((item) => `- ${item}`),
+    '',
+    '## Projetos',
+    ...memory.activeProjects.map((item) => `- ${item}`),
+    '',
+    '## Correções importantes',
+    ...memory.importantFixHistory.map((item) => `- ${item}`),
+    '',
+    '## Políticas',
+    ...memory.operationalPolicies.map((item) => `- ${item}`),
+  ].join('\n');
 }
 
 export function MemoryPanel({ memory }: MemoryPanelProps): JSX.Element {
@@ -46,6 +66,30 @@ export function MemoryPanel({ memory }: MemoryPanelProps): JSX.Element {
       </header>
       <div className="panel-body scroll-y memory-layout">
         <p className="memory-summary">{memory.profileSummary}</p>
+        <div className="memory-actions">
+          <button
+            type="button"
+            className="btn-modern"
+            onClick={() => void navigator.clipboard.writeText(memoryAsText(memory))}
+          >
+            Copiar contexto
+          </button>
+          <button
+            type="button"
+            className="btn-modern"
+            onClick={() => {
+              const blob = new Blob([memoryAsText(memory)], { type: 'text/markdown' });
+              const url = URL.createObjectURL(blob);
+              const anchor = document.createElement('a');
+              anchor.href = url;
+              anchor.download = 'codex-memory-snapshot.md';
+              anchor.click();
+              URL.revokeObjectURL(url);
+            }}
+          >
+            Exportar snapshot
+          </button>
+        </div>
         <ListSection title="Preferências" items={memory.userPreferences} />
         <ListSection title="Projetos" items={memory.activeProjects} />
         <ListSection title="Correções Importantes" items={memory.importantFixHistory} />

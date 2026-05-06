@@ -189,6 +189,7 @@ mod tests {
             selected_provider_id: "openai".to_owned(),
             selected_model_id: "gpt-5.5".to_owned(),
             selected_agent_id: "equilibrado".to_owned(),
+            selected_provider_profile_id: Some("openai:default".to_owned()),
             preferred_shell: "/usr/bin/bash".to_owned(),
             auto_approve_safe_read: true,
             execution_mode: crate::models::ExecutionMode::Cloud,

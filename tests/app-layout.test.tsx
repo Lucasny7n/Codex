@@ -8,7 +8,10 @@ import type { AgentSession, BootstrapPayload } from '../src/types/domain';
 vi.mock('../src/lib/api', () => ({
   bootstrapState: vi.fn(),
   createSession: vi.fn(),
+  deleteSession: vi.fn(),
   decidePermission: vi.fn(),
+  duplicateSession: vi.fn(),
+  exportSession: vi.fn(),
   getBasePrompt: vi.fn(),
   getAppHealthCheck: vi.fn(),
   getLocalRuntimeState: vi.fn(),
@@ -31,6 +34,7 @@ vi.mock('../src/lib/api', () => ({
   removeProviderCredential: vi.fn(),
   requestPrivilegedAction: vi.fn(),
   requestExecution: vi.fn(),
+  renameSession: vi.fn(),
   saveProviderCredential: vi.fn(),
   sendOrderToAgent: vi.fn(),
   startLocalRuntime: vi.fn(),
@@ -60,6 +64,7 @@ function payload(sessions: AgentSession[]): BootstrapPayload {
       selectedProviderId: 'mock-development',
       selectedModelId: 'mock-development-model',
       selectedAgentId: 'equilibrado',
+      selectedProviderProfileId: 'mock-development:default',
       preferredShell: '/usr/bin/bash',
       autoApproveSafeRead: true,
       executionMode: 'cloud',
@@ -177,15 +182,16 @@ describe('App layout visibility', () => {
     mockedApi.onPermissionOutcome.mockResolvedValue(() => undefined);
   });
 
-  it('não mostra onboarding principal quando já existe sessão', async () => {
+  it('abre em nova conversa sem criar sessão permanente no boot', async () => {
     vi.mocked(api.bootstrapState).mockResolvedValue(payload([baseSession()]));
 
     render(<App />);
 
     await waitFor(() => {
-      expect(screen.getByText('Agente Local')).toBeInTheDocument();
+      expect(screen.getAllByText('Nova conversa').length).toBeGreaterThan(0);
     });
 
     expect(screen.queryByTestId('onboarding-empty-state')).not.toBeInTheDocument();
+    expect(vi.mocked(api.createSession)).not.toHaveBeenCalled();
   });
 });

@@ -5,6 +5,7 @@ export type LimitType = 'unknown' | 'daily' | 'monthly' | 'plan' | 'unlimited';
 export type LatencyLevel = 'low' | 'medium' | 'high';
 export type RuntimeHealth = ProviderStatusState;
 export type HardwareRecommendation = 'cpu' | 'gpu' | 'either';
+export type LocalCompatibility = 'recommended' | 'compatible' | 'heavy' | 'not_recommended' | 'unknown';
 
 export interface CapabilityScores {
   speed: 1 | 2 | 3 | 4 | 5;
@@ -555,7 +556,27 @@ function scoreByTag(profile: ModelProfile, tag: string): boolean {
   if (tag === 'gratis') return profile.pricingType === 'free' || profile.freeTierAvailable || profile.pricingType === 'open-source';
   if (tag === 'recomendado') return profile.recommended;
   if (tag === 'requer-config') return profile.baseStatus !== 'ready' && profile.mode === 'cloud';
+  if (tag === 'compatível') return profile.mode === 'local' && ['recommended', 'compatible'].includes(localCompatibility(profile));
   return profile.tags.some((item) => normalizeText(item).includes(normalizeText(tag)));
+}
+
+export function localCompatibility(model: ModelProfile): LocalCompatibility {
+  if (model.mode !== 'local') return 'unknown';
+  if (['qwen2.5-coder:32b', 'codellama:34b'].includes(model.modelId)) return 'not_recommended';
+  if (['qwen2.5-coder:14b', 'codellama:13b'].includes(model.modelId)) return 'heavy';
+  if (['qwen2.5-coder:3b', 'qwen2.5-coder:7b'].includes(model.modelId)) return 'recommended';
+  if (['qwen2.5-coder:1.5b', 'llama3.2:3b', 'mistral:7b', 'deepseek-coder:6.7b'].includes(model.modelId)) {
+    return 'compatible';
+  }
+  return 'unknown';
+}
+
+export function localCompatibilityLabel(value: LocalCompatibility): string {
+  if (value === 'recommended') return 'recomendado neste PC';
+  if (value === 'compatible') return 'compatível com caveat leve';
+  if (value === 'heavy') return 'pesado para 16 GB';
+  if (value === 'not_recommended') return 'não recomendado neste PC';
+  return 'compatibilidade desconhecida';
 }
 
 export const modelRegistry = {

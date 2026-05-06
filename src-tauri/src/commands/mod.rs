@@ -11,7 +11,7 @@ use crate::models::{
     LogStream, PendingIntentKind, PermissionDecision, PermissionOutcome, PermissionOutcomeStatus,
     PermissionRequest, PrivilegedActionRequestInput, PrivilegedActionSpec,
     ProviderCredentialStatus, ProviderGenerateRequest, ProviderRuntimeStatus, ProviderStatusState,
-    SessionStatus, StatusKind, TaskStatus, WorkspaceMeta,
+    SessionExportFormat, SessionExportResult, SessionStatus, StatusKind, TaskStatus, WorkspaceMeta,
 };
 use crate::services::privileged_actions;
 use crate::services::privileged_helper_client::HelperRequest;
@@ -219,6 +219,8 @@ pub async fn get_app_health_check(
             has_key: state.credential_store.exists(&provider.id),
             status: provider.status,
             id: provider.id,
+            profile_count: Some(1),
+            selected_profile_id: settings.selected_provider_profile_id.clone(),
         })
         .collect::<Vec<_>>();
     let ollama = state.local_runtime_service.snapshot(&settings).await;
@@ -289,6 +291,16 @@ pub async fn get_app_health_check(
         tauri_ok,
         providers,
         ollama,
+        sessions_count: Some(state.session_manager.list_sessions().len()),
+        active_session_id: None,
+        storage_root: Some(
+            state
+                .config_manager
+                .sessions_dir()
+                .to_string_lossy()
+                .to_string(),
+        ),
+        credentials_encrypted: Some(false),
         recent_errors,
         overall_status,
         actions,
@@ -364,6 +376,55 @@ pub fn create_session(
 }
 
 #[tauri::command]
+pub fn rename_session(
+    app: AppHandle,
+    state: State<AppState>,
+    session_id: String,
+    title: String,
+) -> Result<crate::models::AgentSession, ErrorPayload> {
+    let session = state
+        .session_manager
+        .rename_session(&session_id, &title)
+        .map_err(map_err)?;
+    let _ = app.emit("session-changed", session.clone());
+    Ok(session)
+}
+
+#[tauri::command]
+pub fn delete_session(state: State<AppState>, session_id: String) -> Result<(), ErrorPayload> {
+    state
+        .session_manager
+        .delete_session(&session_id)
+        .map_err(map_err)
+}
+
+#[tauri::command]
+pub fn duplicate_session(
+    app: AppHandle,
+    state: State<AppState>,
+    session_id: String,
+) -> Result<crate::models::AgentSession, ErrorPayload> {
+    let session = state
+        .session_manager
+        .duplicate_session(&session_id)
+        .map_err(map_err)?;
+    let _ = app.emit("session-changed", session.clone());
+    Ok(session)
+}
+
+#[tauri::command]
+pub fn export_session(
+    state: State<AppState>,
+    session_id: String,
+    format: SessionExportFormat,
+) -> Result<SessionExportResult, ErrorPayload> {
+    state
+        .session_manager
+        .export_session(&session_id, format)
+        .map_err(map_err)
+}
+
+#[tauri::command]
 pub fn append_user_message(
     app: AppHandle,
     state: State<AppState>,
@@ -410,11 +471,25 @@ async fn run_agent_order(
         return Err(AppError::Message("Ordem vazia.".to_owned()));
     }
 
-    let session = session_manager.append_user_message(&session_id, prompt)?;
+    let provider_id = settings.selected_provider_id.clone();
+    let model_id = if settings.execution_mode == crate::models::ExecutionMode::Local {
+        settings
+            .selected_local_model_id
+            .clone()
+            .unwrap_or_else(|| settings.selected_model_id.clone())
+    } else {
+        settings.selected_model_id.clone()
+    };
+    let session = session_manager.append_user_message_with_context(
+        &session_id,
+        prompt,
+        Some(provider_id.clone()),
+        Some(model_id.clone()),
+        Some(settings.selected_agent_id.clone()),
+        settings.selected_provider_profile_id.clone(),
+    )?;
     emit_session(app, &session);
 
-    let provider_id = settings.selected_provider_id.clone();
-    let model_id = settings.selected_model_id.clone();
     let provider_label = provider_registry
         .providers()
         .into_iter()
@@ -596,6 +671,7 @@ mod agent_order_tests {
             selected_provider_id: "mock-development".to_owned(),
             selected_model_id: "mock-development-model".to_owned(),
             selected_agent_id: "equilibrado".to_owned(),
+            selected_provider_profile_id: Some("mock-development:default".to_owned()),
             preferred_shell: "/usr/bin/bash".to_owned(),
             auto_approve_safe_read: true,
             execution_mode: crate::models::ExecutionMode::Cloud,

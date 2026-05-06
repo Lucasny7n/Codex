@@ -31,9 +31,10 @@ function settings(): AppSettings {
   return {
     workspaceRoot: '/tmp/workspace',
     codexRoot: '/tmp/codex',
-    selectedProviderId: 'gemini-cli',
-    selectedModelId: 'gemini-cli-default',
-    selectedAgentId: 'equilibrado',
+      selectedProviderId: 'gemini-cli',
+      selectedModelId: 'gemini-cli-default',
+      selectedAgentId: 'equilibrado',
+      selectedProviderProfileId: 'gemini-cli:default',
     preferredShell: '/usr/bin/bash',
     autoApproveSafeRead: true,
     executionMode: 'cloud',
@@ -141,6 +142,7 @@ function renderSettings(overrides: Partial<ComponentProps<typeof SettingsPanel>>
       providers={providers()}
       profiles={profiles()}
       credentials={credentials()}
+      sessions={[]}
       localRuntime={localRuntime()}
       healthCheck={health()}
       healthLoading={false}
@@ -182,8 +184,10 @@ describe('SettingsPanel', () => {
 
     expect(screen.getByText('Geral')).toBeInTheDocument();
     expect(screen.getByText('IA / Providers')).toBeInTheDocument();
+    expect(screen.getByText('Contas / Profiles')).toBeInTheDocument();
     expect(screen.getByText('Modelos locais')).toBeInTheDocument();
-    expect(screen.getByText('Logs & Diagnóstico')).toBeInTheDocument();
+    expect(screen.getByText('Sessões')).toBeInTheDocument();
+    expect(screen.getByText('Diagnóstico')).toBeInTheDocument();
   });
 
   it('abre aba solicitada pelo seletor de modelos', () => {

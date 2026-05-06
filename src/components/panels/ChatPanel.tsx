@@ -25,8 +25,8 @@ export function ChatPanel({ session }: ChatPanelProps): JSX.Element {
     return (
       <section className="panel-chat-empty">
         <div className="empty-state">
-          <strong>Nenhuma sessão selecionada</strong>
-          <span>Crie uma sessão para iniciar o fluxo de trabalho.</span>
+          <strong>Nova conversa</strong>
+          <span>A sessão será salva somente depois da primeira mensagem.</span>
         </div>
       </section>
     );

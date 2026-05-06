@@ -2,10 +2,7 @@
   height: 100vh;
   display: flex;
   flex-direction: column;
-  background:
-    radial-gradient(circle at 15% -5%, rgba(45, 149, 236, 0.2), transparent 45%),
-    radial-gradient(circle at 95% 0%, rgba(157, 202, 255, 0.08), transparent 40%),
-    var(--bg-app);
+  background: var(--bg-app);
   color: var(--text-main);
   overflow: hidden;
 }
@@ -30,7 +27,7 @@
   gap: var(--space-md);
   overflow-y: auto;
   padding: var(--space-sm);
-  background: linear-gradient(180deg, rgba(13, 22, 35, 0.84), rgba(6, 12, 20, 0.9));
+  background: #03060c;
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-md);
   box-shadow: var(--shadow-panel);
@@ -67,7 +64,7 @@
   flex-direction: column;
   border-radius: var(--radius-md);
   border: 1px solid var(--border-subtle);
-  background: linear-gradient(180deg, rgba(5, 10, 17, 0.95), rgba(3, 7, 12, 0.94));
+  background: #03070d;
   overflow: hidden;
   box-shadow: var(--shadow-panel);
 }

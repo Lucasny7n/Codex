@@ -11,6 +11,7 @@ export type ModelAction =
   | 'Selecionar'
   | 'Adicionar API key'
   | 'Fazer login'
+  | 'Conectar OAuth'
   | 'Validar CLI'
   | 'Conectar provider'
   | 'Instalar runtime'
@@ -20,6 +21,8 @@ export type ModelAction =
   | 'Reparar'
   | 'Configurar'
   | 'Ver detalhes'
+  | 'Trocar modelo/conta'
+  | 'Aguardar ou trocar'
   | 'Indisponível';
 
 export type ProviderStatus =
@@ -87,7 +90,7 @@ export function resolvePrimaryAction(status: ProviderStatus): ModelAction {
     ready: 'Selecionar',
     requires_api_key: 'Adicionar API key',
     requires_login: 'Fazer login',
-    requires_oauth: 'Fazer login',
+    requires_oauth: 'Conectar OAuth',
     requires_cli_auth: 'Validar CLI',
     not_installed: 'Instalar runtime',
     service_offline: 'Iniciar serviço',
@@ -96,8 +99,8 @@ export function resolvePrimaryAction(status: ProviderStatus): ModelAction {
     installing: 'Instalar runtime',
     pulling: 'Instalar modelo',
     testing: 'Testar conexão',
-    quota_exceeded: 'Ver detalhes',
-    rate_limited: 'Ver detalhes',
+    quota_exceeded: 'Trocar modelo/conta',
+    rate_limited: 'Aguardar ou trocar',
     misconfigured: 'Configurar',
     experimental: 'Configurar',
     unavailable: 'Indisponível',

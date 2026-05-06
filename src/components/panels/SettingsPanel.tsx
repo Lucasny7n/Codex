@@ -1,9 +1,12 @@
 import { useMemo, useState } from 'react';
 import type {
+  AgentSession,
   AgentProfile,
   AppHealthCheck,
   AppSettings,
   LocalRuntimeSnapshot,
+  ProviderAccountProfile,
+  ProviderAuthType,
   ProviderCredentialStatus,
   ProviderDescriptor,
   ProviderRuntimeStatus,
@@ -16,6 +19,7 @@ interface SettingsPanelProps {
   providers: ProviderDescriptor[];
   profiles: AgentProfile[];
   credentials: ProviderCredentialStatus[];
+  sessions: AgentSession[];
   localRuntime?: LocalRuntimeSnapshot;
   healthCheck?: AppHealthCheck;
   healthLoading: boolean;
@@ -32,7 +36,9 @@ interface SettingsPanelProps {
 export type SettingsTab =
   | 'general'
   | 'providers'
+  | 'accounts'
   | 'local'
+  | 'sessions'
   | 'execution'
   | 'permissions'
   | 'appearance'
@@ -42,11 +48,13 @@ export type SettingsTab =
 const SETTINGS_TABS: Array<{ id: SettingsTab; label: string }> = [
   { id: 'general', label: 'Geral' },
   { id: 'providers', label: 'IA / Providers' },
+  { id: 'accounts', label: 'Contas / Profiles' },
   { id: 'local', label: 'Modelos locais' },
+  { id: 'sessions', label: 'Sessões' },
   { id: 'execution', label: 'Execução' },
   { id: 'permissions', label: 'Permissões' },
   { id: 'appearance', label: 'Aparência' },
-  { id: 'diagnostics', label: 'Logs & Diagnóstico' },
+  { id: 'diagnostics', label: 'Diagnóstico' },
   { id: 'advanced', label: 'Avançado' },
 ];
 
@@ -86,11 +94,49 @@ function credentialFor(providerId: string, credentials: ProviderCredentialStatus
   return credentials.find((credential) => credential.providerId === providerId);
 }
 
+function authTypeForProvider(provider: ProviderDescriptor): ProviderAuthType {
+  if (provider.id === 'local-ollama') return 'local';
+  if (provider.status.state === 'requires_cli_auth') return 'cli_auth';
+  if (provider.status.state === 'requires_oauth') return 'oauth';
+  if (provider.status.state === 'requires_login') return 'login';
+  if (provider.configurable) return 'api_key';
+  return 'none';
+}
+
+function accountStatusFromProvider(state: ProviderStatusState): ProviderAccountProfile['status'] {
+  if (state === 'ready') return 'ready';
+  if (state === 'requires_api_key') return 'requires_api_key';
+  if (state === 'requires_login') return 'requires_login';
+  if (state === 'requires_oauth') return 'requires_oauth';
+  if (state === 'requires_cli_auth') return 'requires_cli_auth';
+  if (state === 'testing' || state === 'running') return 'testing';
+  if (state === 'quota_exceeded') return 'quota_exceeded';
+  if (state === 'rate_limited') return 'rate_limited';
+  if (state === 'experimental' || state === 'mock') return 'experimental';
+  if (state === 'misconfigured' || state === 'not_configured') return 'misconfigured';
+  return 'unavailable';
+}
+
+function actionLabelForStatus(state: ProviderStatusState): string {
+  if (state === 'ready') return 'Selecionável';
+  if (state === 'requires_api_key') return 'Adicionar API key';
+  if (state === 'requires_login') return 'Fazer login';
+  if (state === 'requires_oauth') return 'Conectar OAuth';
+  if (state === 'requires_cli_auth') return 'Validar CLI';
+  if (state === 'testing' || state === 'running') return 'Testar conexão';
+  if (state === 'quota_exceeded') return 'Trocar modelo/conta';
+  if (state === 'rate_limited') return 'Aguardar ou trocar';
+  if (state === 'misconfigured' || state === 'not_configured') return 'Corrigir configuração';
+  if (state === 'experimental' || state === 'mock') return 'Configurar';
+  return 'Indisponível';
+}
+
 export function SettingsPanel({
   settings,
   providers,
   profiles,
   credentials,
+  sessions,
   localRuntime,
   healthCheck,
   healthLoading,
@@ -113,6 +159,27 @@ export function SettingsPanel({
   const selectedProvider = useMemo(() => {
     return providers.find((item) => item.id === settings?.selectedProviderId);
   }, [providers, settings?.selectedProviderId]);
+
+  const accountProfiles = useMemo<ProviderAccountProfile[]>(() => {
+    return providers.map((provider) => {
+      const credential = credentialFor(provider.id, credentials);
+      const id = `${provider.id}:default`;
+      return {
+        id,
+        providerId: provider.id,
+        providerLabel: provider.label,
+        name: credential?.source === 'environment' ? 'Ambiente' : 'Padrão',
+        authType: authTypeForProvider(provider),
+        status: accountStatusFromProvider(provider.status.state),
+        maskedCredential: credential?.maskedKey,
+        source: credential?.source,
+        lastValidatedAt: provider.status.checkedAt,
+        defaultModelId: provider.models[0]?.id,
+        isDefault: settings?.selectedProviderProfileId === id || (!settings?.selectedProviderProfileId && provider.id === settings?.selectedProviderId),
+        message: credential?.hasCredential ? provider.status.message : errorForStatus(provider.status.state, provider.status.message).message,
+      };
+    });
+  }, [credentials, providers, settings?.selectedProviderId, settings?.selectedProviderProfileId]);
 
   if (!settings) {
     return (
@@ -200,6 +267,7 @@ export function SettingsPanel({
                   </select>
                 </label>
                 <span>Modelo atual: {settings.selectedModelId}</span>
+                <span>Conta/profile: {settings.selectedProviderProfileId ?? 'padrão do provider'}</span>
               </section>
               <section className="settings-card">
                 <strong>Sessão</strong>
@@ -222,22 +290,45 @@ export function SettingsPanel({
                 const credential = credentialFor(provider.id, credentials);
                 const action = errorForStatus(provider.status.state, provider.status.message);
                 const input = credentialInputs[provider.id] ?? '';
+                const authType = authTypeForProvider(provider);
+                const primaryAction = actionLabelForStatus(provider.status.state);
                 return (
                   <section key={provider.id} className={`settings-card provider-settings-card provider-status-${statusTone(provider.status.state)}`}>
                     <div className="row-between">
                       <div>
                         <strong>{provider.label}</strong>
                         <span>{STATUS_LABELS[provider.status.state]}</span>
+                        <span>Auth: {authType.replace('_', ' ')}</span>
                         {provider.status.version ? <span>{provider.status.version}</span> : null}
                       </div>
-                      <button
-                        type="button"
-                        className="btn-modern"
-                        disabled={testingProviderId === provider.id}
-                        onClick={() => void testProvider(provider.id)}
-                      >
-                        {testingProviderId === provider.id ? 'Testando' : 'Testar conexão'}
-                      </button>
+                      <div className="settings-actions-inline">
+                        <button
+                          type="button"
+                          className="btn-modern"
+                          disabled={testingProviderId === provider.id}
+                          onClick={() => void testProvider(provider.id)}
+                        >
+                          {testingProviderId === provider.id ? 'Testando' : 'Testar conexão'}
+                        </button>
+                        <button
+                          type="button"
+                          className="btn-modern btn-modern-primary"
+                          disabled={provider.status.state === 'ready' || provider.status.state === 'unavailable'}
+                          onClick={() => {
+                            if (provider.status.state === 'requires_api_key') {
+                              setInlineError(`Adicione uma API key para ${provider.label}. O segredo será mascarado na UI.`);
+                              return;
+                            }
+                            if (provider.status.state === 'requires_cli_auth' || provider.status.state === 'testing' || provider.status.state === 'running') {
+                              void testProvider(provider.id);
+                              return;
+                            }
+                            setInlineError(`${provider.label}: ${action.message}`);
+                          }}
+                        >
+                          {primaryAction}
+                        </button>
+                      </div>
                     </div>
                     <p>{provider.status.message}</p>
                     {provider.status.command ? <code>{provider.status.command}</code> : null}
@@ -266,7 +357,7 @@ export function SettingsPanel({
                           disabled={savingProviderId === provider.id || input.trim().length === 0}
                           onClick={() => void saveCredential(provider.id)}
                         >
-                          {savingProviderId === provider.id ? 'Salvando' : 'Salvar'}
+                          {savingProviderId === provider.id ? 'Salvando' : 'Adicionar API key'}
                         </button>
                         <button
                           type="button"
@@ -285,6 +376,58 @@ export function SettingsPanel({
                   </section>
                 );
               })}
+            </div>
+          ) : null}
+
+          {activeTab === 'accounts' ? (
+            <div className="provider-settings-list">
+              {accountProfiles.map((profile) => (
+                <section key={profile.id} className={`settings-card provider-settings-card provider-status-${statusTone(profile.status)}`}>
+                  <div className="row-between">
+                    <div>
+                      <strong>{profile.providerLabel} · {profile.name}</strong>
+                      <span>{profile.status.replace('_', ' ')}</span>
+                      <span>Tipo: {profile.authType.replace('_', ' ')}</span>
+                      <span>Última validação: {profile.lastValidatedAt ? new Date(profile.lastValidatedAt).toLocaleString('pt-BR') : 'nunca'}</span>
+                    </div>
+                    <div className="settings-actions-inline">
+                      <button type="button" className="btn-modern" onClick={() => void testProvider(profile.providerId)}>
+                        Testar
+                      </button>
+                      <button
+                        type="button"
+                        className="btn-modern btn-modern-primary"
+                        onClick={() =>
+                          void onChange({
+                            ...settings,
+                            selectedProviderId: profile.providerId,
+                            selectedProviderProfileId: profile.id,
+                            selectedModelId: profile.defaultModelId ?? settings.selectedModelId,
+                            executionMode: profile.providerId === 'local-ollama' ? 'local' : 'cloud',
+                          })
+                        }
+                      >
+                        {profile.isDefault ? 'Padrão' : 'Tornar padrão'}
+                      </button>
+                      <button
+                        type="button"
+                        className="btn-modern"
+                        disabled={!profile.maskedCredential}
+                        onClick={() => void onRemoveProviderCredential(profile.providerId)}
+                      >
+                        Remover
+                      </button>
+                    </div>
+                  </div>
+                  <p>{profile.message}</p>
+                  <div className="inline-alert">
+                    {profile.maskedCredential
+                      ? `Credencial mascarada: ${profile.maskedCredential} (${profile.source ?? 'local'})`
+                      : 'Nenhum segredo salvo para este profile.'}
+                  </div>
+                  <span>Multi-conta real por provider está preparado na UI, mas o backend atual ainda mantém uma credencial ativa por provider até troca para keyring/profile store.</span>
+                </section>
+              ))}
             </div>
           ) : null}
 
@@ -314,9 +457,34 @@ export function SettingsPanel({
                 )}
               </section>
               <section className="settings-card">
+                <strong>Compatibilidade deste PC</strong>
+                <span>Base: Ryzen 5 5500, RX 7600, 16 GB RAM.</span>
+                <span>Recomendado: 1.5B, 3B e 7B. 14B exige caveat. 32B+ fica pesado/não recomendado.</span>
+                <span>Filtro “Compatíveis com meu PC” no seletor esconde modelos não recomendados.</span>
+              </section>
+              <section className="settings-card">
                 <strong>Reparo</strong>
                 {(localRuntime?.repairActions ?? ['sudo pacman -S --needed ollama']).map((action) => <code key={action}>{action}</code>)}
               </section>
+            </div>
+          ) : null}
+
+          {activeTab === 'sessions' ? (
+            <div className="settings-grid">
+              <section className="settings-card">
+                <strong>Sessões</strong>
+                <span>Total salvo: {sessions.length}</span>
+                <span>Uma conversa nova só vira arquivo após a primeira mensagem.</span>
+                <span>Exportação disponível em `.md` e `.json` no menu da sessão.</span>
+              </section>
+              {sessions.slice(0, 8).map((session) => (
+                <section key={session.id} className="settings-card">
+                  <strong>{session.title}</strong>
+                  <span>{session.messages.length} mensagens · {session.status.replace('_', ' ')}</span>
+                  <span>Atualizada: {new Date(session.updatedAt).toLocaleString('pt-BR')}</span>
+                  <span>Modelo/provider: {session.providerId ?? 'não definido'} / {session.modelId ?? 'não definido'}</span>
+                </section>
+              ))}
             </div>
           ) : null}
 
@@ -387,6 +555,18 @@ export function SettingsPanel({
                 <span>Base: {healthCheck?.baseDir ?? settings.workspaceRoot}</span>
                 <span>Projeto correto: {healthCheck?.correctBaseDir ? 'sim' : 'pendente de checagem'}</span>
                 <span>Node/npm/cargo/tauri: {healthCheck ? `${healthCheck.nodeOk}/${healthCheck.npmOk}/${healthCheck.cargoOk}/${healthCheck.tauriOk}` : 'pendente'}</span>
+                <span>Providers/profiles: {healthCheck ? `${healthCheck.providers.length}/${accountProfiles.length}` : 'pendente'}</span>
+                <span>Sessões/storage: {healthCheck?.sessionsCount ?? sessions.length} · {healthCheck?.storageRoot ?? `${settings.codexRoot}/sessions`}</span>
+                <span>Credenciais: {healthCheck?.credentialsEncrypted ? 'keyring/criptografado' : 'arquivo local mascarado na UI; keyring pendente'}</span>
+                <span>Ollama: {healthCheck?.ollama.state ?? localRuntime?.state ?? 'pendente'} · API {healthCheck?.ollama.apiReachable ?? localRuntime?.apiReachable ? 'online' : 'offline'}</span>
+                <details>
+                  <summary>Providers</summary>
+                  {(healthCheck?.providers ?? []).map((provider) => (
+                    <span key={provider.id}>
+                      {provider.id}: {provider.status.state.replace('_', ' ')} · key {provider.hasKey ? 'presente' : 'ausente'}
+                    </span>
+                  ))}
+                </details>
                 <details>
                   <summary>Ações recomendadas</summary>
                   {(healthCheck?.actions ?? []).length === 0 ? <p>Nenhuma ação carregada.</p> : null}

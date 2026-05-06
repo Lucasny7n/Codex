@@ -18,7 +18,9 @@ import type {
   ProviderRuntimeStatus,
   ProviderCredentialStatus,
   LocalRuntimeSnapshot,
-  LocalModelInstallProgress
+  LocalModelInstallProgress,
+  SessionExportFormat,
+  SessionExportResult
 } from '../types/domain';
 
 export async function bootstrapState(): Promise<BootstrapPayload> {
@@ -27,6 +29,22 @@ export async function bootstrapState(): Promise<BootstrapPayload> {
 
 export async function createSession(title: string): Promise<AgentSession> {
   return invoke('create_session', { title });
+}
+
+export async function renameSession(sessionId: string, title: string): Promise<AgentSession> {
+  return invoke('rename_session', { sessionId, title });
+}
+
+export async function deleteSession(sessionId: string): Promise<void> {
+  await invoke('delete_session', { sessionId });
+}
+
+export async function duplicateSession(sessionId: string): Promise<AgentSession> {
+  return invoke('duplicate_session', { sessionId });
+}
+
+export async function exportSession(sessionId: string, format: SessionExportFormat): Promise<SessionExportResult> {
+  return invoke('export_session', { sessionId, format });
 }
 
 export async function appendUserMessage(sessionId: string, content: string): Promise<AgentSession> {

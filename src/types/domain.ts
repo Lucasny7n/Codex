@@ -16,6 +16,10 @@ export interface AgentSession {
   status: SessionStatus;
   messages: ChatMessage[];
   tasks: SessionTask[];
+  providerId?: string;
+  modelId?: string;
+  agentProfileId?: string;
+  accountProfileId?: string;
 }
 
 export type SessionStatus =
@@ -158,6 +162,35 @@ export interface ProviderCredentialStatus {
   checkedAt: string;
 }
 
+export type ProviderAuthType = 'api_key' | 'oauth' | 'cli_auth' | 'local' | 'login' | 'none';
+export type ProviderAccountStatus =
+  | 'ready'
+  | 'requires_api_key'
+  | 'requires_login'
+  | 'requires_oauth'
+  | 'requires_cli_auth'
+  | 'testing'
+  | 'misconfigured'
+  | 'quota_exceeded'
+  | 'rate_limited'
+  | 'experimental'
+  | 'unavailable';
+
+export interface ProviderAccountProfile {
+  id: string;
+  providerId: string;
+  providerLabel: string;
+  name: string;
+  authType: ProviderAuthType;
+  status: ProviderAccountStatus;
+  maskedCredential?: string;
+  source?: string;
+  lastValidatedAt?: string;
+  defaultModelId?: string;
+  isDefault: boolean;
+  message: string;
+}
+
 export interface SystemTheme {
   source: string;
   accentPrimary: string;
@@ -188,6 +221,7 @@ export interface AppSettings {
   selectedProviderId: string;
   selectedModelId: string;
   selectedAgentId: string;
+  selectedProviderProfileId?: string;
   preferredShell: string;
   autoApproveSafeRead: boolean;
   executionMode: ExecutionMode;
@@ -319,6 +353,8 @@ export interface AppHealthProvider {
   id: string;
   status: ProviderRuntimeStatus;
   hasKey: boolean;
+  profileCount?: number;
+  selectedProfileId?: string;
 }
 
 export interface AppHealthAction {
@@ -337,7 +373,19 @@ export interface AppHealthCheck {
   tauriOk: boolean;
   providers: AppHealthProvider[];
   ollama: LocalRuntimeSnapshot;
+  sessionsCount?: number;
+  activeSessionId?: string;
+  storageRoot?: string;
+  credentialsEncrypted?: boolean;
   recentErrors: ActionableError[];
   overallStatus: 'ok' | 'warning' | 'error';
   actions: AppHealthAction[];
+}
+
+export type SessionExportFormat = 'markdown' | 'json';
+
+export interface SessionExportResult {
+  path: string;
+  format: SessionExportFormat;
+  bytes: number;
 }

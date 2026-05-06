@@ -2,7 +2,10 @@ import { useEffect, useMemo, useState } from 'react';
 import {
   bootstrapState,
   createSession,
+  deleteSession,
   decidePermission,
+  duplicateSession,
+  exportSession,
   getAppHealthCheck,
   getBasePrompt,
   getLocalRuntimeState,
@@ -25,6 +28,7 @@ import {
   removeProviderCredential,
   requestExecution,
   requestPrivilegedAction,
+  renameSession,
   saveProviderCredential,
   sendOrderToAgent,
   startLocalRuntime,
@@ -47,6 +51,7 @@ import type {
   AppHealthCheck,
   AppSettings,
   ExecutionMode,
+  AgentSession,
   LocalModelInstallProgress,
   LocalRuntimeSnapshot,
   PrivilegedActionSpec,
@@ -68,7 +73,6 @@ import { ChangedFilesPanel } from './components/panels/ChangedFilesPanel';
 import { SettingsPanel, type SettingsTab } from './components/panels/SettingsPanel';
 import { MemoryPanel } from './components/panels/MemoryPanel';
 import { BasePromptPanel } from './components/panels/BasePromptPanel';
-import { OnboardingPanel } from './components/panels/OnboardingPanel';
 import { CommandInputPanel } from './components/panels/CommandInputPanel';
 import { InspectorPanel } from './components/panels/InspectorPanel';
 import { TerminalDrawer } from './components/panels/TerminalDrawer';
@@ -137,6 +141,17 @@ function isLocalModelInstalled(runtime: LocalRuntimeSnapshot | undefined, modelI
   return runtime.installedModels.some((model) => model.id === modelId);
 }
 
+function titleFromContent(content: string): string {
+  const compact = content
+    .replace(/\s+/g, ' ')
+    .trim()
+    .replace(/^[-–—\s]+/, '');
+  if (!compact) {
+    return `Conversa ${new Date().toLocaleString('pt-BR')}`;
+  }
+  return compact.length > 54 ? `${compact.slice(0, 51)}...` : compact;
+}
+
 export default function App(): JSX.Element {
   const [basePrompt, setBasePrompt] = useState('');
   const [savingBasePrompt, setSavingBasePrompt] = useState(false);
@@ -153,6 +168,7 @@ export default function App(): JSX.Element {
   const [healthCheck, setHealthCheck] = useState<AppHealthCheck>();
   const [healthLoading, setHealthLoading] = useState(false);
   const [settingsTabRequest, setSettingsTabRequest] = useState<{ tab: SettingsTab; nonce: number }>();
+  const [sessionInfoId, setSessionInfoId] = useState<string>();
 
   const {
     booted,
@@ -178,6 +194,7 @@ export default function App(): JSX.Element {
     setLoading,
     bootstrap,
     upsertSession,
+    removeSession,
     selectSession,
     appendStatus,
     appendLog,
@@ -195,6 +212,11 @@ export default function App(): JSX.Element {
   const selectedSession = useMemo(
     () => sessions.find((session) => session.id === selectedSessionId),
     [sessions, selectedSessionId],
+  );
+
+  const sessionInfo = useMemo(
+    () => sessions.find((session) => session.id === sessionInfoId),
+    [sessionInfoId, sessions],
   );
 
   const actionJsonExamples = useMemo(() => buildActionJsonExamples(settings), [settings]);
@@ -253,8 +275,6 @@ export default function App(): JSX.Element {
     if (!settings?.workspaceRoot) return undefined;
     return `${settings.workspaceRoot.replace(/\/$/, '')}/${relativePath}`;
   };
-
-  const showOnboardingEmptyState = booted && sessions.length === 0;
 
   useEffect(() => {
     let mounted = true;
@@ -343,20 +363,18 @@ export default function App(): JSX.Element {
     }
   }, [theme]);
 
-  async function ensureSession(): Promise<string> {
+  async function ensureSession(seed: string): Promise<string> {
     if (selectedSessionId) {
       return selectedSessionId;
     }
-    const created = await createSession('Sessão inicial');
+    const created = await createSession(titleFromContent(seed));
     upsertSession(created);
     selectSession(created.id);
     return created.id;
   }
 
-  async function handleCreateSession(): Promise<void> {
-    const created = await createSession(`Sessão ${new Date().toLocaleTimeString('pt-BR')}`);
-    upsertSession(created);
-    selectSession(created.id);
+  function handleCreateSession(): void {
+    selectSession(undefined);
   }
 
   async function handleSendPrompt(prompt: string): Promise<void> {
@@ -364,7 +382,7 @@ export default function App(): JSX.Element {
     if (!cleaned) return;
     setBusy(true);
     try {
-      const sessionId = await ensureSession();
+      const sessionId = await ensureSession(cleaned);
       const updated = await sendOrderToAgent(sessionId, cleaned);
       upsertSession(updated);
     } finally {
@@ -377,7 +395,7 @@ export default function App(): JSX.Element {
     if (!cleaned) return;
     setBusy(true);
     try {
-      const sessionId = await ensureSession();
+      const sessionId = await ensureSession(cleaned);
       const response = await requestExecution({
         sessionId,
         command: cleaned,
@@ -395,7 +413,7 @@ export default function App(): JSX.Element {
   async function handleRequestPrivilegedAction(actionId: string, args: Record<string, unknown>, dryRun: boolean): Promise<void> {
     setBusy(true);
     try {
-      const sessionId = await ensureSession();
+      const sessionId = await ensureSession(actionId);
       const request = await requestPrivilegedAction({
         sessionId,
         actionId,
@@ -493,7 +511,7 @@ export default function App(): JSX.Element {
 
     setBusy(true);
     try {
-      const sessionId = await ensureSession();
+      const sessionId = await ensureSession('Check environment');
       const response = await requestExecution({
         sessionId,
         command: `bash ${shellQuote(scriptPath)}`,
@@ -672,6 +690,34 @@ export default function App(): JSX.Element {
     }
   }
 
+  async function handleRenameSession(session: AgentSession): Promise<void> {
+    const nextTitle = window.prompt('Novo nome da sessão', session.title);
+    if (!nextTitle || nextTitle.trim() === session.title) return;
+    const updated = await renameSession(session.id, nextTitle);
+    upsertSession(updated);
+  }
+
+  async function handleDeleteSession(session: AgentSession): Promise<void> {
+    const confirmed = window.confirm(`Excluir a sessão "${session.title}"? Esta ação remove o arquivo salvo.`);
+    if (!confirmed) return;
+    await deleteSession(session.id);
+    removeSession(session.id);
+    if (sessionInfoId === session.id) {
+      setSessionInfoId(undefined);
+    }
+  }
+
+  async function handleDuplicateSession(session: AgentSession): Promise<void> {
+    const duplicated = await duplicateSession(session.id);
+    upsertSession(duplicated);
+    selectSession(duplicated.id);
+  }
+
+  async function handleExportSession(session: AgentSession, format: 'markdown' | 'json'): Promise<void> {
+    const result = await exportSession(session.id, format);
+    window.alert(`Sessão exportada: ${result.path}`);
+  }
+
   function handleOpenGuide(): void {
     const path = workspacePath('docs/GUIA_DE_USO.md');
     if (path) void openFileInVscode(path);
@@ -709,7 +755,7 @@ export default function App(): JSX.Element {
             executionMode={executionMode}
             activeModelLabel={activeModelLabel}
             localRuntime={localRuntime}
-            onCreateSession={() => void handleCreateSession()}
+            onCreateSession={handleCreateSession}
             onOpenProject={(root) => void openProjectInVscode(root)}
             onOpenInspector={() => {
               setSelectedInspectorTab('settings');
@@ -719,7 +765,17 @@ export default function App(): JSX.Element {
         }
         sidebarLeft={
           <div className="left-sidebar-stack">
-            <SessionsPanel sessions={sessions} selectedSessionId={selectedSessionId} onSelect={selectSession} />
+            <SessionsPanel
+              sessions={sessions}
+              selectedSessionId={selectedSessionId}
+              onNewSession={handleCreateSession}
+              onSelect={selectSession}
+              onRename={(session) => void handleRenameSession(session)}
+              onDelete={(session) => void handleDeleteSession(session)}
+              onExport={(session, format) => void handleExportSession(session, format)}
+              onDuplicate={(session) => void handleDuplicateSession(session)}
+              onInfo={(session) => setSessionInfoId(session.id)}
+            />
             <CollapsibleSection
               title="Tarefas"
               description="Timeline da sessão"
@@ -739,47 +795,30 @@ export default function App(): JSX.Element {
         }
         main={
           <div className="main-workspace">
-            {showOnboardingEmptyState ? (
-              <div className="onboarding-empty-state" data-testid="onboarding-empty-state">
-                <OnboardingPanel
-                  busy={busy}
-                  highlight
-                  onOpenGuide={handleOpenGuide}
-                  onOpenQuickstart={handleOpenQuickstart}
-                  onOpenWorkspace={handleOpenWorkspace}
-                  onOpenCodexRoot={handleOpenCodexRoot}
-                  onOpenLogs={handleOpenLogs}
-                  onRunCheckEnvironment={() => void handleRunCheckEnvironment()}
-                />
+            {error ? (
+              <div className="actionable-error-banner" role="alert">
+                <strong>{translateError(error).message}</strong>
+                <button type="button" className="btn-modern" onClick={() => setError(undefined)}>
+                  Dispensar
+                </button>
               </div>
-            ) : (
-              <>
-                {error ? (
-                  <div className="actionable-error-banner" role="alert">
-                    <strong>{translateError(error).message}</strong>
-                    <button type="button" className="btn-modern" onClick={() => setError(undefined)}>
-                      Dispensar
-                    </button>
-                  </div>
-                ) : null}
-                <ChatPanel session={selectedSession} />
-                <CommandInputPanel
-                  busy={busy}
-                  privilegedActions={privilegedActions}
-                  onSendOrder={handleSendPrompt}
-                  onExecuteCommand={handleExecuteCommand}
-                  onRequestPrivilegedAction={handleRequestPrivilegedAction}
-                  actionJsonExamples={actionJsonExamples}
-                  orderDisabledReason={orderDisabledReason}
-                  executionMode={executionMode}
-                  activeModelLabel={activeModelLabel}
-                  providerLabel={selectedProvider?.label}
-                  runtimeState={executionMode === 'local' ? localRuntime?.state : selectedProviderStatus?.state}
-                  onOpenModelSelector={() => setModelSelectorOpen(true)}
-                />
-                <TerminalDrawer logs={logs} open={terminalOpen} onToggle={() => setTerminalOpen((current) => !current)} />
-              </>
-            )}
+            ) : null}
+            <ChatPanel session={selectedSession} />
+            <CommandInputPanel
+              busy={busy}
+              privilegedActions={privilegedActions}
+              onSendOrder={handleSendPrompt}
+              onExecuteCommand={handleExecuteCommand}
+              onRequestPrivilegedAction={handleRequestPrivilegedAction}
+              actionJsonExamples={actionJsonExamples}
+              orderDisabledReason={orderDisabledReason}
+              executionMode={executionMode}
+              activeModelLabel={activeModelLabel}
+              providerLabel={selectedProvider?.label}
+              runtimeState={executionMode === 'local' ? localRuntime?.state : selectedProviderStatus?.state}
+              onOpenModelSelector={() => setModelSelectorOpen(true)}
+            />
+            <TerminalDrawer logs={logs} open={terminalOpen} onToggle={() => setTerminalOpen((current) => !current)} />
           </div>
         }
         sidebarRight={
@@ -808,6 +847,7 @@ export default function App(): JSX.Element {
                 profiles={profiles}
                 credentials={providerCredentials}
                 localRuntime={localRuntime}
+                sessions={sessions}
                 healthCheck={healthCheck}
                 healthLoading={healthLoading}
                 onChange={(next) => handleUpdateSettings(next)}
@@ -844,6 +884,7 @@ export default function App(): JSX.Element {
         mode={executionMode}
         activeModelId={selectedModelId}
         providers={providers}
+        credentials={providerCredentials}
         localRuntime={localRuntime}
         installationProgress={installationProgress}
         busyModelId={modelActionBusyId}
@@ -874,6 +915,48 @@ export default function App(): JSX.Element {
         onOpenLogs={handleOpenLogs}
         onRunCheckEnvironment={() => void handleRunCheckEnvironment()}
       />
+
+      {sessionInfo ? (
+        <div className="session-info-overlay" role="dialog" aria-modal="true" aria-label="Informações da sessão">
+          <section className="session-info-dialog">
+            <header>
+              <div>
+                <h2>{sessionInfo.title}</h2>
+                <p>{sessionInfo.id}</p>
+              </div>
+              <button type="button" className="btn-modern" onClick={() => setSessionInfoId(undefined)}>
+                Fechar
+              </button>
+            </header>
+            <div className="session-info-grid">
+              <span>Criada: <strong>{new Date(sessionInfo.createdAt).toLocaleString('pt-BR')}</strong></span>
+              <span>Atualizada: <strong>{new Date(sessionInfo.updatedAt).toLocaleString('pt-BR')}</strong></span>
+              <span>Status: <strong>{sessionInfo.status.replace('_', ' ')}</strong></span>
+              <span>Mensagens: <strong>{sessionInfo.messages.length}</strong></span>
+              <span>Provider: <strong>{sessionInfo.providerId ?? settings?.selectedProviderId ?? 'não definido'}</strong></span>
+              <span>Modelo: <strong>{sessionInfo.modelId ?? settings?.selectedModelId ?? 'não definido'}</strong></span>
+              <span>Perfil: <strong>{sessionInfo.agentProfileId ?? settings?.selectedAgentId ?? 'não definido'}</strong></span>
+            </div>
+            <div className="session-info-actions">
+              <button type="button" className="btn-modern" onClick={() => void handleRenameSession(sessionInfo)}>
+                Renomear
+              </button>
+              <button type="button" className="btn-modern" onClick={() => void handleExportSession(sessionInfo, 'markdown')}>
+                Exportar .md
+              </button>
+              <button type="button" className="btn-modern" onClick={() => void handleExportSession(sessionInfo, 'json')}>
+                Exportar .json
+              </button>
+              <button type="button" className="btn-modern" onClick={() => void handleDuplicateSession(sessionInfo)}>
+                Duplicar
+              </button>
+              <button type="button" className="btn-modern btn-danger" onClick={() => void handleDeleteSession(sessionInfo)}>
+                Excluir
+              </button>
+            </div>
+          </section>
+        </div>
+      ) : null}
     </>
   );
 }

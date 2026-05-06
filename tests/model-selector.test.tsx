@@ -1,7 +1,7 @@
 import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import { ModelSelector } from '../src/components/panels/ModelSelector';
-import { modelRegistry } from '../src/lib/modelRegistry';
+import { localCompatibility, modelRegistry } from '../src/lib/modelRegistry';
 import type { LocalRuntimeSnapshot, ProviderDescriptor } from '../src/types/domain';
 
 function provider(id: string, state: ProviderDescriptor['status']['state']): ProviderDescriptor {
@@ -47,6 +47,7 @@ describe('ModelSelector', () => {
         open
         mode="cloud"
         providers={[provider('openai-api', 'requires_api_key')]}
+        credentials={[]}
         installationProgress={{}}
         onClose={vi.fn()}
         onModeChange={vi.fn()}
@@ -70,6 +71,7 @@ describe('ModelSelector', () => {
         open
         mode="cloud"
         providers={[provider('openai-api', 'ready')]}
+        credentials={[]}
         installationProgress={{}}
         onClose={vi.fn()}
         onModeChange={vi.fn()}
@@ -92,6 +94,7 @@ describe('ModelSelector', () => {
         open
         mode="cloud"
         providers={[provider('openai-api', 'testing')]}
+        credentials={[]}
         installationProgress={{}}
         onClose={vi.fn()}
         onModeChange={vi.fn()}
@@ -115,6 +118,7 @@ describe('ModelSelector', () => {
         open
         mode="local"
         providers={[]}
+        credentials={[]}
         localRuntime={runtime({ installed: false, state: 'unavailable', apiReachable: false })}
         installationProgress={{}}
         onClose={vi.fn()}
@@ -138,6 +142,7 @@ describe('ModelSelector', () => {
         open
         mode="local"
         providers={[]}
+        credentials={[]}
         localRuntime={runtime()}
         installationProgress={{}}
         onClose={vi.fn()}
@@ -161,6 +166,7 @@ describe('ModelSelector', () => {
         open
         mode="local"
         providers={[]}
+        credentials={[]}
         localRuntime={runtime()}
         installationProgress={{}}
         onClose={vi.fn()}
@@ -179,6 +185,32 @@ describe('ModelSelector', () => {
     fireEvent.click(screen.getAllByText('Detalhes')[0]);
     expect(screen.getAllByText(/Privacidade:/)[0]).toBeVisible();
   });
+
+  it('filtro compatível com meu PC esconde modelos 32B não recomendados', () => {
+    render(
+      <ModelSelector
+        open
+        mode="local"
+        providers={[]}
+        credentials={[]}
+        localRuntime={runtime()}
+        installationProgress={{}}
+        onClose={vi.fn()}
+        onModeChange={vi.fn()}
+        onActivateCloud={vi.fn()}
+        onActivateLocal={vi.fn()}
+        onInstallLocalModel={vi.fn()}
+        onRemoveLocalModel={vi.fn()}
+        onInstallRuntime={vi.fn()}
+        onStartRuntime={vi.fn()}
+        onConfigureProvider={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByText('Qwen2.5 Coder 32B')).toBeInTheDocument();
+    fireEvent.click(screen.getByText('Compatíveis com meu PC'));
+    expect(screen.queryByText('Qwen2.5 Coder 32B')).not.toBeInTheDocument();
+  });
 });
 
 describe('modelRegistry', () => {
@@ -188,5 +220,11 @@ describe('modelRegistry', () => {
       expect(model.setupRequirement).toBeTruthy();
       expect(model.actionLabel).toBeTruthy();
     }
+  });
+
+  it('classifica 32B como nao recomendado para 16 GB RAM', () => {
+    const model = modelRegistry.byId('qwen2.5-coder:32b');
+    expect(model).toBeTruthy();
+    expect(localCompatibility(model!)).toBe('not_recommended');
   });
 });

@@ -31,6 +31,14 @@ pub struct AgentSession {
     pub status: SessionStatus,
     pub messages: Vec<ChatMessage>,
     pub tasks: Vec<SessionTask>,
+    #[serde(default)]
+    pub provider_id: Option<String>,
+    #[serde(default)]
+    pub model_id: Option<String>,
+    #[serde(default)]
+    pub agent_profile_id: Option<String>,
+    #[serde(default)]
+    pub account_profile_id: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -293,6 +301,8 @@ pub struct AppSettings {
     pub selected_provider_id: String,
     pub selected_model_id: String,
     pub selected_agent_id: String,
+    #[serde(default)]
+    pub selected_provider_profile_id: Option<String>,
     pub preferred_shell: String,
     pub auto_approve_safe_read: bool,
     #[serde(default)]
@@ -313,6 +323,7 @@ impl AppSettings {
             selected_provider_id: "gemini-cli".to_owned(),
             selected_model_id: "gemini-cli-default".to_owned(),
             selected_agent_id: "equilibrado".to_owned(),
+            selected_provider_profile_id: None,
             preferred_shell: "/usr/bin/bash".to_owned(),
             auto_approve_safe_read: true,
             execution_mode: ExecutionMode::Cloud,
@@ -501,6 +512,8 @@ pub struct AppHealthProvider {
     pub id: String,
     pub status: ProviderRuntimeStatus,
     pub has_key: bool,
+    pub profile_count: Option<usize>,
+    pub selected_profile_id: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -531,9 +544,28 @@ pub struct AppHealthCheck {
     pub tauri_ok: bool,
     pub providers: Vec<AppHealthProvider>,
     pub ollama: LocalRuntimeSnapshot,
+    pub sessions_count: Option<usize>,
+    pub active_session_id: Option<String>,
+    pub storage_root: Option<String>,
+    pub credentials_encrypted: Option<bool>,
     pub recent_errors: Vec<ActionableError>,
     pub overall_status: AppHealthOverallStatus,
     pub actions: Vec<AppHealthAction>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SessionExportFormat {
+    Markdown,
+    Json,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SessionExportResult {
+    pub path: String,
+    pub format: SessionExportFormat,
+    pub bytes: usize,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
