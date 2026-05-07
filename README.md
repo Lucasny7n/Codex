@@ -1,88 +1,156 @@
 # Codex Command Center
 
-App desktop (Tauri v2 + Rust + React/TypeScript) para operar agentes tipo Codex com execução controlada, permissões seguras, integração com VS Code e memória em `~/.codex`.
+**Premium desktop command center for AI coding agents.**  
+Built with **Tauri v2**, **Rust**, **React**, **TypeScript** and a clean **Qwen-style / End4 Hyprland-inspired** interface.
 
-## Status do projeto
-- Núcleo funcional: sessões, chat, tarefas, status, logs, permissões e arquivos alterados.
-- Infra privilegiada implementada: helper allowlist + `pkexec` + policy + scripts install/uninstall.
-- Onboarding no app implementado: painel `Primeiros Passos` com ações rápidas.
+> A focused workspace for local and cloud AI models, provider profiles, coding sessions, terminal-assisted workflows and controlled agent execution.
 
-## Visual
-O projeto conta com uma interface moderna (Modern UI) baseada em um Design System proprietário com:
-- Preto puro e acentos em azul sistema.
-- Layout de 3 colunas com scroll independente.
-- Seletor de modo de input (Ordem, Terminal, Ação).
-- Justificativa técnica integrada nas respostas.
+---
 
-## Funcionalidades
-- Sessões com histórico.
-- Chat de agente com acompanhamento de status/tarefas.
-- Execução de comandos com política de permissão.
-- Ações privilegiadas por `action_id` (sem shell root arbitrário).
-- Aprovação `Sim/Não` com risco, alvo e reversão.
-- Dry-run para simulação segura.
-- Logs de execução e resultados (Terminal Moderno).
-- Integração direta com VS Code.
-- Memórias e prompt base em `~/.codex`.
+## English
 
-## Roadmap: Squad IA
-O projeto está sendo preparado para suportar múltiplos agentes coordenados (Architect, Builder, Reviewer, Tester). Veja [MULTI_AGENT_PLAN.md](docs/MULTI_AGENT_PLAN.md) para detalhes.
+### What is this?
 
-## Rodar em desenvolvimento
+Codex Command Center is a desktop application designed to make AI coding workflows feel clean, controlled and premium.
+
+Instead of exposing a technical dashboard full of logs, providers and runtime noise, the app is being shaped around a minimal command interface with a single central model/environment flow.
+
+### Core goals
+
+- Keep the interface minimal and distraction-free.
+- Unify local and cloud AI models in one place.
+- Manage API keys, login profiles and provider status safely.
+- Support coding sessions and project-oriented conversations.
+- Allow controlled terminal workflows without exposing raw logs by default.
+- Preserve an elegant dark visual style inspired by Qwen, End4 and Hyprland.
+
+### Features
+
+- Qwen-style minimal desktop UI
+- Tauri v2 app shell
+- React + TypeScript frontend
+- Rust backend
+- Local model support
+- Cloud provider support
+- Provider profiles and account management
+- API key save/test/remove flow
+- Session history
+- Session export as Markdown, JSON or TXT
+- Terminal workflow support
+- Controlled permission model for risky commands
+- Premium dark design system
+
+### Current UX direction
+
+The app is moving toward a very clean layout:
+
+- thin left sidebar;
+- model selector at the top;
+- central prompt pill;
+- no technical panels on the home screen;
+- all advanced settings inside modals/popups;
+- provider errors shown as short actionable cards;
+- no raw JSON, stack traces or unnecessary metadata in normal chat.
+
+### Development
+
 ```bash
-cd /home/lucas/Codex
 npm install
 npm run tauri dev
 ```
 
-## Build
-```bash
-cd /home/lucas/Codex
-npm run tauri build -- --debug
-```
-
-- bundles Linux ativos por padrão: `deb` e `rpm`.
-- `AppImage` foi removido do alvo padrão por incompatibilidade de `linuxdeploy` com RELR no Arch atual.
-
-## Helper privilegiado (instalação manual)
-Instale apenas quando quiser ativar o fluxo root real.
+### Build
 
 ```bash
-cd /home/lucas/Codex/src-tauri
-cargo build --release --bin codex-privileged-helper
-
-cd /home/lucas/Codex
-bash scripts/install-privileged-helper.sh
+npm run tauri build
 ```
 
-## Remoção do helper
+### Recommended local path
+
 ```bash
-cd /home/lucas/Codex
-bash scripts/uninstall-privileged-helper.sh
+~/Lucas-Workspace/Projects/Codex-Codex
 ```
 
-## Como usar permissões no app
-1. Solicite comando/ação.
-2. Leia risco, alvo e reversão.
-3. `Sim` executa, `Não` cancela.
-4. Prefira `dry-run` antes de ação crítica.
+---
 
-## Segurança (importante)
-- O app não pede senha na UI.
-- Nunca usa `sudo -S`.
-- Não há execução root arbitrária no helper.
-- Ações fora da allowlist são bloqueadas.
-- Não aprove ação crítica sem entender impacto.
+## Português
 
-## Rollback e auditoria
-- Backups: `~/.codex/codex-ui/backups/`
-- Log do app: `~/.codex/codex-ui/logs/privileged-actions.log`
-- Log do helper: `/var/log/codex-privileged-helper.log` (fallback `/tmp/codex-privileged-helper.log`)
+### O que é?
 
-## Documentação
-- [GUIA_DE_USO.md](docs/GUIA_DE_USO.md)
-- [QUICKSTART.md](docs/QUICKSTART.md)
-- [PERMISSIONS.md](docs/PERMISSIONS.md)
-- [PRIVILEGED_HELPER_PLAN.md](docs/PRIVILEGED_HELPER_PLAN.md)
-- [ARCHITECTURE.md](docs/ARCHITECTURE.md)
-- [ENTREGA_FINAL_MODELO.md](docs/ENTREGA_FINAL_MODELO.md)
+Codex Command Center é um aplicativo desktop feito para controlar fluxos de programação com IA de forma limpa, organizada e premium.
+
+A ideia não é ser um painel técnico cheio de logs e informações soltas. O objetivo é ter uma interface simples, bonita e direta, com tudo relacionado a modelos, API, login e providers concentrado em um fluxo único.
+
+### Objetivos principais
+
+- Manter a interface minimalista e sem poluição.
+- Unificar modelos locais e modelos em nuvem.
+- Gerenciar API keys, contas e profiles com segurança.
+- Organizar sessões e conversas por projeto.
+- Permitir fluxos com terminal de forma controlada.
+- Manter visual escuro premium inspirado em Qwen, End4 e Hyprland.
+
+### Funcionalidades
+
+- Interface minimalista estilo Qwen
+- Aplicativo desktop com Tauri v2
+- Frontend em React + TypeScript
+- Backend em Rust
+- Suporte a modelos locais
+- Suporte a provedores em nuvem
+- Gerenciamento de profiles/contas por provider
+- Fluxo para salvar, testar e remover API key
+- Histórico de sessões
+- Exportação de sessão em Markdown, JSON ou TXT
+- Suporte a terminal
+- Modelo de permissões para comandos sensíveis
+- Design system escuro premium
+
+### Direção atual da UX
+
+O app está sendo refinado para ficar com:
+
+- sidebar fina;
+- seletor de modelo no topo;
+- input central em formato pill;
+- nenhuma informação técnica na tela inicial;
+- configurações avançadas em modais/popups;
+- erros de provider em cards curtos e acionáveis;
+- nada de JSON cru, stack trace ou metadata inútil no chat normal.
+
+### Rodar em desenvolvimento
+
+```bash
+npm install
+npm run tauri dev
+```
+
+### Build
+
+```bash
+npm run tauri build
+```
+
+### Caminho local recomendado
+
+```bash
+~/Lucas-Workspace/Projects/Codex-Codex
+```
+
+---
+
+## Project structure
+
+```text
+src/          React frontend
+src-tauri/    Tauri / Rust backend
+docs/         Documentation and handoff notes
+tests/        Frontend tests
+.github/      GitHub metadata
+```
+
+---
+
+## Status
+
+Active development. The current focus is UI polish, provider reliability, local/cloud model flows, session UX and a cleaner GitHub presentation.
