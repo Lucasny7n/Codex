@@ -3,10 +3,10 @@
 
   --bg-app: #000000;
   --bg-surface: #03060d;
-  --bg-panel: #07101a;
-  --bg-panel-soft: #0b1725;
-  --bg-elevated: #0f1d2e;
-  --bg-input: #08111d;
+  --bg-panel: #050a10;
+  --bg-panel-soft: #080f17;
+  --bg-elevated: #0b1420;
+  --bg-input: #070d14;
 
   --end4-background: #101419;
   --accent: #9dcaff;
@@ -45,8 +45,8 @@
   --font-sans: 'Space Grotesk', 'Sora', system-ui, sans-serif;
   --font-mono: 'JetBrains Mono', 'SFMono-Regular', Consolas, monospace;
 
-  --shadow-panel: 0 20px 60px rgba(0, 0, 0, 0.5);
-  --shadow-accent: 0 0 0 1px rgba(77, 165, 243, 0.14), 0 12px 30px rgba(36, 116, 190, 0.22);
+  --shadow-panel: 0 18px 50px rgba(0, 0, 0, 0.34);
+  --shadow-accent: 0 0 0 1px rgba(77, 165, 243, 0.18);
 
   --topbar-height: 74px;
 }

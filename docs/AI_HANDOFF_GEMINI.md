@@ -17,6 +17,14 @@ Ignore `/home/lucas/Codex`. Não copie arquivos da base antiga.
 - Modelos 32B/34B ficam como não recomendados para Ryzen 5 5500, RX 7600 e 16 GB RAM.
 - MemoryPanel ganhou categorias colapsáveis, scroll interno, copiar contexto e exportar snapshot.
 - Health Check exibe base, providers, profiles, Ollama, storage, sessões e estado de credenciais sem revelar segredo.
+- V9 adicionou multi-profile real no backend: `CredentialStore` persiste vários profiles por provider, default isolado e IDs únicos.
+- Bootstrap e frontend agora recebem `providerProfiles`; seletor e Settings mostram a conta/profile ativa.
+- Cloud só seleciona se provider estiver `ready` e profile aplicável também estiver pronto.
+- Codex CLI foi registrado como provider, mas fica `requires_cli_auth`/`unavailable` e não executa sem adapter validado.
+- Settings ganhou `Terminal & Permissões`, política sudo/pkexec, stdout/stderr e diagnóstico copiável sem secrets.
+- Home sem sessão foi limpa/premium; quick actions só criam sessão quando acionadas.
+- Fallback para `/home/lucas/Codex` foi removido do default de workspace.
+- MemoryPanel agora reporta erro de clipboard; Settings no Inspector usa navegação compacta para evitar cards esmagados.
 
 ## Arquivos Alterados Principais
 
@@ -31,6 +39,8 @@ Ignore `/home/lucas/Codex`. Não copie arquivos da base antiga.
 - `src/components/panels/ModelSelector.tsx`
 - `src/components/panels/MemoryPanel.tsx`
 - `src/components/panels/ChatPanel.tsx`
+- `src-tauri/src/services/credential_store.rs`
+- `src-tauri/src/services/provider_adapters.rs`
 - `src-tauri/src/services/session_manager.rs`
 - `src-tauri/src/commands/mod.rs`
 - `src-tauri/src/models.rs`
@@ -71,8 +81,10 @@ Verificar:
 ## Pendências Reais
 
 - Keyring ainda não está integrado; `credentials.json` é fallback file-backed, mascarado na UI.
-- Multi-conta real por provider ainda precisa de `CredentialProfileStore` ou keyring com profile id.
+- Multi-conta real por provider já existe no store local, mas ainda precisa migração futura para keyring por profile id.
 - OAuth/login externo não foi automatizado; UI direciona para ação/status correto.
+- Codex CLI aparece como provider, mas o adapter operacional segue bloqueado até validação real de auth/runtime.
+- Terminal real existe via CommandInputPanel, request_execution, CommandExecutor e PermissionManager; loop autônomo provider -> tool call -> terminal ainda precisa desenho/implementação.
 - Ollama/local depende de runtime, serviço/API, rede para pull e modelo instalado.
 - Nenhum provider deve gerar resposta fake em falta de key/login/runtime.
 
@@ -80,7 +92,7 @@ Verificar:
 
 UI:
 ```text
-Revise Settings, MemoryPanel, SessionsPanel e ModelSelector em /home/lucas/Codex-Codex. Foque em scroll, overflow, texto cortado, hierarquia visual e densidade. Não proponha branding externo.
+Revise home, TopBar, Settings, MemoryPanel, SessionsPanel e ModelSelector em /home/lucas/Codex-Codex. Foque em visual premium limpo, scroll, overflow, texto cortado, hierarquia e densidade. Não proponha branding externo.
 ```
 
 Sessões:
@@ -90,12 +102,22 @@ Revise o fluxo de sessões. Confirme que não há sessão persistida no boot, qu
 
 Providers:
 ```text
-Revise providerStatus, Settings e ProviderAdapterRegistry. Confirme que nenhum provider sem API key/login/CLI auth aparece como pronto ou selecionável.
+Revise ProviderAdapterRegistry, CredentialStore, Settings e ModelSelector. Confirme que nenhum provider/profile sem API key/login/CLI auth aparece como pronto ou selecionável.
+```
+
+Profiles:
+```text
+Revise o store de provider profiles. Confirme que múltiplas contas por provider não sobrescrevem credenciais, que default é por provider e que nenhum segredo completo aparece em UI/log/teste/export.
 ```
 
 Local/Ollama:
 ```text
 Revise localRuntime, ModelSelector e modelRegistry. Confirme compatibilidade para Ryzen 5 5500, RX 7600 e 16 GB RAM; 32B+ não pode aparecer como escolha tranquila.
+```
+
+Terminal/sudo:
+```text
+Revise request_execution, CommandExecutor, PermissionManager e Settings > Terminal & Permissões. Confirme stdout/stderr real, aprovação para risco, bloqueio de sudo interativo e erro acionável.
 ```
 
 Segurança:

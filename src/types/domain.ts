@@ -185,10 +185,12 @@ export interface ProviderAccountProfile {
   status: ProviderAccountStatus;
   maskedCredential?: string;
   source?: string;
+  lastTestedAt?: string;
   lastValidatedAt?: string;
   defaultModelId?: string;
   isDefault: boolean;
   message: string;
+  limitsHint?: string;
 }
 
 export interface SystemTheme {
@@ -244,6 +246,7 @@ export interface BootstrapPayload {
   sessions: AgentSession[];
   pendingPermissions: PermissionRequest[];
   providers: ProviderDescriptor[];
+  providerProfiles: ProviderAccountProfile[];
   agentProfiles: AgentProfile[];
   memory: MemorySnapshot;
   theme: SystemTheme;

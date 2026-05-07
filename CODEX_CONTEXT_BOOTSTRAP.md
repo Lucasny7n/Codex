@@ -41,13 +41,32 @@ Rodada atual — UX real, contas, sessões e modelos:
 - MemoryPanel usa categorias colapsáveis, scroll interno e ações de copiar/exportar snapshot
 - layout removeu brilho/orbs e reforçou scroll/overflow em Settings, Memória, Sessions e modal de info
 
+Rodada V9 — visão final / multi-profile / terminal / home premium:
+- checkpoint antes da rodada: `2839a9d` com mensagem `checkpoint: pre-v9-vision-final`
+- preflight confirmou base `/home/lucas/Codex-Codex`, branch `codex-cloud-end4-ui-v2`, typecheck/test/cargo check estáveis antes das mudanças
+- fallback automático para `/home/lucas/Codex` foi removido de `default_workspace_root`; se `/home/lucas/Codex-Codex` não existir, o fallback é o home, nunca a base antiga
+- `CredentialStore` agora tem profiles reais por provider em `credentials.json`: `profiles`, `defaultProfiles`, IDs únicos, credenciais isoladas, default por provider e compatibilidade com legado
+- comandos Tauri adicionados para listar, salvar, remover, renomear e tornar default um provider profile
+- bootstrap agora entrega `providerProfiles` para o frontend; App/Settings/ModelSelector consomem profile real em vez de só derivar visualmente
+- provider cloud só pode ser selecionado se o provider estiver `ready` e houver profile pronto quando profiles existirem
+- Codex CLI foi registrado como provider visível, mas fica `requires_cli_auth`/`unavailable` e nunca gera resposta fake sem adapter validado
+- Settings ganhou aba `Terminal & Permissões`, diagnóstico copiável sem secrets, política explícita de sudo/pkexec, stdout/stderr e auto-aprovação de leitura segura
+- home sem sessão foi redesenhada para estado premium limpo; quick actions criam sessão somente se acionadas
+- Settings dentro do Inspector usa navegação compacta horizontal para não esmagar cards
+- MemoryPanel mantém accordion/scroll e agora falha de clipboard vira mensagem explícita
+- design system ficou mais silencioso: menos gradiente, menos brilho, largura central maior, sidebar/inspector mais discretos, letter-spacing zerado
+- testes adicionados: multi-profile real sem misturar secrets, Codex CLI sem fake, seletor mostrando profile ativo, Settings com Terminal & Permissões
+
 Arquivos centrais da rodada:
 - `src/App.tsx`
 - `src/components/panels/SessionsPanel.tsx`
 - `src/components/panels/SettingsPanel.tsx`
 - `src/components/panels/ModelSelector.tsx`
+- `src/components/panels/ChatPanel.tsx`
 - `src/components/panels/MemoryPanel.tsx`
 - `src-tauri/src/services/session_manager.rs`
+- `src-tauri/src/services/credential_store.rs`
+- `src-tauri/src/services/provider_adapters.rs`
 - `src-tauri/src/commands/mod.rs`
 - `src/lib/modelRegistry.ts`
 - `src/lib/providerStatus.ts`
@@ -58,6 +77,7 @@ Pendências reais:
 - keyring/plataforma segura ainda não substituiu o fallback `credentials.json`
 - múltiplas credenciais reais por provider ainda precisam de store dedicada; UI já prepara profile/default sem misturar segredo
 - login/OAuth externos não são executados automaticamente; status direciona para ação correta
+- terminal real existe via painel Terminal/Ações/PermissionManager, mas loop autônomo provider -> tool call -> terminal ainda é pendência arquitetural
 - modelos locais dependem de Ollama instalado, API `127.0.0.1:11434`, disco, rede e modelo presente em `ollama list`
 
 Hardware/contexto do sistema:

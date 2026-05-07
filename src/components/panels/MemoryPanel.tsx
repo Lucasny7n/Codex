@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import type { MemorySnapshot } from '../../types/domain';
 
 interface MemoryPanelProps {
@@ -45,6 +46,8 @@ function memoryAsText(memory: MemorySnapshot): string {
 }
 
 export function MemoryPanel({ memory }: MemoryPanelProps): JSX.Element {
+  const [copyError, setCopyError] = useState<string>();
+
   if (!memory) {
     return (
       <section className="panel memory-panel">
@@ -59,6 +62,17 @@ export function MemoryPanel({ memory }: MemoryPanelProps): JSX.Element {
     );
   }
 
+  async function copyContext(): Promise<void> {
+    if (!memory) return;
+    setCopyError(undefined);
+    try {
+      await navigator.clipboard.writeText(memoryAsText(memory));
+    } catch (cause) {
+      const detail = cause instanceof Error ? cause.message : 'clipboard indisponível';
+      setCopyError(`Não foi possível copiar contexto. Detalhe: ${detail}`);
+    }
+  }
+
   return (
     <section className="panel memory-panel">
       <header className="panel-header">
@@ -70,7 +84,7 @@ export function MemoryPanel({ memory }: MemoryPanelProps): JSX.Element {
           <button
             type="button"
             className="btn-modern"
-            onClick={() => void navigator.clipboard.writeText(memoryAsText(memory))}
+            onClick={() => void copyContext()}
           >
             Copiar contexto
           </button>
@@ -90,6 +104,7 @@ export function MemoryPanel({ memory }: MemoryPanelProps): JSX.Element {
             Exportar snapshot
           </button>
         </div>
+        {copyError ? <div className="input-error-tip" role="alert">{copyError}</div> : null}
         <ListSection title="Preferências" items={memory.userPreferences} />
         <ListSection title="Projetos" items={memory.activeProjects} />
         <ListSection title="Correções Importantes" items={memory.importantFixHistory} />

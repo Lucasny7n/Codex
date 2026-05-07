@@ -17,6 +17,7 @@ vi.mock('../src/lib/api', () => ({
   getLocalRuntimeState: vi.fn(),
   installLocalModel: vi.fn(),
   installLocalRuntime: vi.fn(),
+  listProviderProfiles: vi.fn(),
   listProviderCredentials: vi.fn(),
   listPrivilegedActions: vi.fn(),
   onCommandLog: vi.fn(),
@@ -32,10 +33,14 @@ vi.mock('../src/lib/api', () => ({
   openProjectInVscode: vi.fn(),
   removeLocalModel: vi.fn(),
   removeProviderCredential: vi.fn(),
+  removeProviderProfile: vi.fn(),
   requestPrivilegedAction: vi.fn(),
   requestExecution: vi.fn(),
   renameSession: vi.fn(),
+  renameProviderProfile: vi.fn(),
+  saveProviderProfileCredential: vi.fn(),
   saveProviderCredential: vi.fn(),
+  setDefaultProviderProfile: vi.fn(),
   sendOrderToAgent: vi.fn(),
   startLocalRuntime: vi.fn(),
   testProviderConnection: vi.fn(),
@@ -102,6 +107,7 @@ function payload(sessions: AgentSession[]): BootstrapPayload {
         ]
       }
     ],
+    providerProfiles: [],
     agentProfiles: [
       {
         id: 'equilibrado',
@@ -135,6 +141,7 @@ describe('App layout visibility', () => {
       settings: undefined,
       workspaceMeta: undefined,
       providers: [],
+      providerProfiles: [],
       profiles: [],
       memory: undefined,
       theme: undefined,
@@ -154,6 +161,7 @@ describe('App layout visibility', () => {
     mockedApi.getBasePrompt.mockResolvedValue('prompt base');
     mockedApi.listPrivilegedActions.mockResolvedValue([]);
     mockedApi.listProviderCredentials.mockResolvedValue([]);
+    mockedApi.listProviderProfiles.mockResolvedValue([]);
     mockedApi.getLocalRuntimeState.mockResolvedValue({
       state: 'ready',
       message: 'Runtime pronto',

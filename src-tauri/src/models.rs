@@ -252,6 +252,51 @@ pub struct ProviderCredentialStatus {
     pub checked_at: String,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ProviderAuthType {
+    ApiKey,
+    Oauth,
+    CliAuth,
+    Local,
+    Login,
+    None,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ProviderAccountStatus {
+    Ready,
+    RequiresApiKey,
+    RequiresLogin,
+    RequiresOauth,
+    RequiresCliAuth,
+    Testing,
+    Misconfigured,
+    QuotaExceeded,
+    RateLimited,
+    Experimental,
+    Unavailable,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProviderAccountProfile {
+    pub id: String,
+    pub provider_id: String,
+    pub provider_label: String,
+    pub name: String,
+    pub auth_type: ProviderAuthType,
+    pub status: ProviderAccountStatus,
+    pub masked_credential: Option<String>,
+    pub source: Option<String>,
+    pub last_tested_at: Option<String>,
+    pub default_model_id: Option<String>,
+    pub is_default: bool,
+    pub message: String,
+    pub limits_hint: Option<String>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SystemTheme {
@@ -342,11 +387,9 @@ fn default_local_models_root() -> String {
 }
 
 fn default_workspace_root(home: &str) -> String {
-    for candidate in ["Codex-Codex", "Codex"] {
-        let path = format!("{home}/{candidate}");
-        if Path::new(&path).exists() {
-            return path;
-        }
+    let path = format!("{home}/Codex-Codex");
+    if Path::new(&path).exists() {
+        return path;
     }
     home.to_owned()
 }
@@ -369,6 +412,7 @@ pub struct BootstrapPayload {
     pub sessions: Vec<AgentSession>,
     pub pending_permissions: Vec<PermissionRequest>,
     pub providers: Vec<ProviderDescriptor>,
+    pub provider_profiles: Vec<ProviderAccountProfile>,
     pub agent_profiles: Vec<AgentProfile>,
     pub memory: MemorySnapshot,
     pub theme: SystemTheme,

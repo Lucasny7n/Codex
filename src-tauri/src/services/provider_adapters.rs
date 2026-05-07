@@ -656,6 +656,84 @@ impl ProviderAdapter for OpenCodeZenAdapter {
 }
 
 #[derive(Debug)]
+pub struct CodexCliAdapter;
+
+impl CodexCliAdapter {
+    const ID: &'static str = "codex-cli";
+    const MODEL_ID: &'static str = "codex-cli-default";
+
+    fn command_path(&self) -> Option<PathBuf> {
+        find_command_in_path("codex")
+    }
+
+    fn version_for(&self, path: &Path) -> Option<String> {
+        StdCommand::new(path)
+            .arg("--version")
+            .env("NO_COLOR", "1")
+            .output()
+            .ok()
+            .filter(|output| output.status.success())
+            .map(|output| String::from_utf8_lossy(&output.stdout).trim().to_owned())
+            .filter(|version| !version.is_empty())
+    }
+}
+
+impl ProviderAdapter for CodexCliAdapter {
+    fn descriptor(&self) -> ProviderDescriptor {
+        let status = self.status();
+        ProviderDescriptor {
+            id: Self::ID.to_owned(),
+            label: "Codex CLI".to_owned(),
+            configurable: true,
+            enabled: false,
+            status,
+            models: vec![ModelDescriptor {
+                id: Self::MODEL_ID.to_owned(),
+                label: "Codex CLI padrão".to_owned(),
+                provider_id: Self::ID.to_owned(),
+                context_window: None,
+                supports_tools: true,
+            }],
+        }
+    }
+
+    fn status(&self) -> ProviderRuntimeStatus {
+        let Some(path) = self.command_path() else {
+            return provider_status(
+                ProviderStatusState::Unavailable,
+                "Codex CLI não encontrado no PATH. Instale/valide o CLI antes de usar como provider.",
+                Some("which codex".to_owned()),
+                None,
+            );
+        };
+
+        let version = self.version_for(&path);
+        provider_status(
+            ProviderStatusState::RequiresCliAuth,
+            "Codex CLI detectado, mas este app ainda exige validação explícita de auth/adapter antes de executar. Não será marcado como pronto sem teste real.",
+            Some("codex --version".to_owned()),
+            version,
+        )
+    }
+
+    fn test_connection<'a>(&'a self) -> ProviderFuture<'a, ProviderRuntimeStatus> {
+        Box::pin(async move { Ok(self.status()) })
+    }
+
+    fn generate_response<'a>(
+        &'a self,
+        _request: ProviderGenerateRequest,
+    ) -> ProviderFuture<'a, ProviderRunResult> {
+        Box::pin(async move {
+            Err(AppError::Message(
+                "Codex CLI ainda não tem adapter operacional validado neste build. Use o terminal real do app ou valide a integração antes de selecionar."
+                    .to_owned(),
+            ))
+        })
+    }
+}
+
+#[derive(Debug)]
 pub struct GeminiCliAdapter;
 
 impl GeminiCliAdapter {
@@ -1235,6 +1313,7 @@ impl ProviderAdapterRegistry {
         ];
 
         let mut adapters: Vec<Arc<dyn ProviderAdapter>> = vec![
+            Arc::new(CodexCliAdapter),
             Arc::new(GeminiCliAdapter),
             Arc::new(GeminiApiAdapter {
                 credential_store: credential_store.clone(),
@@ -1516,6 +1595,23 @@ mod tests {
             })
             .await;
 
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn codex_cli_does_not_generate_fake_response_without_adapter_validation() {
+        let adapter = CodexCliAdapter;
+        let descriptor = adapter.descriptor();
+        let result = adapter
+            .generate_response(ProviderGenerateRequest {
+                provider_id: "codex-cli".to_owned(),
+                model_id: "codex-cli-default".to_owned(),
+                prompt: "teste".to_owned(),
+                workspace_root: ".".to_owned(),
+            })
+            .await;
+
+        assert!(!descriptor.enabled);
         assert!(result.is_err());
     }
 

@@ -3,6 +3,7 @@ import type {
   ExecutionMode,
   LocalModelInstallProgress,
   LocalRuntimeSnapshot,
+  ProviderAccountProfile,
   ProviderCredentialStatus,
   ProviderDescriptor,
 } from '../../types/domain';
@@ -30,6 +31,7 @@ interface ModelSelectorProps {
   activeModelId?: string;
   providers: ProviderDescriptor[];
   credentials: ProviderCredentialStatus[];
+  providerProfiles: ProviderAccountProfile[];
   localRuntime?: LocalRuntimeSnapshot;
   installationProgress: Record<string, LocalModelInstallProgress>;
   busyModelId?: string;
@@ -73,9 +75,20 @@ function tagsForRow(model: ModelProfile): string[] {
   return tags.slice(0, 3);
 }
 
-function profileLabel(providerId: string, credentials: ProviderCredentialStatus[]): string {
+function profileStatusLabel(status: ProviderAccountProfile['status']): string {
+  return status.replace(/_/g, ' ');
+}
+
+function profileLabel(
+  providerId: string,
+  credentials: ProviderCredentialStatus[],
+  providerProfiles: ProviderAccountProfile[],
+): string {
+  const providerAccounts = providerProfiles.filter((profile) => profile.providerId === providerId);
+  const defaultProfile = providerAccounts.find((profile) => profile.isDefault) ?? providerAccounts[0];
   const credential = credentials.find((item) => item.providerId === providerId);
   if (providerId === 'local-ollama') return 'Local';
+  if (defaultProfile) return `${defaultProfile.name} (${profileStatusLabel(defaultProfile.status)})`;
   if (credential?.hasCredential) return `Padrão (${credential.source ?? 'local'})`;
   return 'Sem profile pronto';
 }
@@ -86,6 +99,7 @@ export function ModelSelector({
   activeModelId,
   providers,
   credentials,
+  providerProfiles,
   localRuntime,
   installationProgress,
   busyModelId,
@@ -222,7 +236,7 @@ export function ModelSelector({
                 <div className="model-row-main">
                   <div>
                     <h3>{model.displayName}</h3>
-                    <p>{model.providerLabel} · {profileLabel(model.providerId, credentials)}</p>
+                    <p>{model.providerLabel} · {profileLabel(model.providerId, credentials, providerProfiles)}</p>
                   </div>
                   <span className={`model-status status-${statusClass(status)} tone-${statusTone(status)}`}>
                     {status.replace('_', ' ')}

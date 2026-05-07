@@ -9,7 +9,7 @@ use crate::models::{
     AppHealthOverallStatus, AppHealthProvider, AppSettings, BootstrapPayload, CommandLogChunk,
     ExecutionRequestInput, ExecutionResponse, LocalModelInstallProgress, LocalRuntimeSnapshot,
     LogStream, PendingIntentKind, PermissionDecision, PermissionOutcome, PermissionOutcomeStatus,
-    PermissionRequest, PrivilegedActionRequestInput, PrivilegedActionSpec,
+    PermissionRequest, PrivilegedActionRequestInput, PrivilegedActionSpec, ProviderAccountProfile,
     ProviderCredentialStatus, ProviderGenerateRequest, ProviderRuntimeStatus, ProviderStatusState,
     SessionExportFormat, SessionExportResult, SessionStatus, StatusKind, TaskStatus, WorkspaceMeta,
 };
@@ -40,12 +40,15 @@ pub fn bootstrap_state(
     }
 
     let memory = state.memory_manager.load_snapshot().map_err(map_err)?;
+    let providers = state.provider_registry.providers();
+    let provider_profiles = state.credential_store.account_profiles(&providers);
     let payload = BootstrapPayload {
         workspace_meta: load_workspace_meta(&settings.workspace_root),
         settings,
         sessions: state.session_manager.list_sessions(),
         pending_permissions: state.permission_manager.list_pending(),
-        providers: state.provider_registry.providers(),
+        providers,
+        provider_profiles,
         agent_profiles: state.provider_registry.agent_profiles(),
         memory,
         theme: state.load_system_theme(),
@@ -180,6 +183,14 @@ pub fn list_provider_credentials(
 }
 
 #[tauri::command]
+pub fn list_provider_profiles(
+    state: State<AppState>,
+) -> Result<Vec<ProviderAccountProfile>, ErrorPayload> {
+    let providers = state.provider_registry.providers();
+    Ok(state.credential_store.account_profiles(&providers))
+}
+
+#[tauri::command]
 pub fn save_provider_credential(
     state: State<AppState>,
     provider_id: String,
@@ -188,6 +199,62 @@ pub fn save_provider_credential(
     state
         .credential_store
         .save(&provider_id, &key)
+        .map_err(map_err)
+}
+
+#[tauri::command]
+pub fn save_provider_profile_credential(
+    state: State<AppState>,
+    provider_id: String,
+    profile_id: Option<String>,
+    name: String,
+    key: String,
+    make_default: bool,
+) -> Result<ProviderAccountProfile, ErrorPayload> {
+    state
+        .credential_store
+        .save_profile(
+            &provider_id,
+            profile_id.as_deref(),
+            &name,
+            &key,
+            make_default,
+        )
+        .map_err(map_err)
+}
+
+#[tauri::command]
+pub fn remove_provider_profile(
+    state: State<AppState>,
+    profile_id: String,
+) -> Result<(), ErrorPayload> {
+    state
+        .credential_store
+        .remove_profile(&profile_id)
+        .map_err(map_err)
+}
+
+#[tauri::command]
+pub fn set_default_provider_profile(
+    state: State<AppState>,
+    provider_id: String,
+    profile_id: String,
+) -> Result<(), ErrorPayload> {
+    state
+        .credential_store
+        .set_default_profile(&provider_id, &profile_id)
+        .map_err(map_err)
+}
+
+#[tauri::command]
+pub fn rename_provider_profile(
+    state: State<AppState>,
+    profile_id: String,
+    name: String,
+) -> Result<(), ErrorPayload> {
+    state
+        .credential_store
+        .rename_profile(&profile_id, &name)
         .map_err(map_err)
 }
 
@@ -215,12 +282,18 @@ pub async fn get_app_health_check(
         .provider_registry
         .providers()
         .into_iter()
-        .map(|provider| AppHealthProvider {
-            has_key: state.credential_store.exists(&provider.id),
-            status: provider.status,
-            id: provider.id,
-            profile_count: Some(1),
-            selected_profile_id: settings.selected_provider_profile_id.clone(),
+        .map(|provider| {
+            let profile_count = state
+                .credential_store
+                .account_profiles(&[provider.clone()])
+                .len();
+            AppHealthProvider {
+                has_key: state.credential_store.exists(&provider.id),
+                status: provider.status,
+                id: provider.id,
+                profile_count: Some(profile_count),
+                selected_profile_id: settings.selected_provider_profile_id.clone(),
+            }
         })
         .collect::<Vec<_>>();
     let ollama = state.local_runtime_service.snapshot(&settings).await;

@@ -17,6 +17,7 @@ import { errorForStatus, translateError } from '../../lib/errorTranslator';
 interface SettingsPanelProps {
   settings?: AppSettings;
   providers: ProviderDescriptor[];
+  providerProfiles: ProviderAccountProfile[];
   profiles: AgentProfile[];
   credentials: ProviderCredentialStatus[];
   sessions: AgentSession[];
@@ -25,8 +26,17 @@ interface SettingsPanelProps {
   healthLoading: boolean;
   onChange: (next: AppSettings) => Promise<void>;
   onTestProvider: (providerId: string) => Promise<ProviderRuntimeStatus>;
-  onSaveProviderCredential: (providerId: string, key: string) => Promise<ProviderCredentialStatus>;
+  onSaveProviderProfileCredential: (
+    providerId: string,
+    profileId: string | undefined,
+    name: string,
+    key: string,
+    makeDefault: boolean,
+  ) => Promise<ProviderAccountProfile>;
   onRemoveProviderCredential: (providerId: string) => Promise<ProviderCredentialStatus>;
+  onRemoveProviderProfile: (profileId: string) => Promise<void>;
+  onSetDefaultProviderProfile: (providerId: string, profileId: string) => Promise<void>;
+  onRenameProviderProfile: (profileId: string, name: string) => Promise<void>;
   onInstallRuntime: () => Promise<void>;
   onStartRuntime: () => Promise<void>;
   onRunHealthCheck: () => Promise<AppHealthCheck>;
@@ -52,7 +62,7 @@ const SETTINGS_TABS: Array<{ id: SettingsTab; label: string }> = [
   { id: 'local', label: 'Modelos locais' },
   { id: 'sessions', label: 'Sessões' },
   { id: 'execution', label: 'Execução' },
-  { id: 'permissions', label: 'Permissões' },
+  { id: 'permissions', label: 'Terminal & Permissões' },
   { id: 'appearance', label: 'Aparência' },
   { id: 'diagnostics', label: 'Diagnóstico' },
   { id: 'advanced', label: 'Avançado' },
@@ -134,6 +144,7 @@ function actionLabelForStatus(state: ProviderStatusState): string {
 export function SettingsPanel({
   settings,
   providers,
+  providerProfiles,
   profiles,
   credentials,
   sessions,
@@ -142,8 +153,11 @@ export function SettingsPanel({
   healthLoading,
   onChange,
   onTestProvider,
-  onSaveProviderCredential,
+  onSaveProviderProfileCredential,
   onRemoveProviderCredential,
+  onRemoveProviderProfile,
+  onSetDefaultProviderProfile,
+  onRenameProviderProfile,
   onInstallRuntime,
   onStartRuntime,
   onRunHealthCheck,
@@ -154,6 +168,7 @@ export function SettingsPanel({
   const [savingProviderId, setSavingProviderId] = useState<string>();
   const [visibleKeys, setVisibleKeys] = useState<Record<string, boolean>>({});
   const [credentialInputs, setCredentialInputs] = useState<Record<string, string>>({});
+  const [profileNameInputs, setProfileNameInputs] = useState<Record<string, string>>({});
   const [inlineError, setInlineError] = useState<string>();
 
   const selectedProvider = useMemo(() => {
@@ -161,6 +176,7 @@ export function SettingsPanel({
   }, [providers, settings?.selectedProviderId]);
 
   const accountProfiles = useMemo<ProviderAccountProfile[]>(() => {
+    if (providerProfiles.length > 0) return providerProfiles;
     return providers.map((provider) => {
       const credential = credentialFor(provider.id, credentials);
       const id = `${provider.id}:default`;
@@ -173,13 +189,14 @@ export function SettingsPanel({
         status: accountStatusFromProvider(provider.status.state),
         maskedCredential: credential?.maskedKey,
         source: credential?.source,
+        lastTestedAt: provider.status.checkedAt,
         lastValidatedAt: provider.status.checkedAt,
         defaultModelId: provider.models[0]?.id,
         isDefault: settings?.selectedProviderProfileId === id || (!settings?.selectedProviderProfileId && provider.id === settings?.selectedProviderId),
         message: credential?.hasCredential ? provider.status.message : errorForStatus(provider.status.state, provider.status.message).message,
       };
     });
-  }, [credentials, providers, settings?.selectedProviderId, settings?.selectedProviderProfileId]);
+  }, [credentials, providerProfiles, providers, settings?.selectedProviderId, settings?.selectedProviderProfileId]);
 
   if (!settings) {
     return (
@@ -194,6 +211,8 @@ export function SettingsPanel({
       </section>
     );
   }
+
+  const resolvedSettings = settings;
 
   async function testProvider(providerId: string): Promise<void> {
     setInlineError(undefined);
@@ -210,16 +229,67 @@ export function SettingsPanel({
     }
   }
 
-  async function saveCredential(providerId: string): Promise<void> {
+  async function saveProfileCredential(providerId: string): Promise<void> {
     setInlineError(undefined);
     setSavingProviderId(providerId);
+    const input = credentialInputs[providerId] ?? '';
+    const name = profileNameInputs[providerId] ?? 'Conta';
     try {
-      await onSaveProviderCredential(providerId, credentialInputs[providerId] ?? '');
+      await onSaveProviderProfileCredential(providerId, undefined, name, input, true);
       setCredentialInputs((current) => ({ ...current, [providerId]: '' }));
+      setProfileNameInputs((current) => ({ ...current, [providerId]: '' }));
     } catch (cause) {
       setInlineError(translateError(cause instanceof Error ? cause.message : 'missing_api_key').message);
     } finally {
       setSavingProviderId(undefined);
+    }
+  }
+
+  async function copyDiagnostics(): Promise<void> {
+    const payload = {
+      baseDir: healthCheck?.baseDir ?? resolvedSettings.workspaceRoot,
+      expectedBaseDir: healthCheck?.expectedBaseDir,
+      correctBaseDir: healthCheck?.correctBaseDir,
+      providers: (healthCheck?.providers ?? []).map((provider) => ({
+        id: provider.id,
+        status: provider.status.state,
+        hasKey: provider.hasKey,
+        profileCount: provider.profileCount,
+        selectedProfileId: provider.selectedProfileId,
+      })),
+      profiles: accountProfiles.map((profile) => ({
+        id: profile.id,
+        providerId: profile.providerId,
+        name: profile.name,
+        authType: profile.authType,
+        status: profile.status,
+        source: profile.source,
+        hasCredential: Boolean(profile.maskedCredential),
+        isDefault: profile.isDefault,
+        defaultModelId: profile.defaultModelId,
+      })),
+      ollama: healthCheck?.ollama ?? localRuntime,
+      terminal: {
+        preferredShell: resolvedSettings.preferredShell,
+        autoApproveSafeRead: resolvedSettings.autoApproveSafeRead,
+        sudoPolicy: 'sudo -S bloqueado; confirmação explícita para privilegiados',
+        pkexecAvailable: healthCheck?.ollama.hasPkexec ?? localRuntime?.hasPkexec,
+        sudoAvailable: healthCheck?.ollama.hasSudo ?? localRuntime?.hasSudo,
+      },
+      sessions: {
+        count: healthCheck?.sessionsCount ?? sessions.length,
+        storageRoot: healthCheck?.storageRoot ?? `${resolvedSettings.codexRoot}/sessions`,
+      },
+      recentErrors: healthCheck?.recentErrors ?? [],
+      actions: healthCheck?.actions ?? [],
+    };
+
+    try {
+      await navigator.clipboard.writeText(JSON.stringify(payload, null, 2));
+      setInlineError(undefined);
+    } catch (cause) {
+      const detail = cause instanceof Error ? cause.message : 'clipboard indisponível';
+      setInlineError(`Não foi possível copiar diagnóstico. Detalhe: ${detail}`);
     }
   }
 
@@ -336,6 +406,14 @@ export function SettingsPanel({
                     {provider.configurable && provider.id !== 'local-ollama' ? (
                       <div className="credential-row">
                         <label>
+                          Nome da conta
+                          <input
+                            value={profileNameInputs[provider.id] ?? ''}
+                            placeholder="Conta Principal"
+                            onChange={(event) => setProfileNameInputs((current) => ({ ...current, [provider.id]: event.target.value }))}
+                          />
+                        </label>
+                        <label>
                           Credencial
                           <input
                             type={visibleKeys[provider.id] ? 'text' : 'password'}
@@ -355,9 +433,9 @@ export function SettingsPanel({
                           type="button"
                           className="btn-modern btn-modern-primary"
                           disabled={savingProviderId === provider.id || input.trim().length === 0}
-                          onClick={() => void saveCredential(provider.id)}
+                          onClick={() => void saveProfileCredential(provider.id)}
                         >
-                          {savingProviderId === provider.id ? 'Salvando' : 'Adicionar API key'}
+                          {savingProviderId === provider.id ? 'Salvando' : 'Adicionar conta'}
                         </button>
                         <button
                           type="button"
@@ -381,14 +459,17 @@ export function SettingsPanel({
 
           {activeTab === 'accounts' ? (
             <div className="provider-settings-list">
-              {accountProfiles.map((profile) => (
+              {accountProfiles.map((profile) => {
+                const lastProfileTest = profile.lastTestedAt ?? profile.lastValidatedAt;
+                return (
                 <section key={profile.id} className={`settings-card provider-settings-card provider-status-${statusTone(profile.status)}`}>
                   <div className="row-between">
                     <div>
                       <strong>{profile.providerLabel} · {profile.name}</strong>
                       <span>{profile.status.replace('_', ' ')}</span>
                       <span>Tipo: {profile.authType.replace('_', ' ')}</span>
-                      <span>Última validação: {profile.lastValidatedAt ? new Date(profile.lastValidatedAt).toLocaleString('pt-BR') : 'nunca'}</span>
+                      <span>Última validação: {lastProfileTest ? new Date(lastProfileTest).toLocaleString('pt-BR') : 'nunca'}</span>
+                      <span>Modelo padrão: {profile.defaultModelId ?? 'não definido'}</span>
                     </div>
                     <div className="settings-actions-inline">
                       <button type="button" className="btn-modern" onClick={() => void testProvider(profile.providerId)}>
@@ -397,23 +478,25 @@ export function SettingsPanel({
                       <button
                         type="button"
                         className="btn-modern btn-modern-primary"
-                        onClick={() =>
-                          void onChange({
-                            ...settings,
-                            selectedProviderId: profile.providerId,
-                            selectedProviderProfileId: profile.id,
-                            selectedModelId: profile.defaultModelId ?? settings.selectedModelId,
-                            executionMode: profile.providerId === 'local-ollama' ? 'local' : 'cloud',
-                          })
-                        }
+                        onClick={() => void onSetDefaultProviderProfile(profile.providerId, profile.id)}
                       >
                         {profile.isDefault ? 'Padrão' : 'Tornar padrão'}
                       </button>
                       <button
                         type="button"
                         className="btn-modern"
-                        disabled={!profile.maskedCredential}
-                        onClick={() => void onRemoveProviderCredential(profile.providerId)}
+                        onClick={() => {
+                          const next = window.prompt('Nome do profile', profile.name);
+                          if (next) void onRenameProviderProfile(profile.id, next);
+                        }}
+                      >
+                        Editar nome
+                      </button>
+                      <button
+                        type="button"
+                        className="btn-modern"
+                        disabled={!profile.maskedCredential || profile.source === 'environment'}
+                        onClick={() => void onRemoveProviderProfile(profile.id)}
                       >
                         Remover
                       </button>
@@ -425,9 +508,10 @@ export function SettingsPanel({
                       ? `Credencial mascarada: ${profile.maskedCredential} (${profile.source ?? 'local'})`
                       : 'Nenhum segredo salvo para este profile.'}
                   </div>
-                  <span>Multi-conta real por provider está preparado na UI, mas o backend atual ainda mantém uma credencial ativa por provider até troca para keyring/profile store.</span>
+                  <span>Credencial isolada por profile no store local; keyring/plataforma segura ainda é pendência explícita.</span>
                 </section>
-              ))}
+                );
+              })}
             </div>
           ) : null}
 
@@ -518,10 +602,29 @@ export function SettingsPanel({
           {activeTab === 'permissions' ? (
             <div className="settings-grid">
               <section className="settings-card">
-                <strong>Política</strong>
+                <strong>Terminal real</strong>
+                <span>Shell: {settings.preferredShell}</span>
+                <span>stdout/stderr são capturados em `command-log` e exibidos no drawer.</span>
+                <span>Comando fora da política vira aprovação pendente, não execução silenciosa.</span>
+              </section>
+              <section className="settings-card">
+                <strong>Política de risco</strong>
                 <span>sudo -S bloqueado; pkexec/helper para ações privilegiadas.</span>
-                <span>Confirmação exigida para comandos destrutivos e escrita crítica.</span>
-                <span>Auto-aprovar leitura segura: {settings.autoApproveSafeRead ? 'sim' : 'não'}</span>
+                <span>Confirmação exigida para comandos destrutivos, escrita fora do workspace e alteração crítica.</span>
+                <label className="checkbox-row">
+                  <input
+                    type="checkbox"
+                    checked={settings.autoApproveSafeRead}
+                    onChange={(event) => void onChange({ ...settings, autoApproveSafeRead: event.target.checked })}
+                  />
+                  Auto-aprovar leitura segura
+                </label>
+              </section>
+              <section className="settings-card">
+                <strong>sudo / pkexec</strong>
+                <span>sudo disponível: {localRuntime?.hasSudo ? 'sim' : 'não detectado'}</span>
+                <span>pkexec disponível: {localRuntime?.hasPkexec ? 'sim' : 'não detectado'}</span>
+                <span>Negativa de permissão retorna erro acionável para a IA e para o usuário.</span>
               </section>
             </div>
           ) : null}
@@ -550,6 +653,9 @@ export function SettingsPanel({
                   >
                     {healthLoading ? 'Rodando' : 'Rodar health check'}
                   </button>
+                  <button type="button" className="btn-modern" onClick={() => void copyDiagnostics()}>
+                    Copiar diagnóstico
+                  </button>
                 </div>
                 <span>Status: {healthCheck?.overallStatus ?? 'não executado'}</span>
                 <span>Base: {healthCheck?.baseDir ?? settings.workspaceRoot}</span>
@@ -559,6 +665,7 @@ export function SettingsPanel({
                 <span>Sessões/storage: {healthCheck?.sessionsCount ?? sessions.length} · {healthCheck?.storageRoot ?? `${settings.codexRoot}/sessions`}</span>
                 <span>Credenciais: {healthCheck?.credentialsEncrypted ? 'keyring/criptografado' : 'arquivo local mascarado na UI; keyring pendente'}</span>
                 <span>Ollama: {healthCheck?.ollama.state ?? localRuntime?.state ?? 'pendente'} · API {healthCheck?.ollama.apiReachable ?? localRuntime?.apiReachable ? 'online' : 'offline'}</span>
+                <span>Terminal: {settings.preferredShell} · sudo {healthCheck?.ollama.hasSudo ?? localRuntime?.hasSudo ? 'detectado' : 'não detectado'} · pkexec {healthCheck?.ollama.hasPkexec ?? localRuntime?.hasPkexec ? 'detectado' : 'não detectado'}</span>
                 <details>
                   <summary>Providers</summary>
                   {(healthCheck?.providers ?? []).map((provider) => (

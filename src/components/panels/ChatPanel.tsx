@@ -4,7 +4,23 @@ import type { AgentSession, ChatRole, SessionStatus } from '../../types/domain';
 
 interface ChatPanelProps {
   session?: AgentSession;
+  onQuickAction?: (prompt: string) => Promise<void>;
 }
+
+const QUICK_ACTIONS = [
+  {
+    label: 'Auditar projeto',
+    prompt: 'Faça um diagnóstico curto do estado atual do projeto, priorizando P0/P1 e sem alterar arquivos.',
+  },
+  {
+    label: 'Validar build',
+    prompt: 'Rode a validação mínima do projeto, leia os erros completos e proponha correção em etapas pequenas.',
+  },
+  {
+    label: 'Revisar providers',
+    prompt: 'Revise providers, profiles, credenciais mascaradas e estados sem simular disponibilidade.',
+  },
+];
 
 function roleLabel(role: ChatRole): string {
   if (role === 'assistant') return 'Agente';
@@ -20,13 +36,32 @@ function statusTone(status: SessionStatus): 'neutral' | 'info' | 'warn' | 'dange
   return 'ok';
 }
 
-export function ChatPanel({ session }: ChatPanelProps): JSX.Element {
+export function ChatPanel({ session, onQuickAction }: ChatPanelProps): JSX.Element {
   if (!session) {
     return (
       <section className="panel-chat-empty">
-        <div className="empty-state">
-          <strong>Nova conversa</strong>
-          <span>A sessão será salva somente depois da primeira mensagem.</span>
+        <div className="home-hero">
+          <span className="home-kicker">Codex Command Center</span>
+          <h1>Engenharia assistida, com controle real.</h1>
+          <p>
+            Uma nova conversa só vira sessão depois da primeira mensagem. Providers, terminal e permissões
+            entram com estado explícito antes de qualquer execução.
+          </p>
+          <div className="home-quick-actions">
+            {QUICK_ACTIONS.map((action) => (
+              <button
+                key={action.label}
+                type="button"
+                className="home-quick-action"
+                disabled={!onQuickAction}
+                onClick={() => {
+                  if (onQuickAction) void onQuickAction(action.prompt);
+                }}
+              >
+                {action.label}
+              </button>
+            ))}
+          </div>
         </div>
       </section>
     );

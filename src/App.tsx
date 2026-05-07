@@ -12,6 +12,7 @@ import {
   installLocalModel,
   installLocalRuntime,
   listProviderCredentials,
+  listProviderProfiles,
   listPrivilegedActions,
   onCommandLog,
   onFileChanged,
@@ -26,10 +27,13 @@ import {
   openProjectInVscode,
   removeLocalModel,
   removeProviderCredential,
+  removeProviderProfile,
   requestExecution,
   requestPrivilegedAction,
   renameSession,
-  saveProviderCredential,
+  renameProviderProfile,
+  saveProviderProfileCredential,
+  setDefaultProviderProfile,
   sendOrderToAgent,
   startLocalRuntime,
   testProviderConnection,
@@ -56,6 +60,7 @@ import type {
   LocalRuntimeSnapshot,
   PrivilegedActionSpec,
   ProviderCredentialStatus,
+  ProviderAccountProfile,
   ProviderRuntimeStatus,
 } from './types/domain';
 import { useAppStore } from './stores/appStore';
@@ -165,6 +170,7 @@ export default function App(): JSX.Element {
   const [modelActionBusyId, setModelActionBusyId] = useState<string>();
   const [installationProgress, setInstallationProgress] = useState<Record<string, LocalModelInstallProgress>>({});
   const [providerCredentials, setProviderCredentials] = useState<ProviderCredentialStatus[]>([]);
+  const [providerAccountProfiles, setProviderAccountProfiles] = useState<ProviderAccountProfile[]>([]);
   const [healthCheck, setHealthCheck] = useState<AppHealthCheck>();
   const [healthLoading, setHealthLoading] = useState(false);
   const [settingsTabRequest, setSettingsTabRequest] = useState<{ tab: SettingsTab; nonce: number }>();
@@ -176,6 +182,7 @@ export default function App(): JSX.Element {
     error,
     settings,
     providers,
+    providerProfiles,
     profiles,
     memory,
     theme,
@@ -221,10 +228,27 @@ export default function App(): JSX.Element {
 
   const actionJsonExamples = useMemo(() => buildActionJsonExamples(settings), [settings]);
 
+  const effectiveProviderProfiles = useMemo(
+    () => (providerAccountProfiles.length > 0 ? providerAccountProfiles : providerProfiles),
+    [providerAccountProfiles, providerProfiles],
+  );
+
   const selectedProvider = useMemo(
     () => providers.find((provider) => provider.id === settings?.selectedProviderId),
     [providers, settings?.selectedProviderId],
   );
+
+  const selectedProviderProfile = useMemo(() => {
+    if (!settings?.selectedProviderId) return undefined;
+    const providerAccounts = effectiveProviderProfiles.filter(
+      (profile) => profile.providerId === settings.selectedProviderId,
+    );
+    return (
+      providerAccounts.find((profile) => profile.id === settings.selectedProviderProfileId) ??
+      providerAccounts.find((profile) => profile.isDefault) ??
+      providerAccounts[0]
+    );
+  }, [effectiveProviderProfiles, settings]);
 
   const selectedProviderStatus: ProviderRuntimeStatus | undefined = useMemo(
     () =>
@@ -268,8 +292,12 @@ export default function App(): JSX.Element {
       return `${translated.message} ${translated.actionLabel ? `Ação: ${translated.actionLabel}.` : ''}`;
     }
 
+    if (selectedProviderProfile && selectedProviderProfile.status !== 'ready') {
+      return `${selectedProviderProfile.message} Ação: ajuste o profile em Settings > Contas / Profiles.`;
+    }
+
     return undefined;
-  }, [executionMode, localRuntime, selectedProviderStatus, settings]);
+  }, [executionMode, localRuntime, selectedProviderProfile, selectedProviderStatus, settings]);
 
   const workspacePath = (relativePath: string): string | undefined => {
     if (!settings?.workspaceRoot) return undefined;
@@ -294,8 +322,10 @@ export default function App(): JSX.Element {
           setPrivilegedActions(actionCatalog);
         }
         const credentials = await listProviderCredentials();
+        const accountProfiles = await listProviderProfiles();
         if (mounted) {
           setProviderCredentials(credentials);
+          setProviderAccountProfiles(accountProfiles);
         }
 
         setLocalRuntimeLoading(true);
@@ -462,19 +492,9 @@ export default function App(): JSX.Element {
 
   async function refreshProviderCredentials(): Promise<void> {
     const credentials = await listProviderCredentials();
+    const accountProfiles = await listProviderProfiles();
     setProviderCredentials(credentials);
-  }
-
-  async function handleSaveProviderCredential(providerId: string, key: string): Promise<ProviderCredentialStatus> {
-    const status = await saveProviderCredential(providerId, key);
-    await refreshProviderCredentials();
-    const runtimeStatus = await handleTestProvider(providerId);
-    if (runtimeStatus.state !== 'ready') {
-      setError(translateError(runtimeStatus.state, runtimeStatus.message).message);
-    } else {
-      setError(undefined);
-    }
-    return status;
+    setProviderAccountProfiles(accountProfiles);
   }
 
   async function handleRemoveProviderCredential(providerId: string): Promise<ProviderCredentialStatus> {
@@ -483,6 +503,40 @@ export default function App(): JSX.Element {
     const runtimeStatus = await handleTestProvider(providerId);
     updateProviderStatus(providerId, runtimeStatus);
     return status;
+  }
+
+  async function handleSaveProviderProfileCredential(
+    providerId: string,
+    profileId: string | undefined,
+    name: string,
+    key: string,
+    makeDefault: boolean,
+  ): Promise<ProviderAccountProfile> {
+    const profile = await saveProviderProfileCredential(providerId, profileId, name, key, makeDefault);
+    await refreshProviderCredentials();
+    return profile;
+  }
+
+  async function handleRemoveProviderProfile(profileId: string): Promise<void> {
+    await removeProviderProfile(profileId);
+    await refreshProviderCredentials();
+  }
+
+  async function handleSetDefaultProviderProfile(providerId: string, profileId: string): Promise<void> {
+    await setDefaultProviderProfile(providerId, profileId);
+    await refreshProviderCredentials();
+    if (settings) {
+      await applySettings({
+        ...settings,
+        selectedProviderId: providerId,
+        selectedProviderProfileId: profileId,
+      });
+    }
+  }
+
+  async function handleRenameProviderProfile(profileId: string, name: string): Promise<void> {
+    await renameProviderProfile(profileId, name);
+    await refreshProviderCredentials();
   }
 
   async function refreshHealthCheck(): Promise<AppHealthCheck> {
@@ -571,6 +625,17 @@ export default function App(): JSX.Element {
       return;
     }
 
+    const providerAccounts = effectiveProviderProfiles.filter((profile) => profile.providerId === model.providerId);
+    const readyProfile =
+      providerAccounts.find((profile) => profile.isDefault && profile.status === 'ready') ??
+      providerAccounts.find((profile) => profile.status === 'ready');
+    if (providerAccounts.length > 0 && !readyProfile) {
+      setError('Nenhum profile pronto para este provider. Configure ou teste a conta antes de selecionar.');
+      openSettingsTab('accounts');
+      setModelSelectorOpen(false);
+      return;
+    }
+
     setModelActionBusyId(model.id);
     try {
       const next = pushHistory(
@@ -579,6 +644,7 @@ export default function App(): JSX.Element {
           executionMode: 'cloud',
           selectedProviderId: model.providerId,
           selectedModelId: model.modelId,
+          selectedProviderProfileId: readyProfile?.id ?? settings.selectedProviderProfileId,
         },
         'cloud',
         model.providerId,
@@ -803,7 +869,7 @@ export default function App(): JSX.Element {
                 </button>
               </div>
             ) : null}
-            <ChatPanel session={selectedSession} />
+            <ChatPanel session={selectedSession} onQuickAction={handleSendPrompt} />
             <CommandInputPanel
               busy={busy}
               privilegedActions={privilegedActions}
@@ -844,6 +910,7 @@ export default function App(): JSX.Element {
                 key={settingsTabRequest?.nonce ?? 'settings-panel'}
                 settings={settings}
                 providers={providers}
+              providerProfiles={effectiveProviderProfiles}
                 profiles={profiles}
                 credentials={providerCredentials}
                 localRuntime={localRuntime}
@@ -852,8 +919,11 @@ export default function App(): JSX.Element {
                 healthLoading={healthLoading}
                 onChange={(next) => handleUpdateSettings(next)}
                 onTestProvider={(providerId) => handleTestProvider(providerId)}
-                onSaveProviderCredential={(providerId, key) => handleSaveProviderCredential(providerId, key)}
+                onSaveProviderProfileCredential={handleSaveProviderProfileCredential}
                 onRemoveProviderCredential={(providerId) => handleRemoveProviderCredential(providerId)}
+                onRemoveProviderProfile={handleRemoveProviderProfile}
+                onSetDefaultProviderProfile={handleSetDefaultProviderProfile}
+                onRenameProviderProfile={handleRenameProviderProfile}
                 onInstallRuntime={handleInstallRuntime}
                 onStartRuntime={handleStartRuntime}
                 onRunHealthCheck={refreshHealthCheck}
@@ -885,6 +955,7 @@ export default function App(): JSX.Element {
         activeModelId={selectedModelId}
         providers={providers}
         credentials={providerCredentials}
+          providerProfiles={effectiveProviderProfiles}
         localRuntime={localRuntime}
         installationProgress={installationProgress}
         busyModelId={modelActionBusyId}

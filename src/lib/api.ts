@@ -15,6 +15,7 @@ import type {
   PermissionRequest,
   AppSettings,
   AppHealthCheck,
+  ProviderAccountProfile,
   ProviderRuntimeStatus,
   ProviderCredentialStatus,
   LocalRuntimeSnapshot,
@@ -67,12 +68,38 @@ export async function listProviderCredentials(): Promise<ProviderCredentialStatu
   return invoke('list_provider_credentials');
 }
 
+export async function listProviderProfiles(): Promise<ProviderAccountProfile[]> {
+  return invoke('list_provider_profiles');
+}
+
 export async function saveProviderCredential(providerId: string, key: string): Promise<ProviderCredentialStatus> {
   return invoke('save_provider_credential', { providerId, key });
 }
 
+export async function saveProviderProfileCredential(
+  providerId: string,
+  profileId: string | undefined,
+  name: string,
+  key: string,
+  makeDefault: boolean,
+): Promise<ProviderAccountProfile> {
+  return invoke('save_provider_profile_credential', { providerId, profileId, name, key, makeDefault });
+}
+
 export async function removeProviderCredential(providerId: string): Promise<ProviderCredentialStatus> {
   return invoke('remove_provider_credential', { providerId });
+}
+
+export async function removeProviderProfile(profileId: string): Promise<void> {
+  await invoke('remove_provider_profile', { profileId });
+}
+
+export async function setDefaultProviderProfile(providerId: string, profileId: string): Promise<void> {
+  await invoke('set_default_provider_profile', { providerId, profileId });
+}
+
+export async function renameProviderProfile(profileId: string, name: string): Promise<void> {
+  await invoke('rename_provider_profile', { profileId, name });
 }
 
 export async function getAppHealthCheck(): Promise<AppHealthCheck> {

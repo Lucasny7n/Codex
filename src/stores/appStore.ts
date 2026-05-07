@@ -9,6 +9,7 @@ import type {
   MemorySnapshot,
   PermissionOutcome,
   PermissionRequest,
+  ProviderAccountProfile,
   ProviderDescriptor,
   ProviderRuntimeStatus,
   StatusNote,
@@ -23,6 +24,7 @@ interface AppStoreState {
   settings?: AppSettings;
   workspaceMeta?: WorkspaceMeta;
   providers: ProviderDescriptor[];
+  providerProfiles: ProviderAccountProfile[];
   profiles: AgentProfile[];
   memory?: MemorySnapshot;
   theme?: SystemTheme;
@@ -44,6 +46,7 @@ interface AppStoreState {
     sessions: AgentSession[];
     pendingPermissions: PermissionRequest[];
     providers: ProviderDescriptor[];
+    providerProfiles: ProviderAccountProfile[];
     agentProfiles: AgentProfile[];
     memory: MemorySnapshot;
     theme: SystemTheme;
@@ -83,6 +86,7 @@ export const useAppStore = create<AppStoreState>((set, get) => ({
   booted: false,
   loading: true,
   providers: [],
+  providerProfiles: [],
   profiles: [],
   sessions: [],
   logs: [],
@@ -106,6 +110,7 @@ export const useAppStore = create<AppStoreState>((set, get) => ({
       selectedSessionId: undefined,
       pendingPermissions: payload.pendingPermissions,
       providers: payload.providers,
+      providerProfiles: payload.providerProfiles,
       profiles: payload.agentProfiles,
       memory: payload.memory,
       theme: payload.theme,

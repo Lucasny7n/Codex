@@ -140,6 +140,7 @@ function renderSettings(overrides: Partial<ComponentProps<typeof SettingsPanel>>
     <SettingsPanel
       settings={settings()}
       providers={providers()}
+      providerProfiles={[]}
       profiles={profiles()}
       credentials={credentials()}
       sessions={[]}
@@ -148,8 +149,11 @@ function renderSettings(overrides: Partial<ComponentProps<typeof SettingsPanel>>
       healthLoading={false}
       onChange={vi.fn()}
       onTestProvider={vi.fn()}
-      onSaveProviderCredential={vi.fn()}
+      onSaveProviderProfileCredential={vi.fn()}
       onRemoveProviderCredential={vi.fn()}
+      onRemoveProviderProfile={vi.fn()}
+      onSetDefaultProviderProfile={vi.fn()}
+      onRenameProviderProfile={vi.fn()}
       onInstallRuntime={vi.fn()}
       onStartRuntime={vi.fn()}
       onRunHealthCheck={vi.fn()}
@@ -187,6 +191,7 @@ describe('SettingsPanel', () => {
     expect(screen.getByText('Contas / Profiles')).toBeInTheDocument();
     expect(screen.getByText('Modelos locais')).toBeInTheDocument();
     expect(screen.getByText('Sessões')).toBeInTheDocument();
+    expect(screen.getByText('Terminal & Permissões')).toBeInTheDocument();
     expect(screen.getByText('Diagnóstico')).toBeInTheDocument();
   });
 

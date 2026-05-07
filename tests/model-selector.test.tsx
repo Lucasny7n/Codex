@@ -2,7 +2,7 @@ import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import { ModelSelector } from '../src/components/panels/ModelSelector';
 import { localCompatibility, modelRegistry } from '../src/lib/modelRegistry';
-import type { LocalRuntimeSnapshot, ProviderDescriptor } from '../src/types/domain';
+import type { LocalRuntimeSnapshot, ProviderAccountProfile, ProviderDescriptor } from '../src/types/domain';
 
 function provider(id: string, state: ProviderDescriptor['status']['state']): ProviderDescriptor {
   return {
@@ -40,6 +40,23 @@ function runtime(overrides: Partial<LocalRuntimeSnapshot> = {}): LocalRuntimeSna
   };
 }
 
+function accountProfile(overrides: Partial<ProviderAccountProfile> = {}): ProviderAccountProfile {
+  return {
+    id: 'openai-api:trabalho',
+    providerId: 'openai-api',
+    providerLabel: 'OpenAI API',
+    name: 'Conta Trabalho',
+    authType: 'api_key',
+    status: 'ready',
+    maskedCredential: 'sk-t********6789',
+    source: 'config_file',
+    isDefault: true,
+    defaultModelId: 'gpt-5.5',
+    message: 'Profile pronto',
+    ...overrides
+  };
+}
+
 describe('ModelSelector', () => {
   it('cloud sem key mostra Adicionar API key e nao Selecionar', () => {
     render(
@@ -48,6 +65,7 @@ describe('ModelSelector', () => {
         mode="cloud"
         providers={[provider('openai-api', 'requires_api_key')]}
         credentials={[]}
+        providerProfiles={[]}
         installationProgress={{}}
         onClose={vi.fn()}
         onModeChange={vi.fn()}
@@ -72,6 +90,7 @@ describe('ModelSelector', () => {
         mode="cloud"
         providers={[provider('openai-api', 'ready')]}
         credentials={[]}
+        providerProfiles={[]}
         installationProgress={{}}
         onClose={vi.fn()}
         onModeChange={vi.fn()}
@@ -88,6 +107,30 @@ describe('ModelSelector', () => {
     expect(screen.getAllByText('Selecionar').length).toBeGreaterThan(0);
   });
 
+  it('mostra profile ativo no item cloud', () => {
+    render(
+      <ModelSelector
+        open
+        mode="cloud"
+        providers={[provider('openai-api', 'ready')]}
+        credentials={[]}
+        providerProfiles={[accountProfile()]}
+        installationProgress={{}}
+        onClose={vi.fn()}
+        onModeChange={vi.fn()}
+        onActivateCloud={vi.fn()}
+        onActivateLocal={vi.fn()}
+        onInstallLocalModel={vi.fn()}
+        onRemoveLocalModel={vi.fn()}
+        onInstallRuntime={vi.fn()}
+        onStartRuntime={vi.fn()}
+        onConfigureProvider={vi.fn()}
+      />,
+    );
+
+    expect(screen.getAllByText(/Conta Trabalho \(ready\)/).length).toBeGreaterThan(0);
+  });
+
   it('provider com credencial nao testada pede teste de conexao', () => {
     render(
       <ModelSelector
@@ -95,6 +138,7 @@ describe('ModelSelector', () => {
         mode="cloud"
         providers={[provider('openai-api', 'testing')]}
         credentials={[]}
+        providerProfiles={[]}
         installationProgress={{}}
         onClose={vi.fn()}
         onModeChange={vi.fn()}
@@ -119,6 +163,7 @@ describe('ModelSelector', () => {
         mode="local"
         providers={[]}
         credentials={[]}
+        providerProfiles={[]}
         localRuntime={runtime({ installed: false, state: 'unavailable', apiReachable: false })}
         installationProgress={{}}
         onClose={vi.fn()}
@@ -143,6 +188,7 @@ describe('ModelSelector', () => {
         mode="local"
         providers={[]}
         credentials={[]}
+        providerProfiles={[]}
         localRuntime={runtime()}
         installationProgress={{}}
         onClose={vi.fn()}
@@ -167,6 +213,7 @@ describe('ModelSelector', () => {
         mode="local"
         providers={[]}
         credentials={[]}
+        providerProfiles={[]}
         localRuntime={runtime()}
         installationProgress={{}}
         onClose={vi.fn()}
@@ -193,6 +240,7 @@ describe('ModelSelector', () => {
         mode="local"
         providers={[]}
         credentials={[]}
+        providerProfiles={[]}
         localRuntime={runtime()}
         installationProgress={{}}
         onClose={vi.fn()}

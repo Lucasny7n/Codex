@@ -91,6 +91,13 @@ export interface ProviderProfile {
 
 export const providerRegistry: ProviderProfile[] = [
   {
+    id: 'codex-cli',
+    label: 'Codex CLI',
+    mode: 'cloud',
+    description: 'Runner Codex via CLI local; requer auth e adapter validado antes de uso real.',
+    requiresApiKey: false,
+  },
+  {
     id: 'gemini-cli',
     label: 'Google Gemini CLI',
     mode: 'cloud',
@@ -278,6 +285,21 @@ function localModel(input: {
 }
 
 export const cloudModelRegistry: CloudModelProfile[] = [
+  cloudModel({
+    id: 'codex-cli-default',
+    name: 'Codex CLI Padrao',
+    providerId: 'codex-cli',
+    providerLabel: 'Codex CLI',
+    status: 'requires_cli_auth',
+    setupRequirement: 'Requer Codex CLI no PATH, autenticacao validada e adapter operacional antes de executar.',
+    actionLabel: 'Validar CLI',
+    strengths: ['Fluxo natural para coding agent', 'Pode usar terminal real quando integrado', 'Bom para continuidade operacional'],
+    weaknesses: ['Adapter ainda exige validacao explicita neste build', 'Nao pode ser marcado pronto sem teste real'],
+    bestFor: ['Uso futuro como provider agentico validado', 'Terminal controlado', 'Fluxos de codigo'],
+    tags: ['codigo', 'requer-config', 'cli', 'cloud'],
+    capabilities: { speed: 4, reasoning: 4, coding: 5, text: 4, longContext: 4 },
+    caveats: ['Nao simula resposta; se auth/adapter faltar, direciona para Settings > IA / Providers.'],
+  }),
   cloudModel({
     id: 'gemini-cli-default',
     name: 'Gemini CLI Padrao',
