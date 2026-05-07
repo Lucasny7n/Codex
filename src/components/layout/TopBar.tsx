@@ -1,47 +1,39 @@
-import type { AppSettings } from '../../types/domain';
+import type { ExecutionMode, ProviderRuntimeStatus } from '../../types/domain';
 
 interface TopBarProps {
-  settings?: AppSettings;
-  onCreateSession: () => void;
-  onOpenProject: (root: string) => void;
-  onOpenLastFile: (path: string) => void;
-  lastChangedFilePath?: string;
+  providerStatus?: ProviderRuntimeStatus;
+  executionMode: ExecutionMode;
+  activeModelLabel: string;
+  onOpenInspector: () => void;
+  onOpenModelSelector: () => void;
 }
 
 export function TopBar({
-  settings,
-  onCreateSession,
-  onOpenProject,
-  onOpenLastFile,
-  lastChangedFilePath
+  providerStatus,
+  executionMode,
+  activeModelLabel,
+  onOpenInspector,
+  onOpenModelSelector,
 }: TopBarProps): JSX.Element {
+  const providerStatusLabel = providerStatus?.state.replace('_', ' ') ?? 'offline';
+  const modelLabel = activeModelLabel.startsWith('Configurar') || activeModelLabel.includes('não selecionado')
+    ? 'Selecionar modelo'
+    : activeModelLabel;
+
   return (
-    <header className="topbar-modern">
-      <div className="topbar-brand">
-        <h1>Codex Command Center</h1>
-        <span className="badge-modern badge-info">v0.1.0</span>
-      </div>
-      
-      <div className="topbar-actions">
-        <button className="btn-modern" type="button" onClick={onCreateSession}>
-          Nova sessão
+    <header className="topbar-clean">
+      <button type="button" className="model-top-selector" onClick={onOpenModelSelector} title={activeModelLabel}>
+        <span>{modelLabel}</span>
+        <span aria-hidden="true">⌄</span>
+        <small>{executionMode === 'local' ? 'Local' : 'Nuvem'}</small>
+      </button>
+
+      <div className="topbar-clean-spacer" />
+
+      <div className="topbar-clean-actions" aria-label="Controle">
+        <button className="topbar-bot-button" type="button" onClick={onOpenInspector} aria-label={`Controle, provider ${providerStatusLabel}`}>
+          ◌
         </button>
-        <button 
-          className="btn-modern" 
-          type="button" 
-          onClick={() => onOpenProject(settings?.workspaceRoot ?? '/home/lucas/Codex')}
-        >
-          Abrir Projeto
-        </button>
-        {lastChangedFilePath && (
-          <button
-            className="btn-modern btn-modern-primary"
-            type="button"
-            onClick={() => onOpenLastFile(lastChangedFilePath)}
-          >
-            Editar: {lastChangedFilePath.split('/').pop()}
-          </button>
-        )}
       </div>
     </header>
   );

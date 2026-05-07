@@ -9,7 +9,9 @@ use crate::error::AppResult;
 use crate::models::{AppSettings, SystemTheme};
 use crate::services::command_executor::CommandExecutor;
 use crate::services::config_manager::ConfigManager;
+use crate::services::credential_store::CredentialStore;
 use crate::services::file_watcher::{FileWatcherService, RunningWatcher};
+use crate::services::local_runtime::LocalRuntimeService;
 use crate::services::memory_manager::MemoryManager;
 use crate::services::permission_manager::PermissionManager;
 use crate::services::privileged_helper_client::PrivilegedHelperClient;
@@ -23,7 +25,9 @@ pub struct AppState {
     pub memory_manager: Arc<MemoryManager>,
     pub permission_manager: Arc<PermissionManager>,
     pub privileged_helper_client: Arc<PrivilegedHelperClient>,
+    pub credential_store: Arc<CredentialStore>,
     pub provider_registry: Arc<ProviderRegistry>,
+    pub local_runtime_service: Arc<LocalRuntimeService>,
     pub command_executor: Arc<CommandExecutor>,
     pub vscode_bridge: Arc<VscodeBridge>,
     pub file_watcher_service: Arc<FileWatcherService>,
@@ -42,6 +46,7 @@ impl AppState {
             config_manager.codex_root(),
             config_manager.memory_dir(),
         )?);
+        let credential_store = Arc::new(CredentialStore::new(config_manager.credentials_path())?);
 
         Ok(Self {
             config_manager,
@@ -52,7 +57,9 @@ impl AppState {
                 codex_data_root.as_path(),
                 PathBuf::from(workspace_root).as_path(),
             )),
-            provider_registry: Arc::new(ProviderRegistry::new()),
+            credential_store: credential_store.clone(),
+            provider_registry: Arc::new(ProviderRegistry::new(credential_store)),
+            local_runtime_service: Arc::new(LocalRuntimeService::new()),
             command_executor: Arc::new(CommandExecutor),
             vscode_bridge: Arc::new(VscodeBridge),
             file_watcher_service: Arc::new(FileWatcherService),
@@ -81,8 +88,9 @@ impl AppState {
                     .unwrap_or("#2d95ec")
                     .to_owned();
                 let accent_secondary = json
-                    .get("secondary")
+                    .get("primary_container")
                     .and_then(Value::as_str)
+                    .or_else(|| json.get("secondary").and_then(Value::as_str))
                     .or_else(|| json.get("surface_tint").and_then(Value::as_str))
                     .unwrap_or("#9dcaff")
                     .to_owned();

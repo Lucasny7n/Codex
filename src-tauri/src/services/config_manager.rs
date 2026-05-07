@@ -50,7 +50,17 @@ impl ConfigManager {
     pub fn load_or_create_settings(&self) -> AppResult<AppSettings> {
         if self.settings_path.exists() {
             let raw = fs::read_to_string(&self.settings_path)?;
-            let settings: AppSettings = serde_json::from_str(&raw)?;
+            let mut settings: AppSettings = serde_json::from_str(&raw)?;
+            self.normalize_settings(&mut settings);
+            if settings.local_models_root.trim().is_empty() {
+                settings.local_models_root = self
+                    .home_dir()
+                    .join(".codex/models")
+                    .to_string_lossy()
+                    .to_string();
+            }
+            fs::create_dir_all(&settings.local_models_root)?;
+            self.save_settings(&settings)?;
             return Ok(settings);
         }
 
@@ -61,8 +71,23 @@ impl ConfigManager {
                 .ok_or_else(|| AppError::Message("HOME inválido".to_owned()))?
                 .to_owned(),
         );
+        fs::create_dir_all(&defaults.local_models_root)?;
         self.save_settings(&defaults)?;
         Ok(defaults)
+    }
+
+    fn normalize_settings(&self, settings: &mut AppSettings) {
+        let home = self.home_dir();
+        let expected_codex_root = self.codex_root.to_string_lossy().to_string();
+        if settings.codex_root != expected_codex_root {
+            settings.codex_root = expected_codex_root;
+        }
+
+        let expected_workspace = home.join("Codex-Codex");
+        let legacy_workspace = home.join("Codex").to_string_lossy().to_string();
+        if settings.workspace_root == legacy_workspace && expected_workspace.exists() {
+            settings.workspace_root = expected_workspace.to_string_lossy().to_string();
+        }
     }
 
     pub fn save_settings(&self, settings: &AppSettings) -> AppResult<()> {
@@ -88,10 +113,18 @@ impl ConfigManager {
         &self.memory_dir
     }
 
+    pub fn credentials_path(&self) -> PathBuf {
+        self.data_root.join("credentials.json")
+    }
+
     pub fn home_dir(&self) -> PathBuf {
-        self.codex_root
-            .parent()
-            .map_or_else(|| PathBuf::from("/home/lucas"), PathBuf::from)
+        if let Some(parent) = self.codex_root.parent() {
+            return parent.to_path_buf();
+        }
+
+        std::env::var("HOME")
+            .map(PathBuf::from)
+            .unwrap_or_else(|_| PathBuf::from("/"))
     }
 
     pub fn make_backup(&self, source: &Path, prefix: &str) -> AppResult<Option<PathBuf>> {

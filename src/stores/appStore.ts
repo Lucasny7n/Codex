@@ -4,13 +4,17 @@ import type {
   AgentSession,
   AppSettings,
   CommandLogChunk,
+  ExecutionMode,
   FileChangeEntry,
+  MemorySnapshot,
   PermissionOutcome,
   PermissionRequest,
+  ProviderAccountProfile,
   ProviderDescriptor,
+  ProviderRuntimeStatus,
   StatusNote,
-  MemorySnapshot,
-  SystemTheme
+  SystemTheme,
+  WorkspaceMeta,
 } from '../types/domain';
 
 interface AppStoreState {
@@ -18,7 +22,9 @@ interface AppStoreState {
   loading: boolean;
   error?: string;
   settings?: AppSettings;
+  workspaceMeta?: WorkspaceMeta;
   providers: ProviderDescriptor[];
+  providerProfiles: ProviderAccountProfile[];
   profiles: AgentProfile[];
   memory?: MemorySnapshot;
   theme?: SystemTheme;
@@ -29,19 +35,25 @@ interface AppStoreState {
   statusFeed: StatusNote[];
   pendingPermissions: PermissionRequest[];
   permissionOutcomes: PermissionOutcome[];
+  selectedModelId?: string;
+  executionMode: ExecutionMode;
+  modelSelectorOpen: boolean;
   setLoading: (value: boolean) => void;
   setError: (value?: string) => void;
   bootstrap: (payload: {
     settings: AppSettings;
+    workspaceMeta: WorkspaceMeta;
     sessions: AgentSession[];
     pendingPermissions: PermissionRequest[];
     providers: ProviderDescriptor[];
+    providerProfiles: ProviderAccountProfile[];
     agentProfiles: AgentProfile[];
     memory: MemorySnapshot;
     theme: SystemTheme;
   }) => void;
   upsertSession: (session: AgentSession) => void;
-  selectSession: (sessionId: string) => void;
+  removeSession: (sessionId: string) => void;
+  selectSession: (sessionId?: string) => void;
   appendLog: (chunk: CommandLogChunk) => void;
   appendStatus: (status: StatusNote) => void;
   pushFileChange: (change: FileChangeEntry) => void;
@@ -49,6 +61,10 @@ interface AppStoreState {
   removePermission: (requestId: string) => void;
   recordPermissionOutcome: (outcome: PermissionOutcome) => void;
   updateSettings: (settings: AppSettings) => void;
+  updateProviderStatus: (providerId: string, status: ProviderRuntimeStatus) => void;
+  selectModel: (modelId: string) => void;
+  setExecutionMode: (mode: ExecutionMode) => void;
+  setModelSelectorOpen: (open: boolean) => void;
 }
 
 function dedupeByPath(changes: FileChangeEntry[]): FileChangeEntry[] {
@@ -59,10 +75,18 @@ function dedupeByPath(changes: FileChangeEntry[]): FileChangeEntry[] {
   return Array.from(seen.values()).sort((a, b) => b.at.localeCompare(a.at)).slice(0, 200);
 }
 
+function resolveActiveModelId(settings: AppSettings): string {
+  if (settings.executionMode === 'local') {
+    return settings.selectedLocalModelId ?? settings.selectedModelId;
+  }
+  return settings.selectedModelId;
+}
+
 export const useAppStore = create<AppStoreState>((set, get) => ({
   booted: false,
   loading: true,
   providers: [],
+  providerProfiles: [],
   profiles: [],
   sessions: [],
   logs: [],
@@ -70,6 +94,9 @@ export const useAppStore = create<AppStoreState>((set, get) => ({
   statusFeed: [],
   pendingPermissions: [],
   permissionOutcomes: [],
+  selectedModelId: undefined,
+  executionMode: 'cloud',
+  modelSelectorOpen: false,
   setLoading: (value) => set({ loading: value }),
   setError: (value) => set({ error: value }),
   bootstrap: (payload) =>
@@ -78,13 +105,17 @@ export const useAppStore = create<AppStoreState>((set, get) => ({
       loading: false,
       error: undefined,
       settings: payload.settings,
+      workspaceMeta: payload.workspaceMeta,
       sessions: payload.sessions,
-      selectedSessionId: payload.sessions[0]?.id,
+      selectedSessionId: undefined,
       pendingPermissions: payload.pendingPermissions,
       providers: payload.providers,
+      providerProfiles: payload.providerProfiles,
       profiles: payload.agentProfiles,
       memory: payload.memory,
-      theme: payload.theme
+      theme: payload.theme,
+      executionMode: payload.settings.executionMode,
+      selectedModelId: resolveActiveModelId(payload.settings),
     }),
   upsertSession: (session) => {
     const current = get().sessions;
@@ -92,7 +123,7 @@ export const useAppStore = create<AppStoreState>((set, get) => ({
     if (index === -1) {
       set({
         sessions: [session, ...current].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)),
-        selectedSessionId: get().selectedSessionId ?? session.id
+        selectedSessionId: get().selectedSessionId ?? session.id,
       });
       return;
     }
@@ -100,6 +131,13 @@ export const useAppStore = create<AppStoreState>((set, get) => ({
     next[index] = session;
     next.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
     set({ sessions: next });
+  },
+  removeSession: (sessionId) => {
+    const next = get().sessions.filter((session) => session.id !== sessionId);
+    set({
+      sessions: next,
+      selectedSessionId: get().selectedSessionId === sessionId ? undefined : get().selectedSessionId,
+    });
   },
   selectSession: (sessionId) => set({ selectedSessionId: sessionId }),
   appendLog: (chunk) => set({ logs: [...get().logs, chunk].slice(-2500) }),
@@ -121,5 +159,25 @@ export const useAppStore = create<AppStoreState>((set, get) => ({
   recordPermissionOutcome: (outcome) => {
     set({ permissionOutcomes: [outcome, ...get().permissionOutcomes].slice(0, 100) });
   },
-  updateSettings: (settings) => set({ settings })
+  updateSettings: (settings) =>
+    set({
+      settings,
+      executionMode: settings.executionMode,
+      selectedModelId: resolveActiveModelId(settings),
+    }),
+  updateProviderStatus: (providerId, status) =>
+    set({
+      providers: get().providers.map((provider) =>
+        provider.id === providerId
+          ? {
+              ...provider,
+              enabled: status.state === 'ready',
+              status,
+            }
+          : provider,
+      ),
+    }),
+  selectModel: (modelId) => set({ selectedModelId: modelId }),
+  setExecutionMode: (mode) => set({ executionMode: mode }),
+  setModelSelectorOpen: (open) => set({ modelSelectorOpen: open }),
 }));

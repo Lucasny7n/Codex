@@ -21,6 +21,11 @@ impl MemoryManager {
 
     pub fn load_snapshot(&self) -> AppResult<MemorySnapshot> {
         let summary_source = self.codex_root.join("memories").join("memory_summary.md");
+        let home_section = self
+            .codex_root
+            .parent()
+            .map(|home| format!("### {}", home.display()))
+            .unwrap_or_else(|| "### /home".to_owned());
 
         let source = fs::read_to_string(summary_source).unwrap_or_default();
 
@@ -39,14 +44,14 @@ impl MemoryManager {
         let active_projects = self.ensure_list_file(
             "active_projects.md",
             vec![
-                "/home/lucas/Codex (workspace principal)".to_owned(),
+                "Workspace principal definido em settings.workspaceRoot".to_owned(),
                 "~/.codex (config, memórias e runtime)".to_owned(),
             ],
         )?;
 
         let important_fix_history = self.ensure_list_file(
             "important_fixes.md",
-            extract_section_bullets(&source, "### /home/lucas"),
+            extract_section_bullets(&source, &home_section),
         )?;
 
         let operational_policies = self.ensure_list_file(

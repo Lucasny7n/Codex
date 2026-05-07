@@ -1,20 +1,22 @@
 # Quickstart: Codex Command Center
 
+Rode os comandos a partir da raiz do projeto. Quando abrir outro terminal, defina `WORKSPACE_ROOT` novamente com `export WORKSPACE_ROOT="$(pwd)"`.
+
 ## 1. Abrir o app
 ```bash
-cd /home/lucas/Codex
+export WORKSPACE_ROOT="$(pwd)"
 npm run tauri dev
 ```
 
 ## 2. Verificar ambiente
 ```bash
-cd /home/lucas/Codex
+export WORKSPACE_ROOT="$(pwd)"
 bash scripts/check-environment.sh
 ```
 
 ## 3. Abrir no VS Code
 ```bash
-code /home/lucas/Codex
+code "$WORKSPACE_ROOT"
 ```
 
 ## 4. Testar uma permissão no app
@@ -34,15 +36,15 @@ code /home/lucas/Codex
 Instale só quando quiser ativar o fluxo root real.
 
 ```bash
-cd /home/lucas/Codex/src-tauri
+cd "$WORKSPACE_ROOT/src-tauri"
 cargo build --release --bin codex-privileged-helper
 
-cd /home/lucas/Codex
+cd "$WORKSPACE_ROOT"
 bash scripts/install-privileged-helper.sh
 ```
 
 ## 6. Remover helper
 ```bash
-cd /home/lucas/Codex
+cd "$WORKSPACE_ROOT"
 bash scripts/uninstall-privileged-helper.sh
 ```

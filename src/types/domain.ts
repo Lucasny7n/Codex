@@ -16,14 +16,22 @@ export interface AgentSession {
   status: SessionStatus;
   messages: ChatMessage[];
   tasks: SessionTask[];
+  providerId?: string;
+  modelId?: string;
+  agentProfileId?: string;
+  accountProfileId?: string;
 }
 
 export type SessionStatus =
   | 'idle'
+  | 'ready'
   | 'planning'
   | 'diagnosing'
   | 'waiting_approval'
   | 'executing'
+  | 'running'
+  | 'installing'
+  | 'completed'
   | 'error';
 
 export interface SessionTask {
@@ -106,12 +114,89 @@ export interface ModelDescriptor {
   supportsTools: boolean;
 }
 
+export type ProviderStatusState =
+  | 'mock'
+  | 'unavailable'
+  | 'not_configured'
+  | 'ready'
+  | 'running'
+  | 'error'
+  | 'requires_api_key'
+  | 'invalid_api_key'
+  | 'forbidden'
+  | 'requires_login'
+  | 'requires_oauth'
+  | 'requires_cli_auth'
+  | 'not_installed'
+  | 'service_offline'
+  | 'api_unreachable'
+  | 'model_missing'
+  | 'installing'
+  | 'pulling'
+  | 'testing'
+  | 'quota_exceeded'
+  | 'rate_limited'
+  | 'provider_unavailable'
+  | 'misconfigured'
+  | 'experimental';
+
+export interface ProviderRuntimeStatus {
+  state: ProviderStatusState;
+  message: string;
+  command?: string;
+  version?: string;
+  checkedAt: string;
+}
+
 export interface ProviderDescriptor {
   id: string;
   label: string;
   configurable: boolean;
   enabled: boolean;
+  status: ProviderRuntimeStatus;
   models: ModelDescriptor[];
+}
+
+export interface ProviderCredentialStatus {
+  providerId: string;
+  hasCredential: boolean;
+  maskedKey?: string;
+  source?: string;
+  checkedAt: string;
+}
+
+export type ProviderAuthType = 'api_key' | 'oauth' | 'cli_auth' | 'local' | 'login' | 'none';
+export type ProviderAccountStatus =
+  | 'ready'
+  | 'requires_api_key'
+  | 'invalid_api_key'
+  | 'forbidden'
+  | 'requires_login'
+  | 'requires_oauth'
+  | 'requires_cli_auth'
+  | 'testing'
+  | 'misconfigured'
+  | 'quota_exceeded'
+  | 'rate_limited'
+  | 'provider_unavailable'
+  | 'experimental'
+  | 'unavailable';
+
+export interface ProviderAccountProfile {
+  id: string;
+  providerId: string;
+  providerLabel: string;
+  name: string;
+  authType: ProviderAuthType;
+  status: ProviderAccountStatus;
+  maskedCredential?: string;
+  source?: string;
+  lastTestedAt?: string;
+  lastValidatedAt?: string;
+  defaultModelId?: string;
+  isDefault: boolean;
+  message: string;
+  limitsHint?: string;
 }
 
 export interface SystemTheme {
@@ -121,14 +206,36 @@ export interface SystemTheme {
   background: string;
 }
 
+export interface WorkspaceMeta {
+  root: string;
+  repoName: string;
+  branch?: string;
+  headShort?: string;
+  dirty: boolean;
+}
+
+export type ExecutionMode = 'cloud' | 'local';
+
+export interface ModelSelectionHistoryEntry {
+  mode: ExecutionMode;
+  providerId: string;
+  modelId: string;
+  at: string;
+}
+
 export interface AppSettings {
   workspaceRoot: string;
   codexRoot: string;
   selectedProviderId: string;
   selectedModelId: string;
   selectedAgentId: string;
+  selectedProviderProfileId?: string;
   preferredShell: string;
   autoApproveSafeRead: boolean;
+  executionMode: ExecutionMode;
+  selectedLocalModelId?: string;
+  modelSelectionHistory: ModelSelectionHistoryEntry[];
+  localModelsRoot: string;
 }
 
 export interface MemorySnapshot {
@@ -141,9 +248,11 @@ export interface MemorySnapshot {
 
 export interface BootstrapPayload {
   settings: AppSettings;
+  workspaceMeta: WorkspaceMeta;
   sessions: AgentSession[];
   pendingPermissions: PermissionRequest[];
   providers: ProviderDescriptor[];
+  providerProfiles: ProviderAccountProfile[];
   agentProfiles: AgentProfile[];
   memory: MemorySnapshot;
   theme: SystemTheme;
@@ -188,4 +297,118 @@ export interface StatusNote {
   title: string;
   detail: string;
   at: string;
+}
+
+export type LocalRuntimeState =
+  | 'ready'
+  | 'not_configured'
+  | 'unavailable'
+  | 'running'
+  | 'installing'
+  | 'service_offline'
+  | 'api_unreachable'
+  | 'error';
+
+export interface LocalInstalledModel {
+  id: string;
+  size?: string;
+  modifiedAt?: string;
+  digest?: string;
+}
+
+export interface LocalRuntimeSnapshot {
+  state: LocalRuntimeState;
+  message: string;
+  command?: string;
+  version?: string;
+  runtimePath?: string;
+  installCommand?: string;
+  modelsDir: string;
+  installedModels: LocalInstalledModel[];
+  activeModelId?: string;
+  installed: boolean;
+  serviceActive: boolean;
+  apiReachable: boolean;
+  apiUrl: string;
+  canUsePacman: boolean;
+  hasPkexec: boolean;
+  hasSudo: boolean;
+  diskOk?: boolean;
+  problems: string[];
+  repairActions: string[];
+  at: string;
+}
+
+export type LocalModelInstallState = 'running' | 'completed' | 'error';
+
+export interface LocalModelInstallProgress {
+  modelId: string;
+  state: LocalModelInstallState;
+  progressPercent?: number;
+  message: string;
+  at: string;
+}
+
+export interface ActionableError {
+  code: string;
+  severity: 'info' | 'warning' | 'error';
+  message: string;
+  actionLabel?: string;
+  actionTarget?: string;
+  technicalDetails?: string;
+}
+
+export interface AppHealthProvider {
+  id: string;
+  status: ProviderRuntimeStatus;
+  hasKey: boolean;
+  profileCount?: number;
+  selectedProfileId?: string;
+}
+
+export interface AppHealthAction {
+  label: string;
+  command?: string;
+}
+
+export interface AppHealthCheck {
+  baseDir: string;
+  expectedBaseDir: string;
+  correctBaseDir: boolean;
+  branch?: string;
+  nodeOk: boolean;
+  npmOk: boolean;
+  cargoOk: boolean;
+  tauriOk: boolean;
+  providers: AppHealthProvider[];
+  ollama: LocalRuntimeSnapshot;
+  sessionsCount?: number;
+  activeSessionId?: string;
+  storageRoot?: string;
+  credentialsEncrypted?: boolean;
+  recentErrors: ActionableError[];
+  overallStatus: 'ok' | 'warning' | 'error';
+  actions: AppHealthAction[];
+}
+
+export type SessionExportFormat = 'markdown' | 'json' | 'txt';
+
+export interface SessionExportResult {
+  path: string;
+  format: SessionExportFormat;
+  bytes: number;
+}
+
+export interface EnvironmentSelectionInput {
+  providerId: string;
+  modelId: string;
+  agentProfileId: string;
+  accountProfileId?: string;
+}
+
+export interface GlobalEnvironmentConfig {
+  defaultProviderId: string;
+  defaultModelId: string;
+  defaultProfileId: string;
+  defaultMode: ExecutionMode;
 }

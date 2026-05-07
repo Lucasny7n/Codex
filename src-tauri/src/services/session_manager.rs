@@ -1,3 +1,4 @@
+use chrono::Utc;
 use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -7,20 +8,26 @@ use uuid::Uuid;
 
 use crate::error::AppResult;
 use crate::models::{
-    now_iso, AgentSession, ChatMessage, ChatRole, SessionStatus, SessionTask, StatusKind,
-    TaskStatus,
+    now_iso, AgentSession, ChatMessage, ChatRole, SessionExportFormat, SessionExportResult,
+    SessionStatus, SessionTask, StatusKind, TaskStatus,
 };
 
 #[derive(Debug)]
 pub struct SessionManager {
     sessions_dir: PathBuf,
+    export_dir: PathBuf,
     sessions: RwLock<HashMap<String, AgentSession>>,
 }
 
 impl SessionManager {
     pub fn new(sessions_dir: &Path) -> AppResult<Self> {
+        Self::new_with_export_dir(sessions_dir, default_export_dir())
+    }
+
+    fn new_with_export_dir(sessions_dir: &Path, export_dir: PathBuf) -> AppResult<Self> {
         let manager = Self {
             sessions_dir: sessions_dir.to_path_buf(),
+            export_dir,
             sessions: RwLock::new(HashMap::new()),
         };
         manager.load_from_disk()?;
@@ -63,14 +70,12 @@ impl SessionManager {
             created_at: now.clone(),
             updated_at: now.clone(),
             status: SessionStatus::Idle,
-            messages: vec![ChatMessage {
-                id: Uuid::new_v4().to_string(),
-                role: ChatRole::System,
-                content: "Sessão criada. Pronto para diagnóstico e execução segura.".to_owned(),
-                created_at: now,
-                reasoning_summary: None,
-            }],
+            messages: vec![],
             tasks: vec![],
+            provider_id: None,
+            model_id: None,
+            agent_profile_id: None,
+            account_profile_id: None,
         };
 
         self.persist_session(&session)?;
@@ -80,11 +85,182 @@ impl SessionManager {
         Ok(session)
     }
 
-    pub fn append_user_message(&self, session_id: &str, content: &str) -> AppResult<AgentSession> {
+    pub fn rename_session(&self, session_id: &str, title: &str) -> AppResult<AgentSession> {
+        let normalized = normalize_title(title);
         let mut sessions = self.sessions.write();
         let session = sessions
             .get_mut(session_id)
             .ok_or_else(|| anyhow::anyhow!("Sessão não encontrada"))?;
+
+        session.title = normalized;
+        session.updated_at = now_iso();
+        let cloned = session.clone();
+        drop(sessions);
+
+        self.persist_session(&cloned)?;
+        Ok(cloned)
+    }
+
+    pub fn get_session(&self, session_id: &str) -> AppResult<AgentSession> {
+        Ok(self
+            .sessions
+            .read()
+            .get(session_id)
+            .cloned()
+            .ok_or_else(|| anyhow::anyhow!("Sessão não encontrada"))?)
+    }
+
+    pub fn update_environment(
+        &self,
+        session_id: &str,
+        provider_id: String,
+        model_id: String,
+        agent_profile_id: String,
+        account_profile_id: Option<String>,
+    ) -> AppResult<AgentSession> {
+        let mut sessions = self.sessions.write();
+        let session = sessions
+            .get_mut(session_id)
+            .ok_or_else(|| anyhow::anyhow!("Sessão não encontrada"))?;
+
+        session.provider_id = Some(provider_id);
+        session.model_id = Some(model_id);
+        session.agent_profile_id = Some(agent_profile_id);
+        session.account_profile_id = account_profile_id;
+        session.updated_at = now_iso();
+        let cloned = session.clone();
+        drop(sessions);
+
+        self.persist_session(&cloned)?;
+        Ok(cloned)
+    }
+
+    pub fn apply_environment_to_all(
+        &self,
+        provider_id: String,
+        model_id: String,
+        agent_profile_id: String,
+        account_profile_id: Option<String>,
+    ) -> AppResult<Vec<AgentSession>> {
+        let mut sessions = self.sessions.write();
+        let mut updated = Vec::with_capacity(sessions.len());
+        let now = now_iso();
+
+        for session in sessions.values_mut() {
+            session.provider_id = Some(provider_id.clone());
+            session.model_id = Some(model_id.clone());
+            session.agent_profile_id = Some(agent_profile_id.clone());
+            session.account_profile_id = account_profile_id.clone();
+            session.updated_at = now.clone();
+            updated.push(session.clone());
+        }
+        drop(sessions);
+
+        for session in &updated {
+            self.persist_session(session)?;
+        }
+
+        Ok(updated)
+    }
+
+    pub fn delete_session(&self, session_id: &str) -> AppResult<()> {
+        self.sessions.write().remove(session_id);
+        let file = self.sessions_dir.join(format!("{session_id}.json"));
+        if file.exists() {
+            fs::remove_file(file)?;
+        }
+        Ok(())
+    }
+
+    pub fn duplicate_session(&self, session_id: &str) -> AppResult<AgentSession> {
+        let source = self
+            .sessions
+            .read()
+            .get(session_id)
+            .cloned()
+            .ok_or_else(|| anyhow::anyhow!("Sessão não encontrada"))?;
+        let now = now_iso();
+        let mut duplicate = source;
+        duplicate.id = Uuid::new_v4().to_string();
+        duplicate.title = format!("{} (cópia)", duplicate.title);
+        duplicate.created_at = now.clone();
+        duplicate.updated_at = now;
+        duplicate.status = SessionStatus::Idle;
+
+        self.persist_session(&duplicate)?;
+        self.sessions
+            .write()
+            .insert(duplicate.id.clone(), duplicate.clone());
+        Ok(duplicate)
+    }
+
+    pub fn export_session(
+        &self,
+        session_id: &str,
+        format: SessionExportFormat,
+    ) -> AppResult<SessionExportResult> {
+        let session = self
+            .sessions
+            .read()
+            .get(session_id)
+            .cloned()
+            .ok_or_else(|| anyhow::anyhow!("Sessão não encontrada"))?;
+
+        let exports_dir = self.export_dir.clone();
+        fs::create_dir_all(&exports_dir)?;
+        let extension = match format {
+            SessionExportFormat::Markdown => "md",
+            SessionExportFormat::Json => "json",
+            SessionExportFormat::Txt => "txt",
+        };
+        let file = unique_export_path(&exports_dir, &safe_file_stem(&session.title), extension);
+        let body = match format {
+            SessionExportFormat::Markdown => export_markdown(&session),
+            SessionExportFormat::Json => serde_json::to_string_pretty(&session)?,
+            SessionExportFormat::Txt => export_text(&session),
+        };
+        fs::write(&file, &body)?;
+
+        Ok(SessionExportResult {
+            path: file.to_string_lossy().to_string(),
+            format,
+            bytes: body.len(),
+        })
+    }
+
+    pub fn append_user_message(&self, session_id: &str, content: &str) -> AppResult<AgentSession> {
+        self.append_user_message_with_context(session_id, content, None, None, None, None)
+    }
+
+    pub fn append_user_message_with_context(
+        &self,
+        session_id: &str,
+        content: &str,
+        provider_id: Option<String>,
+        model_id: Option<String>,
+        agent_profile_id: Option<String>,
+        account_profile_id: Option<String>,
+    ) -> AppResult<AgentSession> {
+        let mut sessions = self.sessions.write();
+        let session = sessions
+            .get_mut(session_id)
+            .ok_or_else(|| anyhow::anyhow!("Sessão não encontrada"))?;
+
+        if session.messages.is_empty() && session.title.trim().is_empty() {
+            session.title = title_from_content(content);
+        }
+        if let Some(provider_id) = provider_id {
+            session.provider_id = Some(provider_id);
+        }
+        if let Some(model_id) = model_id {
+            session.model_id = Some(model_id);
+        }
+        if let Some(agent_profile_id) = agent_profile_id {
+            session.agent_profile_id = Some(agent_profile_id);
+        }
+        if let Some(account_profile_id) = account_profile_id {
+            session.account_profile_id = Some(account_profile_id);
+        }
 
         session.messages.push(ChatMessage {
             id: Uuid::new_v4().to_string(),
@@ -94,21 +270,13 @@ impl SessionManager {
             reasoning_summary: None,
         });
 
-        let summary = "Plano curto: diagnosticar contexto real, validar dependências/estado atual, executar em etapas pequenas com rollback.".to_owned();
-
-        session.messages.push(ChatMessage {
-            id: Uuid::new_v4().to_string(),
-            role: ChatRole::Assistant,
-            content: "Recebido. Vou seguir com diagnóstico antes de alterar.".to_owned(),
-            created_at: now_iso(),
-            reasoning_summary: Some(summary),
-        });
-
         session.tasks.push(SessionTask {
             id: Uuid::new_v4().to_string(),
-            title: "Diagnosticar contexto da solicitação".to_owned(),
+            title: "Enviar ordem ao provider configurado".to_owned(),
             status: TaskStatus::Pending,
-            detail: Some("Listar estado atual, riscos e plano antes da execução.".to_owned()),
+            detail: Some(
+                "A resposta será gerada pelo provider selecionado ou marcada como erro.".to_owned(),
+            ),
         });
         session.status = SessionStatus::Planning;
         session.updated_at = now_iso();
@@ -201,5 +369,236 @@ impl SessionManager {
             detail: detail.to_owned(),
             at: now_iso(),
         }
+    }
+}
+
+fn normalize_title(title: &str) -> String {
+    let normalized = title.split_whitespace().collect::<Vec<_>>().join(" ");
+    if normalized.is_empty() {
+        "Nova conversa".to_owned()
+    } else {
+        normalized.chars().take(80).collect()
+    }
+}
+
+fn title_from_content(content: &str) -> String {
+    let compact = normalize_title(content);
+    if compact == "Nova conversa" {
+        return format!("Conversa {}", now_iso());
+    }
+    compact.chars().take(54).collect()
+}
+
+fn safe_file_stem(title: &str) -> String {
+    let stem = title
+        .chars()
+        .map(|ch| {
+            if ch.is_ascii_alphanumeric() {
+                ch.to_ascii_lowercase()
+            } else {
+                '-'
+            }
+        })
+        .collect::<String>();
+    let cleaned = stem
+        .split('-')
+        .filter(|part| !part.is_empty())
+        .collect::<Vec<_>>()
+        .join("-");
+    if cleaned.is_empty() {
+        "sessao".to_owned()
+    } else {
+        cleaned.chars().take(60).collect()
+    }
+}
+
+fn default_export_dir() -> PathBuf {
+    if let Ok(custom) = std::env::var("CODEX_SESSION_EXPORT_DIR") {
+        return PathBuf::from(custom);
+    }
+    let home = std::env::var("HOME").unwrap_or_else(|_| ".".to_owned());
+    PathBuf::from(home).join("Downloads").join("Sessoes")
+}
+
+fn unique_export_path(dir: &Path, stem: &str, extension: &str) -> PathBuf {
+    let first = dir.join(format!("{stem}.{extension}"));
+    if !first.exists() {
+        return first;
+    }
+
+    let timestamp = Utc::now().format("%Y%m%d-%H%M%S");
+    for attempt in 0..100 {
+        let suffix = if attempt == 0 {
+            timestamp.to_string()
+        } else {
+            format!("{timestamp}-{attempt}")
+        };
+        let candidate = dir.join(format!("{stem}-{suffix}.{extension}"));
+        if !candidate.exists() {
+            return candidate;
+        }
+    }
+
+    dir.join(format!("{stem}-{}.{}", Uuid::new_v4(), extension))
+}
+
+fn export_markdown(session: &AgentSession) -> String {
+    let mut output = String::new();
+    output.push_str(&format!("# {}\n\n", session.title));
+    output.push_str(&format!("- ID: `{}`\n", session.id));
+    output.push_str(&format!("- Criada em: `{}`\n", session.created_at));
+    output.push_str(&format!("- Atualizada em: `{}`\n", session.updated_at));
+    output.push_str(&format!("- Status: `{:?}`\n", session.status));
+    if let Some(provider_id) = &session.provider_id {
+        output.push_str(&format!("- Provider: `{provider_id}`\n"));
+    }
+    if let Some(model_id) = &session.model_id {
+        output.push_str(&format!("- Modelo: `{model_id}`\n"));
+    }
+    if let Some(profile_id) = &session.agent_profile_id {
+        output.push_str(&format!("- Perfil: `{profile_id}`\n"));
+    }
+    output.push_str("\n## Mensagens\n\n");
+
+    if session.messages.is_empty() {
+        output.push_str("_Sem mensagens._\n");
+        return output;
+    }
+
+    for message in &session.messages {
+        output.push_str(&format!(
+            "### {:?} - `{}`\n\n{}\n\n",
+            message.role, message.created_at, message.content
+        ));
+        if let Some(summary) = &message.reasoning_summary {
+            output.push_str(&format!("> Justificativa: {}\n\n", summary));
+        }
+    }
+
+    output
+}
+
+fn export_text(session: &AgentSession) -> String {
+    let mut output = String::new();
+    output.push_str(&format!("{}\n", session.title));
+    output.push_str(&format!("ID: {}\n", session.id));
+    output.push_str(&format!("Criada em: {}\n", session.created_at));
+    output.push_str(&format!("Atualizada em: {}\n", session.updated_at));
+    output.push_str(&format!("Status: {:?}\n\n", session.status));
+
+    if session.messages.is_empty() {
+        output.push_str("Sem mensagens.\n");
+        return output;
+    }
+
+    for message in &session.messages {
+        output.push_str(&format!(
+            "{:?} - {}\n{}\n\n",
+            message.role, message.created_at, message.content
+        ));
+    }
+
+    output
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn temp_sessions_dir() -> PathBuf {
+        let dir =
+            std::env::temp_dir().join(format!("codex-session-manager-test-{}", Uuid::new_v4()));
+        fs::create_dir_all(&dir).expect("deve criar diretório temporário");
+        dir
+    }
+
+    #[test]
+    fn append_user_message_does_not_inject_fixed_assistant_response() {
+        let dir = temp_sessions_dir();
+        let manager = SessionManager::new(&dir).expect("manager deve iniciar");
+        let session = manager
+            .create_session("teste")
+            .expect("sessão deve ser criada");
+        let updated = manager
+            .append_user_message(&session.id, "rodar fluxo real")
+            .expect("mensagem deve ser adicionada");
+
+        let assistant_messages = updated
+            .messages
+            .iter()
+            .filter(|message| matches!(message.role, ChatRole::Assistant))
+            .count();
+
+        assert_eq!(assistant_messages, 0);
+        assert!(updated
+            .messages
+            .iter()
+            .any(|message| matches!(message.role, ChatRole::User)
+                && message.content == "rodar fluxo real"));
+
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn created_session_starts_empty_and_can_export() {
+        let dir = temp_sessions_dir();
+        let exports_dir = dir.join("exports-test");
+        let manager = SessionManager::new_with_export_dir(&dir, exports_dir.clone())
+            .expect("manager deve iniciar");
+        let session = manager
+            .create_session("Diagnosticar Settings")
+            .expect("sessão deve ser criada");
+
+        assert!(session.messages.is_empty());
+
+        let updated = manager
+            .append_user_message_with_context(
+                &session.id,
+                "corrigir scroll de Settings",
+                Some("openai-api".to_owned()),
+                Some("gpt-5.5".to_owned()),
+                Some("equilibrado".to_owned()),
+                Some("openai-api:default".to_owned()),
+            )
+            .expect("mensagem deve ser persistida");
+        assert_eq!(updated.provider_id.as_deref(), Some("openai-api"));
+        assert_eq!(updated.model_id.as_deref(), Some("gpt-5.5"));
+
+        let export = manager
+            .export_session(&session.id, SessionExportFormat::Markdown)
+            .expect("export deve funcionar");
+        assert!(export.path.ends_with(".md"));
+        assert!(export
+            .path
+            .starts_with(exports_dir.to_string_lossy().as_ref()));
+        assert!(fs::read_to_string(&export.path)
+            .expect("export deve existir")
+            .contains("corrigir scroll de Settings"));
+
+        let txt_export = manager
+            .export_session(&session.id, SessionExportFormat::Txt)
+            .expect("export txt deve funcionar");
+        assert!(txt_export.path.ends_with(".txt"));
+
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn delete_session_removes_persisted_file() {
+        let dir = temp_sessions_dir();
+        let manager = SessionManager::new(&dir).expect("manager deve iniciar");
+        let session = manager
+            .create_session("remover")
+            .expect("sessão deve ser criada");
+        let file = dir.join(format!("{}.json", session.id));
+        assert!(file.exists());
+
+        manager
+            .delete_session(&session.id)
+            .expect("delete deve funcionar");
+        assert!(!file.exists());
+        assert!(manager.list_sessions().is_empty());
+
+        let _ = fs::remove_dir_all(dir);
     }
 }
