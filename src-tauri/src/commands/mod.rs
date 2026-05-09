@@ -11,7 +11,7 @@ use serde_json::Value;
 use tauri::{AppHandle, Emitter, State};
 use uuid::Uuid;
 
-use crate::error::{AppError, ErrorPayload};
+use crate::error::{AppError, AppResult, ErrorPayload};
 use crate::models::{
     ActionableError, ActionableErrorSeverity, AgentSession, AppHealthAction, AppHealthCheck,
     AppHealthOverallStatus, AppHealthProvider, AppSettings, BootstrapPayload, CommandLogChunk,
@@ -196,6 +196,40 @@ pub struct VoiceTranscriptionResult {
     backend: Option<String>,
     command: Option<String>,
     technical_details: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SttToolStatus {
+    id: String,
+    label: String,
+    installed: bool,
+    path: Option<String>,
+    ready: bool,
+    message: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SttModelCandidate {
+    label: String,
+    path: String,
+    source: String,
+    exists: bool,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LocalSttConfigSnapshot {
+    ffmpeg: SttToolStatus,
+    backends: Vec<SttToolStatus>,
+    model_path: Option<String>,
+    model_exists: bool,
+    model_candidates: Vec<SttModelCandidate>,
+    ready: bool,
+    install_command: String,
+    message: String,
+    checked_at: String,
 }
 
 fn home_dir() -> Result<PathBuf, AppError> {
@@ -400,7 +434,7 @@ fn zip_preview(path: &Path) -> (Option<String>, FilePreviewKind, bool) {
     }
 }
 
-const STT_INSTALL_COMMAND: &str = "sudo pacman -S whisper.cpp ffmpeg";
+const STT_INSTALL_COMMAND: &str = "sudo pacman -S ffmpeg whisper.cpp";
 
 fn command_in_path(program: &str) -> Option<PathBuf> {
     let path = Path::new(program);
@@ -482,7 +516,96 @@ fn ffmpeg_convert_to_wav(input: &Path, temp_dir: &Path) -> Result<PathBuf, Strin
     })
 }
 
-fn whisper_cpp_model_path() -> Option<PathBuf> {
+fn configured_model_path(raw: Option<&str>) -> Option<PathBuf> {
+    let value = raw.map(str::trim).filter(|value| !value.is_empty())?;
+    expand_user_path(value).ok().filter(|path| path.exists())
+}
+
+fn model_candidate(label: &str, path: PathBuf, source: &str) -> SttModelCandidate {
+    let exists = path.exists();
+    SttModelCandidate {
+        label: label.to_owned(),
+        path: path.to_string_lossy().to_string(),
+        source: source.to_owned(),
+        exists,
+    }
+}
+
+fn stt_model_candidates(configured: Option<&str>) -> Vec<SttModelCandidate> {
+    let mut candidates = Vec::new();
+    if let Some(path) = configured
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .and_then(|value| expand_user_path(value).ok())
+    {
+        candidates.push(model_candidate("Configurado", path, "config"));
+    }
+
+    for key in [
+        "WHISPER_CPP_MODEL",
+        "WHISPER_MODEL",
+        "FASTER_WHISPER_MODEL",
+        "VOSK_MODEL",
+    ] {
+        if let Some(path) = env::var_os(key).map(PathBuf::from) {
+            candidates.push(model_candidate(key, path, "environment"));
+        }
+    }
+
+    if let Ok(home) = home_dir() {
+        let fixed = [
+            home.join(".codex/models/ggml-small.bin"),
+            home.join(".codex/models/ggml-base.bin"),
+            home.join(".codex/models/ggml-tiny.bin"),
+            home.join(".local/share/whisper.cpp/ggml-small.bin"),
+            home.join(".local/share/whisper.cpp/ggml-base.bin"),
+            home.join(".local/share/whisper.cpp/ggml-tiny.bin"),
+        ];
+        for path in fixed {
+            let label = path
+                .file_name()
+                .and_then(|name| name.to_str())
+                .unwrap_or("Modelo Whisper")
+                .to_owned();
+            candidates.push(model_candidate(&label, path, "default"));
+        }
+
+        let models_dir = home.join(".codex/models");
+        if let Ok(entries) = fs::read_dir(models_dir) {
+            for path in entries.flatten().map(|entry| entry.path()).take(40) {
+                let extension = path.extension().and_then(|extension| extension.to_str());
+                let looks_like_model = path.is_dir()
+                    || matches!(extension, Some("bin" | "gguf" | "pt" | "onnx" | "tflite"));
+                if !looks_like_model {
+                    continue;
+                }
+                let label = path
+                    .file_name()
+                    .and_then(|name| name.to_str())
+                    .unwrap_or("Modelo local")
+                    .to_owned();
+                candidates.push(model_candidate(&label, path, "~/.codex/models"));
+            }
+        }
+    }
+
+    let mut deduped = Vec::new();
+    for candidate in candidates {
+        if deduped
+            .iter()
+            .any(|existing: &SttModelCandidate| existing.path == candidate.path)
+        {
+            continue;
+        }
+        deduped.push(candidate);
+    }
+    deduped
+}
+
+fn whisper_cpp_model_path(configured: Option<&str>) -> Option<PathBuf> {
+    if let Some(path) = configured_model_path(configured).filter(|path| path.is_file()) {
+        return Some(path);
+    }
     for key in ["WHISPER_CPP_MODEL", "WHISPER_MODEL"] {
         if let Some(path) = env::var_os(key)
             .map(PathBuf::from)
@@ -502,6 +625,162 @@ fn whisper_cpp_model_path() -> Option<PathBuf> {
     ]
     .into_iter()
     .find(|path| path.is_file())
+}
+
+fn faster_whisper_local_model(configured: Option<&str>) -> Option<PathBuf> {
+    configured_model_path(configured)
+        .or_else(|| env::var_os("FASTER_WHISPER_MODEL").map(PathBuf::from))
+        .filter(|path| path.exists())
+}
+
+fn vosk_local_model(configured: Option<&str>) -> Option<PathBuf> {
+    configured_model_path(configured)
+        .or_else(|| env::var_os("VOSK_MODEL").map(PathBuf::from))
+        .filter(|path| path.exists())
+}
+
+fn tool_status(
+    id: &str,
+    label: &str,
+    binary: Option<PathBuf>,
+    ready: bool,
+    message: &str,
+) -> SttToolStatus {
+    SttToolStatus {
+        id: id.to_owned(),
+        label: label.to_owned(),
+        installed: binary.is_some(),
+        path: binary.map(|path| path.to_string_lossy().to_string()),
+        ready,
+        message: message.to_owned(),
+    }
+}
+
+fn stt_config_snapshot(model_path_input: Option<&str>) -> AppResult<LocalSttConfigSnapshot> {
+    let ffmpeg_binary = command_in_path("ffmpeg");
+    let ffmpeg = tool_status(
+        "ffmpeg",
+        "ffmpeg",
+        ffmpeg_binary.clone(),
+        ffmpeg_binary.is_some(),
+        if ffmpeg_binary.is_some() {
+            "ffmpeg disponível para converter áudio."
+        } else {
+            "ffmpeg ausente; instale antes de transcrever áudio gravado."
+        },
+    );
+    let model_candidates = stt_model_candidates(model_path_input);
+    let selected_model = model_path_input
+        .and_then(|path| configured_model_path(Some(path)))
+        .or_else(|| {
+            model_candidates
+                .iter()
+                .find(|candidate| candidate.exists)
+                .map(|candidate| PathBuf::from(&candidate.path))
+        });
+    let model_exists = selected_model.as_ref().is_some_and(|path| path.exists());
+
+    let whisper_cli_binary = command_in_path("whisper-cli");
+    let whisper_cpp_binary = command_in_path("whisper.cpp");
+    let whisper_cli_ready = whisper_cli_binary.is_some()
+        && whisper_cpp_model_path(model_path_input).is_some()
+        && ffmpeg.installed;
+    let whisper_cpp_ready = whisper_cpp_binary.is_some()
+        && whisper_cpp_model_path(model_path_input).is_some()
+        && ffmpeg.installed;
+    let openai_whisper_binary = command_in_path("whisper");
+    let openai_whisper_ready = openai_whisper_binary.is_some()
+        && openai_whisper_cached_model().is_some()
+        && ffmpeg.installed;
+    let faster_binary = command_in_path("faster-whisper");
+    let faster_ready = faster_binary.is_some()
+        && faster_whisper_local_model(model_path_input).is_some()
+        && ffmpeg.installed;
+    let vosk_binary = command_in_path("vosk-transcriber").or_else(|| command_in_path("vosk"));
+    let vosk_ready =
+        vosk_binary.is_some() && vosk_local_model(model_path_input).is_some() && ffmpeg.installed;
+
+    let backends = vec![
+        tool_status(
+            "whisper-cli",
+            "whisper-cli",
+            whisper_cli_binary,
+            whisper_cli_ready,
+            if whisper_cli_ready {
+                "whisper-cli pronto com modelo local."
+            } else {
+                "Requer binário whisper-cli, ffmpeg e modelo .bin/.gguf local."
+            },
+        ),
+        tool_status(
+            "whisper.cpp",
+            "whisper.cpp",
+            whisper_cpp_binary,
+            whisper_cpp_ready,
+            if whisper_cpp_ready {
+                "whisper.cpp pronto com modelo local."
+            } else {
+                "Requer binário whisper.cpp, ffmpeg e modelo .bin/.gguf local."
+            },
+        ),
+        tool_status(
+            "whisper",
+            "OpenAI Whisper local",
+            openai_whisper_binary,
+            openai_whisper_ready,
+            if openai_whisper_ready {
+                "whisper Python pronto com modelo em cache."
+            } else {
+                "Requer binário whisper e modelo já baixado em ~/.cache/whisper."
+            },
+        ),
+        tool_status(
+            "faster-whisper",
+            "faster-whisper",
+            faster_binary,
+            faster_ready,
+            if faster_ready {
+                "faster-whisper pronto com modelo local."
+            } else {
+                "Requer faster-whisper e FASTER_WHISPER_MODEL ou caminho configurado."
+            },
+        ),
+        tool_status(
+            "vosk",
+            "Vosk",
+            vosk_binary,
+            vosk_ready,
+            if vosk_ready {
+                "Vosk pronto com modelo local."
+            } else {
+                "Requer vosk-transcriber/vosk e VOSK_MODEL ou caminho configurado."
+            },
+        ),
+    ];
+    let ready = ffmpeg.installed && backends.iter().any(|backend| backend.ready);
+    let message = if ready {
+        "Transcrição local pronta para teste.".to_owned()
+    } else if !ffmpeg.installed {
+        format!("Backend incompleto: instale os pacotes sugeridos ({STT_INSTALL_COMMAND}).")
+    } else if backends.iter().all(|backend| !backend.installed) {
+        format!("Nenhum backend STT local encontrado. Sugestão Arch: {STT_INSTALL_COMMAND}.")
+    } else if !model_exists {
+        "Backend encontrado, mas nenhum modelo local foi detectado. Escolha um caminho de modelo em ~/.codex/models.".to_owned()
+    } else {
+        "Backend encontrado, mas ainda não está pronto para transcrição local.".to_owned()
+    };
+
+    Ok(LocalSttConfigSnapshot {
+        ffmpeg,
+        backends,
+        model_path: selected_model.map(|path| path.to_string_lossy().to_string()),
+        model_exists,
+        model_candidates,
+        ready,
+        install_command: STT_INSTALL_COMMAND.to_owned(),
+        message,
+        checked_at: crate::models::now_iso(),
+    })
 }
 
 fn clean_transcript_output(raw: &str) -> String {
@@ -555,18 +834,12 @@ fn openai_whisper_cached_model() -> Option<String> {
         })
 }
 
-fn faster_whisper_local_model() -> Option<PathBuf> {
-    env::var_os("FASTER_WHISPER_MODEL")
-        .map(PathBuf::from)
-        .filter(|path| path.exists())
-}
-
-fn run_whisper_cpp(audio_path: &Path) -> Result<Option<String>, String> {
+fn run_whisper_cpp(audio_path: &Path, model_path: Option<&str>) -> Result<Option<String>, String> {
     let Some(binary) = command_in_path("whisper-cli").or_else(|| command_in_path("whisper.cpp"))
     else {
         return Ok(None);
     };
-    let Some(model) = whisper_cpp_model_path() else {
+    let Some(model) = whisper_cpp_model_path(model_path) else {
         return Err("whisper-cli encontrado, mas nenhum modelo local foi encontrado. Defina WHISPER_CPP_MODEL ou coloque ggml-base.bin em ~/.codex/models.".to_owned());
     };
     let output = Command::new(binary)
@@ -638,11 +911,15 @@ fn run_openai_whisper(audio_path: &Path, temp_dir: &Path) -> Result<Option<Strin
     }
 }
 
-fn run_faster_whisper(audio_path: &Path, temp_dir: &Path) -> Result<Option<String>, String> {
+fn run_faster_whisper(
+    audio_path: &Path,
+    temp_dir: &Path,
+    model_path: Option<&str>,
+) -> Result<Option<String>, String> {
     let Some(binary) = command_in_path("faster-whisper") else {
         return Ok(None);
     };
-    let Some(model_path) = faster_whisper_local_model() else {
+    let Some(model_path) = faster_whisper_local_model(model_path) else {
         return Err("faster-whisper encontrado, mas FASTER_WHISPER_MODEL não aponta para um modelo local; não baixei modelo automaticamente.".to_owned());
     };
     let output_dir = temp_dir.join("faster-whisper-output");
@@ -676,15 +953,23 @@ fn run_faster_whisper(audio_path: &Path, temp_dir: &Path) -> Result<Option<Strin
     }
 }
 
-fn run_vosk_transcriber(audio_path: &Path) -> Result<Option<String>, String> {
-    let Some(binary) = command_in_path("vosk-transcriber") else {
+fn run_vosk_transcriber(
+    audio_path: &Path,
+    model_path: Option<&str>,
+) -> Result<Option<String>, String> {
+    let Some(binary) = command_in_path("vosk-transcriber").or_else(|| command_in_path("vosk"))
+    else {
         return Ok(None);
     };
-    let output = Command::new(binary)
+    let mut command = Command::new(binary);
+    if let Some(model) = vosk_local_model(model_path) {
+        command.arg("-m").arg(model);
+    }
+    let output = command
         .arg("-i")
         .arg(audio_path)
         .output()
-        .map_err(|error| format!("falha ao executar vosk-transcriber: {error}"))?;
+        .map_err(|error| format!("falha ao executar vosk-transcriber/vosk: {error}"))?;
     let stdout = String::from_utf8_lossy(&output.stdout);
     let text = clean_transcript_output(&stdout);
     if output.status.success() && !text.is_empty() {
@@ -699,9 +984,17 @@ fn run_vosk_transcriber(audio_path: &Path) -> Result<Option<String>, String> {
 }
 
 #[tauri::command]
+pub fn get_stt_config_state(
+    model_path: Option<String>,
+) -> Result<LocalSttConfigSnapshot, ErrorPayload> {
+    stt_config_snapshot(model_path.as_deref()).map_err(map_err)
+}
+
+#[tauri::command]
 pub fn transcribe_audio(
     audio_bytes: Vec<u8>,
     mime_type: Option<String>,
+    model_path: Option<String>,
 ) -> Result<VoiceTranscriptionResult, ErrorPayload> {
     if audio_bytes.is_empty() {
         return Ok(voice_result(
@@ -751,8 +1044,10 @@ pub fn transcribe_audio(
         }
     };
 
-    let attempts: [(&str, Result<Option<String>, String>); 1] =
-        [("whisper-cli", run_whisper_cpp(&audio_path))];
+    let attempts: [(&str, Result<Option<String>, String>); 1] = [(
+        "whisper-cli",
+        run_whisper_cpp(&audio_path, model_path.as_deref()),
+    )];
     for (backend, attempt) in attempts {
         match attempt {
             Ok(Some(text)) => {
@@ -791,8 +1086,10 @@ pub fn transcribe_audio(
         }
     }
 
-    let attempts: [(&str, Result<Option<String>, String>); 1] =
-        [("faster-whisper", run_faster_whisper(&audio_path, &temp_dir))];
+    let attempts: [(&str, Result<Option<String>, String>); 1] = [(
+        "faster-whisper",
+        run_faster_whisper(&audio_path, &temp_dir, model_path.as_deref()),
+    )];
     for (backend, attempt) in attempts {
         match attempt {
             Ok(Some(text)) => {
@@ -811,8 +1108,10 @@ pub fn transcribe_audio(
         }
     }
 
-    let attempts: [(&str, Result<Option<String>, String>); 1] =
-        [("vosk-transcriber", run_vosk_transcriber(&audio_path))];
+    let attempts: [(&str, Result<Option<String>, String>); 1] = [(
+        "vosk-transcriber",
+        run_vosk_transcriber(&audio_path, model_path.as_deref()),
+    )];
     for (backend, attempt) in attempts {
         match attempt {
             Ok(Some(text)) => {
@@ -1390,6 +1689,34 @@ pub fn delete_session(state: State<AppState>, session_id: String) -> Result<(), 
         .session_manager
         .delete_session(&session_id)
         .map_err(map_err)
+}
+
+#[tauri::command]
+pub fn archive_session(
+    app: AppHandle,
+    state: State<AppState>,
+    session_id: String,
+) -> Result<AgentSession, ErrorPayload> {
+    let session = state
+        .session_manager
+        .archive_session(&session_id)
+        .map_err(map_err)?;
+    let _ = app.emit("session-changed", session.clone());
+    Ok(session)
+}
+
+#[tauri::command]
+pub fn restore_session(
+    app: AppHandle,
+    state: State<AppState>,
+    session_id: String,
+) -> Result<AgentSession, ErrorPayload> {
+    let session = state
+        .session_manager
+        .restore_session(&session_id)
+        .map_err(map_err)?;
+    let _ = app.emit("session-changed", session.clone());
+    Ok(session)
 }
 
 #[tauri::command]

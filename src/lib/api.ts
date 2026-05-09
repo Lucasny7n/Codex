@@ -28,6 +28,7 @@ import type {
   ConversationImportResult,
   EnvironmentSelectionInput,
   VoiceTranscriptionResult,
+  LocalSttConfigSnapshot,
   ChatAttachment,
 } from '../types/domain';
 
@@ -45,6 +46,18 @@ export async function renameSession(sessionId: string, title: string): Promise<A
 
 export async function deleteSession(sessionId: string): Promise<void> {
   await invoke('delete_session', { sessionId });
+}
+
+export async function archiveSession(sessionId: string): Promise<AgentSession> {
+  return invoke('archive_session', { sessionId });
+}
+
+export async function restoreSession(sessionId: string): Promise<AgentSession> {
+  return invoke('restore_session', { sessionId });
+}
+
+export async function listArchivedSessions(): Promise<AgentSession[]> {
+  return invoke('list_archived_sessions');
 }
 
 export async function archiveAllSessions(): Promise<AgentSession[]> {
@@ -108,8 +121,12 @@ export async function getFileAttachment(path: string): Promise<SelectedFileAttac
   return invoke('get_file_attachment', { path });
 }
 
-export async function transcribeAudio(audioBytes: number[], mimeType?: string): Promise<VoiceTranscriptionResult> {
-  return invoke('transcribe_audio', { audioBytes, mimeType });
+export async function getSttConfigState(modelPath?: string): Promise<LocalSttConfigSnapshot> {
+  return invoke('get_stt_config_state', { modelPath });
+}
+
+export async function transcribeAudio(audioBytes: number[], mimeType?: string, modelPath?: string): Promise<VoiceTranscriptionResult> {
+  return invoke('transcribe_audio', { audioBytes, mimeType, modelPath });
 }
 
 export async function appendUserMessage(sessionId: string, content: string): Promise<AgentSession> {

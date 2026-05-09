@@ -6,6 +6,7 @@ import { CommandInputPanel } from '../src/components/panels/CommandInputPanel';
 vi.mock('../src/lib/api', () => ({
   getFileAttachment: vi.fn(),
   listFileDirectory: vi.fn(),
+  getSttConfigState: vi.fn(),
   transcribeAudio: vi.fn(),
 }));
 
@@ -84,6 +85,22 @@ describe('CommandInputPanel', () => {
       preview: 'preview seguro',
       previewKind: 'text',
       previewTruncated: false,
+    });
+    vi.mocked(api.getSttConfigState).mockResolvedValue({
+      ffmpeg: {
+        id: 'ffmpeg',
+        label: 'ffmpeg',
+        installed: false,
+        ready: false,
+        message: 'ffmpeg ausente.',
+      },
+      backends: [],
+      modelExists: false,
+      modelCandidates: [],
+      ready: false,
+      installCommand: 'sudo pacman -S ffmpeg whisper.cpp',
+      message: 'Nenhum backend STT local encontrado.',
+      checkedAt: new Date().toISOString(),
     });
   });
 
@@ -276,7 +293,7 @@ describe('CommandInputPanel', () => {
     vi.mocked(api.transcribeAudio).mockResolvedValue({
       status: 'missing_backend',
       message: 'Nenhum backend local de transcrição foi encontrado.',
-      command: 'sudo pacman -S whisper.cpp ffmpeg',
+      command: 'sudo pacman -S ffmpeg whisper.cpp',
     });
 
     render(
@@ -294,7 +311,13 @@ describe('CommandInputPanel', () => {
     fireEvent.click(await screen.findByLabelText('Parar transcrição de voz'));
 
     expect(await screen.findByRole('alert')).toHaveTextContent('Backend local não configurado');
-    expect(await screen.findByRole('alert')).toHaveTextContent('sudo pacman -S whisper.cpp ffmpeg');
+    expect(await screen.findByRole('alert')).toHaveTextContent('sudo pacman -S ffmpeg whisper.cpp');
+
+    fireEvent.click(screen.getByText('Configurar transcrição local'));
+    expect(await screen.findByRole('dialog', { name: 'Configurar transcrição local' })).toBeInTheDocument();
+    expect(api.getSttConfigState).toHaveBeenCalled();
+    expect(screen.getByText('Comando Arch sugerido')).toBeInTheDocument();
+    expect(screen.getByText('sudo pacman -S ffmpeg whisper.cpp')).toBeInTheDocument();
   });
 
   it('abre seletor interno, adiciona chip de arquivo e remove o chip', async () => {

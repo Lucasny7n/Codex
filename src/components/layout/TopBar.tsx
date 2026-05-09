@@ -8,7 +8,7 @@ import type {
   ProviderCredentialStatus,
   ProviderRuntimeStatus,
 } from '../../types/domain';
-import type { ProviderStatus } from '../../lib/providerStatus';
+import { normalizeProviderStatus, type ProviderStatus } from '../../lib/providerStatus';
 
 export interface TopBarModelOption {
   id: string;
@@ -90,6 +90,7 @@ function ModelOptionRow({
         <span className="model-picker-option-copy">
           <strong>{option.label}</strong>
           <small className="model-picker-status-label">
+            <StatusDot tone={statusTone(option.status)} />
             {option.statusLabel ?? (option.available ? 'Configurado' : 'Configurar ou testar')}
             {option.heavy ? ' · Pesado' : ''}
           </small>
@@ -185,6 +186,22 @@ function profileFor(providerId: string | undefined, profiles: ProviderAccountPro
   return matches.find((profile) => profile.isDefault) ?? matches[0];
 }
 
+function statusTone(status: ProviderStatus | undefined): 'ready' | 'warning' | 'error' | 'offline' {
+  if (status === 'ready') return 'ready';
+  if (status === 'invalid_api_key' || status === 'forbidden' || status === 'quota_exceeded' || status === 'provider_unavailable') return 'error';
+  if (status === 'testing' || status === 'requires_api_key' || status === 'requires_login' || status === 'rate_limited') return 'warning';
+  return 'offline';
+}
+
+function providerSpecificError(providerId: string | undefined, message: string): string {
+  if (!providerId) return message;
+  if (providerId === 'openrouter-api') return `OpenRouter: ${message}`;
+  if (providerId === 'gemini-api') return `Gemini: ${message}`;
+  if (providerId === 'openai-api') return `OpenAI: ${message}`;
+  if (providerId === 'anthropic-api') return `Anthropic: ${message}`;
+  return message;
+}
+
 export function TopBar({
   providerStatus,
   executionMode,
@@ -232,8 +249,8 @@ export function TopBar({
     setModelMenuOpen(false);
     setConfigTarget({ mode, option });
     setApiKey('');
-    setConfigStatus('idle');
-    setConfigError(undefined);
+    setConfigStatus(option.status === 'ready' ? 'ready' : option.status === 'invalid_api_key' || option.status === 'forbidden' ? 'error' : 'idle');
+    setConfigError(option.status === 'invalid_api_key' || option.status === 'forbidden' ? option.statusLabel : undefined);
   }
 
   async function saveApiKey(): Promise<void> {
@@ -249,9 +266,18 @@ export function TopBar({
       await onSaveProviderProfileCredential(providerId, configProfile?.id, configProfile?.name ?? 'Principal', apiKey, true);
       setApiKey('');
       setConfigStatus('idle');
+      setConfigTarget((current) => current ? {
+        ...current,
+        option: {
+          ...current.option,
+          available: false,
+          status: 'testing',
+          statusLabel: 'Testar conexão',
+        },
+      } : current);
     } catch (cause) {
       setConfigStatus('error');
-      setConfigError(cause instanceof Error ? cause.message : 'Falha ao salvar API key.');
+      setConfigError(providerSpecificError(providerId, cause instanceof Error ? cause.message : 'Falha ao salvar API key.'));
     }
   }
 
@@ -261,16 +287,44 @@ export function TopBar({
     setConfigStatus('testing');
     setConfigError(undefined);
     try {
+      if (apiKey.trim()) {
+        if (!onSaveProviderProfileCredential || apiKey.trim().length < 12) {
+          setConfigStatus('error');
+          setConfigError(providerSpecificError(providerId, 'API key curta ou vazia.'));
+          return;
+        }
+        await onSaveProviderProfileCredential(providerId, configProfile?.id, configProfile?.name ?? 'Principal', apiKey, true);
+        setApiKey('');
+      }
       const status = await onTestProvider(providerId);
       if (status.state === 'ready') {
         setConfigStatus('ready');
+        setConfigTarget((current) => current ? {
+          ...current,
+          option: {
+            ...current.option,
+            available: true,
+            status: 'ready',
+            statusLabel: 'Configurado',
+          },
+        } : current);
       } else {
         setConfigStatus('error');
-        setConfigError(status.message);
+        setConfigError(providerSpecificError(providerId, status.message));
+        const normalizedStatus = normalizeProviderStatus(status.state);
+        setConfigTarget((current) => current ? {
+          ...current,
+          option: {
+            ...current.option,
+            available: false,
+            status: normalizedStatus,
+            statusLabel: status.state === 'invalid_api_key' ? 'API key inválida' : 'Corrigir provider',
+          },
+        } : current);
       }
     } catch (cause) {
       setConfigStatus('error');
-      setConfigError(cause instanceof Error ? cause.message : 'Falha ao testar API.');
+      setConfigError(providerSpecificError(providerId, cause instanceof Error ? cause.message : 'Falha ao testar API.'));
     }
   }
 

@@ -200,6 +200,34 @@ impl SessionManager {
         Ok(())
     }
 
+    pub fn archive_session(&self, session_id: &str) -> AppResult<AgentSession> {
+        let mut sessions = self.sessions.write();
+        let session = sessions
+            .get_mut(session_id)
+            .ok_or_else(|| anyhow::anyhow!("Sessão não encontrada"))?;
+        session.archived = true;
+        session.updated_at = now_iso();
+        let cloned = session.clone();
+        drop(sessions);
+
+        self.persist_session(&cloned)?;
+        Ok(cloned)
+    }
+
+    pub fn restore_session(&self, session_id: &str) -> AppResult<AgentSession> {
+        let mut sessions = self.sessions.write();
+        let session = sessions
+            .get_mut(session_id)
+            .ok_or_else(|| anyhow::anyhow!("Sessão não encontrada"))?;
+        session.archived = false;
+        session.updated_at = now_iso();
+        let cloned = session.clone();
+        drop(sessions);
+
+        self.persist_session(&cloned)?;
+        Ok(cloned)
+    }
+
     pub fn archive_all_sessions(&self) -> AppResult<Vec<AgentSession>> {
         let now = now_iso();
         let mut sessions = self.sessions.write();
@@ -787,6 +815,31 @@ mod tests {
         assert!(manager.list_sessions().is_empty());
         assert_eq!(manager.list_archived_sessions().len(), 1);
         assert!(dir.join(format!("{}.json", session.id)).exists());
+
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn archive_and_restore_single_session_keeps_lists_separate() {
+        let dir = temp_sessions_dir();
+        let manager = SessionManager::new(&dir).expect("manager deve iniciar");
+        let session = manager
+            .create_session("arquivada")
+            .expect("sessão deve ser criada");
+
+        let archived = manager
+            .archive_session(&session.id)
+            .expect("arquivamento individual deve funcionar");
+        assert!(archived.archived);
+        assert!(manager.list_sessions().is_empty());
+        assert_eq!(manager.list_archived_sessions().len(), 1);
+
+        let restored = manager
+            .restore_session(&session.id)
+            .expect("restauração individual deve funcionar");
+        assert!(!restored.archived);
+        assert_eq!(manager.list_sessions().len(), 1);
+        assert!(manager.list_archived_sessions().is_empty());
 
         let _ = fs::remove_dir_all(dir);
     }

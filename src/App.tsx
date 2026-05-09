@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
   bootstrapState,
+  archiveSession,
   archiveAllSessions,
   createSession,
   deleteAllSessions,
@@ -11,6 +12,7 @@ import {
   getLocalRuntimeState,
   installLocalModel,
   importConversations,
+  listArchivedSessions,
   listProviderCredentials,
   listProviderProfiles,
   listPrivilegedActions,
@@ -28,6 +30,7 @@ import {
   requestExecution,
   requestPrivilegedAction,
   renameSession,
+  restoreSession,
   saveProviderProfileCredential,
   sendOrderToAgent,
   startLocalRuntime,
@@ -71,6 +74,7 @@ import { SessionsPanel } from './components/panels/SessionsPanel';
 import { ChatPanel } from './components/panels/ChatPanel';
 import { SettingsPanel, type SettingsTab } from './components/panels/SettingsPanel';
 import { CommandInputPanel, type InputModeId } from './components/panels/CommandInputPanel';
+import { ArchivedConversationsModal } from './components/panels/ArchivedConversationsModal';
 import { TerminalDrawer } from './components/panels/TerminalDrawer';
 import { HelpDrawer } from './components/panels/HelpDrawer';
 import type { EnvironmentTab } from './components/panels/ModelSelector';
@@ -368,6 +372,10 @@ export default function App(): JSX.Element {
   const [settingsTabRequest, setSettingsTabRequest] = useState<{ tab: SettingsTab; nonce: number }>();
   const [sessionInfoId, setSessionInfoId] = useState<string>();
   const [controlModalOpen, setControlModalOpen] = useState(false);
+  const [archivedModalOpen, setArchivedModalOpen] = useState(false);
+  const [archivedSessions, setArchivedSessions] = useState<AgentSession[]>([]);
+  const [archivedLoading, setArchivedLoading] = useState(false);
+  const [archivedError, setArchivedError] = useState<string>();
   const [deleteSessionTarget, setDeleteSessionTarget] = useState<AgentSession>();
   const [exportSessionTarget, setExportSessionTarget] = useState<AgentSession>();
   const [projectConversationMenuId, setProjectConversationMenuId] = useState<string>();
@@ -493,7 +501,18 @@ export default function App(): JSX.Element {
     return source.map((profile) => {
       const provider = providers.find((item) => item.id === profile.providerId);
       if (!provider) return profile;
-      const status = accountStatusFromProviderState(provider.status.state, profile);
+      const statusFromProvider = accountStatusFromProviderState(provider.status.state, profile);
+      const explicitFailure = [
+        'invalid_api_key',
+        'forbidden',
+        'quota_exceeded',
+        'rate_limited',
+        'provider_unavailable',
+        'misconfigured',
+      ].includes(profile.status);
+      const status = provider.status.state === 'testing' && explicitFailure
+        ? profile.status
+        : statusFromProvider;
       return {
         ...profile,
         providerLabel: provider.label,
@@ -1051,6 +1070,11 @@ export default function App(): JSX.Element {
     makeDefault: boolean,
   ): Promise<ProviderAccountProfile> {
     const profile = await saveProviderProfileCredential(providerId, profileId, name, key, makeDefault);
+    updateProviderStatus(providerId, {
+      state: 'testing',
+      message: `${profile.providerLabel || providerId} recebeu API key; teste a conexão antes de selecionar.`,
+      checkedAt: new Date().toISOString(),
+    });
     await refreshProviderCredentials();
     return profile;
   }
@@ -1240,10 +1264,51 @@ export default function App(): JSX.Element {
   async function handleDeleteSession(session: AgentSession): Promise<void> {
     await deleteSession(session.id);
     removeSession(session.id);
+    setArchivedSessions((current) => current.filter((item) => item.id !== session.id));
     if (sessionInfoId === session.id) {
       setSessionInfoId(undefined);
     }
     setDeleteSessionTarget(undefined);
+  }
+
+  async function refreshArchivedSessions(): Promise<void> {
+    setArchivedLoading(true);
+    setArchivedError(undefined);
+    try {
+      const archived = await listArchivedSessions();
+      setArchivedSessions(archived);
+    } catch (cause) {
+      setArchivedError(cause instanceof Error ? cause.message : 'Falha ao listar conversas arquivadas.');
+    } finally {
+      setArchivedLoading(false);
+    }
+  }
+
+  function openArchivedConversations(): void {
+    setArchivedModalOpen(true);
+    void refreshArchivedSessions();
+  }
+
+  async function handleArchiveSession(session: AgentSession): Promise<void> {
+    const archived = await archiveSession(session.id);
+    upsertSession(archived);
+    setArchivedSessions((current) => [archived, ...current.filter((item) => item.id !== archived.id)]);
+    if (selectedSessionId === session.id) {
+      selectSession(undefined);
+    }
+  }
+
+  async function handleRestoreArchivedSession(session: AgentSession): Promise<void> {
+    const restored = await restoreSession(session.id);
+    setArchivedSessions((current) => current.filter((item) => item.id !== session.id));
+    upsertSession(restored);
+    selectSession(restored.id);
+  }
+
+  async function handleDeleteArchivedSession(session: AgentSession): Promise<void> {
+    await deleteSession(session.id);
+    setArchivedSessions((current) => current.filter((item) => item.id !== session.id));
+    removeSession(session.id);
   }
 
   async function handleDuplicateSession(session: AgentSession): Promise<void> {
@@ -1292,7 +1357,9 @@ export default function App(): JSX.Element {
       return;
     }
     if (action === 'archive') {
-      pushToast('info', 'Arquivo será conectado na próxima etapa.');
+      void handleArchiveSession(session).catch((cause) => {
+        setError(cause instanceof Error ? cause.message : 'Falha ao arquivar conversa.');
+      });
       return;
     }
     if (action === 'share') {
@@ -1410,7 +1477,7 @@ export default function App(): JSX.Element {
             onDuplicate={(session) => void handleDuplicateSession(session)}
             onSessionMenuAction={handleSessionMenuAction}
             onOpenSettings={openSettingsTab}
-            onOpenArchivedConversations={() => pushToast('info', 'Conversas arquivadas serão conectadas na próxima etapa.')}
+            onOpenArchivedConversations={openArchivedConversations}
             onCloseSession={() => {
               handleSelectSession(undefined);
               setControlModalOpen(false);
@@ -1577,6 +1644,17 @@ export default function App(): JSX.Element {
           initialTab={settingsTabRequest?.tab ?? 'general'}
         />
       </PremiumModal>
+
+      <ArchivedConversationsModal
+        open={archivedModalOpen}
+        sessions={archivedSessions}
+        loading={archivedLoading}
+        error={archivedError}
+        onClose={() => setArchivedModalOpen(false)}
+        onRefresh={refreshArchivedSessions}
+        onRestore={handleRestoreArchivedSession}
+        onDelete={handleDeleteArchivedSession}
+      />
 
       <HelpDrawer
         open={helpOpen}

@@ -7,6 +7,7 @@ import type { AgentSession, BootstrapPayload } from '../src/types/domain';
 
 vi.mock('../src/lib/api', () => ({
   archiveAllSessions: vi.fn(),
+  archiveSession: vi.fn(),
   bootstrapState: vi.fn(),
   createSession: vi.fn(),
   deleteAllSessions: vi.fn(),
@@ -19,12 +20,14 @@ vi.mock('../src/lib/api', () => ({
   getAppHealthCheck: vi.fn(),
   getFileAttachment: vi.fn(),
   getLocalRuntimeState: vi.fn(),
+  getSttConfigState: vi.fn(),
   installLocalModel: vi.fn(),
   installLocalRuntime: vi.fn(),
   importConversations: vi.fn(),
   listProviderProfiles: vi.fn(),
   listProviderCredentials: vi.fn(),
   listFileDirectory: vi.fn(),
+  listArchivedSessions: vi.fn(),
   listPrivilegedActions: vi.fn(),
   onCommandLog: vi.fn(),
   onFileChanged: vi.fn(),
@@ -44,6 +47,7 @@ vi.mock('../src/lib/api', () => ({
   requestExecution: vi.fn(),
   renameSession: vi.fn(),
   renameProviderProfile: vi.fn(),
+  restoreSession: vi.fn(),
   saveProviderProfileCredential: vi.fn(),
   saveProviderCredential: vi.fn(),
   setDefaultProviderProfile: vi.fn(),
@@ -111,6 +115,25 @@ function payload(sessions: AgentSession[]): BootstrapPayload {
             id: 'mock-development-model',
             label: 'Mock de desenvolvimento',
             providerId: 'mock-development',
+            supportsTools: false
+          }
+        ]
+      },
+      {
+        id: 'openai-api',
+        label: 'OpenAI API',
+        configurable: true,
+        enabled: false,
+        status: {
+          state: 'requires_api_key',
+          message: 'OpenAI API sem API key configurada.',
+          checkedAt: new Date().toISOString()
+        },
+        models: [
+          {
+            id: 'gpt-5.5',
+            label: 'GPT-5.5',
+            providerId: 'openai-api',
             supportsTools: false
           }
         ]
@@ -188,8 +211,21 @@ describe('App layout visibility', () => {
     mockedApi.getBasePrompt.mockResolvedValue('prompt base');
     mockedApi.updateSettings.mockImplementation(async (next) => next);
     mockedApi.listPrivilegedActions.mockResolvedValue([]);
+    mockedApi.listArchivedSessions.mockResolvedValue([]);
     mockedApi.listProviderCredentials.mockResolvedValue([]);
     mockedApi.listProviderProfiles.mockResolvedValue([]);
+    mockedApi.saveProviderProfileCredential.mockResolvedValue({
+      id: 'openai-api:principal',
+      providerId: 'openai-api',
+      providerLabel: 'OpenAI API',
+      name: 'Principal',
+      authType: 'api_key',
+      status: 'testing',
+      maskedCredential: 'sk-t****1234',
+      source: 'config_file',
+      isDefault: true,
+      message: 'Credencial salva; teste conexão antes de usar como ready.'
+    });
     mockedApi.getLocalRuntimeState.mockResolvedValue({
       state: 'ready',
       message: 'Runtime pronto',
@@ -253,6 +289,61 @@ describe('App layout visibility', () => {
     expect(screen.queryByText('Inspector')).not.toBeInTheDocument();
     expect(screen.queryByText('READY')).not.toBeInTheDocument();
     expect(screen.queryByText('requires_cli_auth')).not.toBeInTheDocument();
+  });
+
+  it('lista, restaura e exclui conversas arquivadas pelo menu do usuário', async () => {
+    const visible = baseSession();
+    const archived: AgentSession = {
+      ...baseSession(),
+      id: 'archived-1',
+      title: 'Conversa arquivada',
+      archived: true,
+      messages: [
+        {
+          id: 'm1',
+          role: 'user',
+          content: 'conteúdo antigo',
+          createdAt: new Date().toISOString(),
+        },
+      ],
+    };
+    vi.mocked(api.bootstrapState).mockResolvedValue(payload([visible]));
+    vi.mocked(api.listArchivedSessions).mockResolvedValue([archived]);
+    vi.mocked(api.restoreSession).mockResolvedValue({ ...archived, archived: false });
+    vi.mocked(api.deleteSession).mockResolvedValue(undefined);
+
+    render(<App />);
+
+    await waitFor(() => {
+      expect(screen.getByText('O que gostaria de explorar?')).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByLabelText('Menu do usuário'));
+    fireEvent.click(screen.getByText('Conversas arquivadas'));
+
+    expect(await screen.findByRole('dialog', { name: 'Conversas arquivadas' })).toBeInTheDocument();
+    expect(await screen.findByText('Conversa arquivada')).toBeInTheDocument();
+    expect(screen.queryAllByText('Conversa arquivada')).toHaveLength(1);
+
+    fireEvent.change(screen.getByLabelText('Buscar conversa arquivada'), { target: { value: 'antigo' } });
+    expect(screen.getByText('Conversa arquivada')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByText('Restaurar'));
+    await waitFor(() => {
+      expect(api.restoreSession).toHaveBeenCalledWith('archived-1');
+      expect(screen.queryByText('Conversa arquivada')).not.toBeInTheDocument();
+    });
+
+    vi.mocked(api.listArchivedSessions).mockResolvedValue([archived]);
+    fireEvent.click(screen.getByText('Atualizar'));
+    expect(await screen.findByText('Conversa arquivada')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByText('Excluir definitivamente'));
+    fireEvent.click(screen.getByRole('button', { name: 'Excluir' }));
+    await waitFor(() => {
+      expect(api.deleteSession).toHaveBeenCalledWith('archived-1');
+      expect(screen.queryByText('Conversa arquivada')).not.toBeInTheDocument();
+    });
   });
 
   it('abre dropdown de modelos pela topbar sem mostrar menu Ambiente antigo', async () => {
@@ -361,25 +452,27 @@ describe('App layout visibility', () => {
     expect(screen.getByText('Testar API')).toBeInTheDocument();
     expect(screen.getByText(/Status: não testado/)).toBeInTheDocument();
 
-    vi.mocked(api.testProviderConnection).mockResolvedValue({
-      state: 'ready',
-      message: 'OpenAI respondeu.',
-      checkedAt: new Date().toISOString(),
-    });
-    fireEvent.click(screen.getByText('Testar API'));
-    await waitFor(() => {
-      expect(api.testProviderConnection).toHaveBeenCalledWith('openai-api');
-      expect(screen.getByText(/Status: funcionando/)).toBeInTheDocument();
-    });
-
     vi.mocked(api.testProviderConnection).mockResolvedValueOnce({
-      state: 'error',
+      state: 'invalid_api_key',
       message: 'API key inválida.',
       checkedAt: new Date().toISOString(),
     });
     fireEvent.click(screen.getByText('Testar API'));
     await waitFor(() => {
       expect(screen.getByRole('alert')).toHaveTextContent('API key inválida.');
+    });
+
+    vi.mocked(api.testProviderConnection).mockResolvedValue({
+      state: 'ready',
+      message: 'OpenAI respondeu.',
+      checkedAt: new Date().toISOString(),
+    });
+    fireEvent.change(screen.getByLabelText('API Key'), { target: { value: 'sk-test-valid-123456789' } });
+    fireEvent.click(screen.getByText('Testar API'));
+    await waitFor(() => {
+      expect(api.saveProviderProfileCredential).toHaveBeenCalledWith('openai-api', undefined, 'Principal', 'sk-test-valid-123456789', true);
+      expect(api.testProviderConnection).toHaveBeenCalledWith('openai-api');
+      expect(screen.getByText(/Status: funcionando/)).toBeInTheDocument();
     });
 
     fireEvent.keyDown(document, { key: 'Escape' });
@@ -389,6 +482,16 @@ describe('App layout visibility', () => {
     });
 
     fireEvent.click(screen.getByTitle(/mock-development-model/));
+    fireEvent.change(screen.getByLabelText('Buscar modelo ou provedor'), { target: { value: 'GPT-5.5' } });
+    fireEvent.click(screen.getByText('GPT-5.5'));
+    await waitFor(() => {
+      expect(api.updateSettings).toHaveBeenCalledWith(expect.objectContaining({
+        selectedProviderId: 'openai-api',
+        selectedModelId: 'gpt-5.5',
+      }));
+    });
+
+    fireEvent.click(screen.getByTitle(/GPT-5.5/));
     fireEvent.click(screen.getAllByRole('tab', { name: 'Local' })[0]);
     fireEvent.change(screen.getByLabelText('Buscar modelo ou provedor'), { target: { value: 'Qwen2.5 Coder 7B' } });
     expect(screen.queryByLabelText('Configurar Qwen2.5 Coder 7B')).not.toBeInTheDocument();

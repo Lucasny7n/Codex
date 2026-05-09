@@ -263,6 +263,24 @@ impl CredentialStore {
             })
     }
 
+    pub fn provider_default_profile_status(
+        &self,
+        provider_id: &str,
+    ) -> Option<ProviderAccountStatus> {
+        let cache = self.cache.read();
+        cache
+            .default_profiles
+            .get(provider_id)
+            .and_then(|profile_id| cache.profiles.get(profile_id))
+            .filter(|profile| {
+                profile
+                    .credential
+                    .as_ref()
+                    .is_some_and(|value| !value.trim().is_empty())
+            })
+            .and_then(|profile| profile.last_status.clone())
+    }
+
     pub fn mark_provider_test_result(
         &self,
         provider_id: &str,

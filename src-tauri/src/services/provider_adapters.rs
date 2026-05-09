@@ -13,8 +13,8 @@ use tokio::time::timeout;
 
 use crate::error::{AppError, AppResult};
 use crate::models::{
-    now_iso, ModelDescriptor, ProviderDescriptor, ProviderGenerateRequest, ProviderRunResult,
-    ProviderRuntimeStatus, ProviderStatusState,
+    now_iso, ModelDescriptor, ProviderAccountStatus, ProviderDescriptor, ProviderGenerateRequest,
+    ProviderRunResult, ProviderRuntimeStatus, ProviderStatusState,
 };
 use crate::services::credential_store::CredentialStore;
 
@@ -221,6 +221,23 @@ impl ProviderAdapter for OpenAiCompatibleAdapter {
             );
         }
 
+        if let Some(state) = tested_profile_status(&self.credential_store, self.id) {
+            return provider_status(
+                state.clone(),
+                if state == ProviderStatusState::Ready {
+                    format!("{} tem credencial salva e testada.", self.label)
+                } else {
+                    format!(
+                        "{} tem resultado de teste pendente de correção: {}",
+                        self.label,
+                        state_message(&state)
+                    )
+                },
+                Some(format!("{}/models", self.base_url)),
+                None,
+            );
+        }
+
         provider_status(
             if self.credential_store.provider_has_ready_profile(self.id) {
                 ProviderStatusState::Ready
@@ -391,6 +408,22 @@ impl ProviderAdapter for AnthropicAdapter {
                 ProviderStatusState::RequiresApiKey,
                 "Anthropic API sem API key configurada.",
                 None,
+                None,
+            );
+        }
+
+        if let Some(state) = tested_profile_status(&self.credential_store, Self::ID) {
+            return provider_status(
+                state.clone(),
+                if state == ProviderStatusState::Ready {
+                    "Anthropic API tem credencial salva e testada.".to_owned()
+                } else {
+                    format!(
+                        "Anthropic API tem resultado de teste pendente de correção: {}.",
+                        state_message(&state)
+                    )
+                },
+                Some("https://api.anthropic.com/v1/models".to_owned()),
                 None,
             );
         }
@@ -578,6 +611,21 @@ impl ProviderAdapter for GeminiApiAdapter {
                 ProviderStatusState::RequiresApiKey,
                 "Gemini API sem GEMINI_API_KEY/GOOGLE_API_KEY ou key salva.",
                 None,
+                None,
+            );
+        }
+        if let Some(state) = tested_profile_status(&self.credential_store, Self::ID) {
+            return provider_status(
+                state.clone(),
+                if state == ProviderStatusState::Ready {
+                    "Gemini API tem credencial salva e testada.".to_owned()
+                } else {
+                    format!(
+                        "Gemini API tem resultado de teste pendente de correção: {}.",
+                        state_message(&state)
+                    )
+                },
+                Some("https://generativelanguage.googleapis.com/v1beta/models".to_owned()),
                 None,
             );
         }
@@ -1511,6 +1559,55 @@ fn provider_status(
         command,
         version,
         checked_at: now_iso(),
+    }
+}
+
+fn provider_state_from_account_status(
+    status: ProviderAccountStatus,
+) -> Option<ProviderStatusState> {
+    match status {
+        ProviderAccountStatus::Ready => Some(ProviderStatusState::Ready),
+        ProviderAccountStatus::InvalidApiKey => Some(ProviderStatusState::InvalidApiKey),
+        ProviderAccountStatus::Forbidden => Some(ProviderStatusState::Forbidden),
+        ProviderAccountStatus::QuotaExceeded => Some(ProviderStatusState::QuotaExceeded),
+        ProviderAccountStatus::RateLimited => Some(ProviderStatusState::RateLimited),
+        ProviderAccountStatus::ProviderUnavailable => {
+            Some(ProviderStatusState::ProviderUnavailable)
+        }
+        ProviderAccountStatus::Misconfigured => Some(ProviderStatusState::Misconfigured),
+        ProviderAccountStatus::RequiresLogin => Some(ProviderStatusState::RequiresLogin),
+        ProviderAccountStatus::RequiresOauth => Some(ProviderStatusState::RequiresOauth),
+        ProviderAccountStatus::RequiresCliAuth => Some(ProviderStatusState::RequiresCliAuth),
+        ProviderAccountStatus::RequiresApiKey => Some(ProviderStatusState::RequiresApiKey),
+        ProviderAccountStatus::Testing
+        | ProviderAccountStatus::Experimental
+        | ProviderAccountStatus::Unavailable => None,
+    }
+}
+
+fn tested_profile_status(
+    credential_store: &CredentialStore,
+    provider_id: &str,
+) -> Option<ProviderStatusState> {
+    credential_store
+        .provider_default_profile_status(provider_id)
+        .and_then(provider_state_from_account_status)
+}
+
+fn state_message(state: &ProviderStatusState) -> &'static str {
+    match state {
+        ProviderStatusState::InvalidApiKey => "API key inválida",
+        ProviderStatusState::Forbidden => "permissão negada",
+        ProviderStatusState::QuotaExceeded => "cota excedida",
+        ProviderStatusState::RateLimited => "limite temporário",
+        ProviderStatusState::ProviderUnavailable => "provider indisponível",
+        ProviderStatusState::Misconfigured => "configuração inválida",
+        ProviderStatusState::RequiresLogin => "login necessário",
+        ProviderStatusState::RequiresOauth => "OAuth necessário",
+        ProviderStatusState::RequiresCliAuth => "CLI auth necessário",
+        ProviderStatusState::RequiresApiKey => "API key necessária",
+        ProviderStatusState::Ready => "ready",
+        _ => "estado não pronto",
     }
 }
 

@@ -1,11 +1,11 @@
 import { useEffect, useRef, useState } from 'react';
-import { transcribeAudio } from '../../lib/api';
+import { getSttConfigState, transcribeAudio } from '../../lib/api';
 import type { PrivilegedActionSpec } from '../../types/domain';
-import type { ChatAttachment, SelectedFileAttachment } from '../../types/domain';
+import type { ChatAttachment, LocalSttConfigSnapshot, SelectedFileAttachment } from '../../types/domain';
 import { UiIcon } from '../common/AppIcons';
 import { FileManagerModal } from '../file/FileManagerModal';
 import { fileIconNameForKind, formatFileSize } from '../file/fileDisplay';
-import { PopupMenu } from '../common/PremiumUI';
+import { PopupMenu, PremiumModal, StatusDot } from '../common/PremiumUI';
 
 interface CommandInputPanelProps {
   busy: boolean;
@@ -64,6 +64,28 @@ const INPUT_MODES: InputModeOption[] = [
     description: 'Planeja comandos com aprovação para risco.',
   },
 ];
+
+const STT_MODEL_STORAGE_KEY = 'codex-command-center-stt-model-path';
+
+function readStoredSttModelPath(): string {
+  try {
+    return window.localStorage?.getItem(STT_MODEL_STORAGE_KEY) ?? '';
+  } catch {
+    return '';
+  }
+}
+
+function writeStoredSttModelPath(path: string): void {
+  try {
+    if (path.trim()) {
+      window.localStorage?.setItem(STT_MODEL_STORAGE_KEY, path.trim());
+    } else {
+      window.localStorage?.removeItem(STT_MODEL_STORAGE_KEY);
+    }
+  } catch {
+    // A configuração local de STT também funciona em memória se localStorage falhar.
+  }
+}
 
 type SpeechRecognitionEventLike = Event & {
   results: ArrayLike<ArrayLike<{ transcript: string }>>;
@@ -159,6 +181,13 @@ export function CommandInputPanel({
   const [attachments, setAttachments] = useState<SelectedFileAttachment[]>([]);
   const [voiceState, setVoiceState] = useState<VoiceState>('idle');
   const [voiceMessage, setVoiceMessage] = useState<string>();
+  const [sttSetupOpen, setSttSetupOpen] = useState(false);
+  const [sttSnapshot, setSttSnapshot] = useState<LocalSttConfigSnapshot>();
+  const [sttModelPath, setSttModelPath] = useState(readStoredSttModelPath);
+  const [sttSetupLoading, setSttSetupLoading] = useState(false);
+  const [sttSetupError, setSttSetupError] = useState<string>();
+  const [sttMicMessage, setSttMicMessage] = useState<string>();
+  const [sttTestRecording, setSttTestRecording] = useState(false);
   const recognitionRef = useRef<SpeechRecognitionLike>();
   const mediaRecorderRef = useRef<MediaRecorder>();
   const recordingStreamRef = useRef<MediaStream>();
@@ -182,6 +211,90 @@ export function CommandInputPanel({
     if (recorder && recorder.state !== 'inactive') recorder.stop();
     stopRecordingTracks();
   }, []);
+
+  async function refreshSttConfig(path = sttModelPath): Promise<void> {
+    setSttSetupLoading(true);
+    setSttSetupError(undefined);
+    try {
+      const snapshot = await getSttConfigState(path.trim() || undefined);
+      setSttSnapshot(snapshot);
+      if (!path.trim() && snapshot.modelPath) {
+        setSttModelPath(snapshot.modelPath);
+      }
+    } catch (cause) {
+      setSttSetupError(cause instanceof Error ? cause.message : 'Falha ao detectar transcrição local.');
+    } finally {
+      setSttSetupLoading(false);
+    }
+  }
+
+  function openSttSetup(): void {
+    setSttSetupOpen(true);
+    setSttSetupError(undefined);
+    setSttMicMessage(undefined);
+    void refreshSttConfig(sttModelPath);
+  }
+
+  async function saveSttModelPath(): Promise<void> {
+    const path = sttModelPath.trim();
+    writeStoredSttModelPath(path);
+    await refreshSttConfig(path);
+  }
+
+  async function testMicrophone(): Promise<void> {
+    setSttMicMessage(undefined);
+    if (!navigator.mediaDevices?.getUserMedia) {
+      setSttMicMessage('Microfone indisponível no WebView atual.');
+      return;
+    }
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      stream.getTracks().forEach((track) => track.stop());
+      setSttMicMessage('Microfone acessível. Grave um teste curto para validar a transcrição local.');
+    } catch (cause) {
+      const name = cause instanceof DOMException ? cause.name : '';
+      setSttMicMessage(name === 'NotAllowedError' ? 'Permissão negada para microfone.' : 'Não foi possível abrir o microfone.');
+    }
+  }
+
+  async function recordShortSttTest(): Promise<void> {
+    if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === 'undefined') {
+      setSttMicMessage('Gravação local indisponível neste WebView.');
+      return;
+    }
+    setSttTestRecording(true);
+    setSttMicMessage('Gravando teste curto...');
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const mimeType = [
+        'audio/webm;codecs=opus',
+        'audio/webm',
+        'audio/ogg;codecs=opus',
+        'audio/ogg',
+      ].find((candidate) => MediaRecorder.isTypeSupported(candidate));
+      const recorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
+      const chunks: Blob[] = [];
+      await new Promise<void>((resolve, reject) => {
+        recorder.ondataavailable = (event) => {
+          if (event.data.size > 0) chunks.push(event.data);
+        };
+        recorder.onerror = () => reject(new Error('Falha durante a gravação do teste.'));
+        recorder.onstop = () => resolve();
+        recorder.start();
+        window.setTimeout(() => {
+          if (recorder.state !== 'inactive') recorder.stop();
+        }, 1800);
+      });
+      stream.getTracks().forEach((track) => track.stop());
+      setSttMicMessage('Transcrevendo teste...');
+      await transcribeBlob(new Blob(chunks, { type: recorder.mimeType || 'audio/webm' }));
+      setSttMicMessage('Teste concluído. Se houve fala, ela foi adicionada ao composer.');
+    } catch (cause) {
+      setSttMicMessage(cause instanceof Error ? cause.message : 'Teste de transcrição não concluído.');
+    } finally {
+      setSttTestRecording(false);
+    }
+  }
 
   async function handleSend(): Promise<void> {
     if (writingMode) {
@@ -258,7 +371,11 @@ export function CommandInputPanel({
     setVoiceState('transcribing');
     setVoiceMessage('Transcrevendo...');
     try {
-      const result = await transcribeAudio(await blobToBytes(blob), blob.type || undefined);
+      const result = await transcribeAudio(
+        await blobToBytes(blob),
+        blob.type || undefined,
+        sttModelPath.trim() || undefined,
+      );
       if (result.status === 'done' && result.text?.trim()) {
         appendTranscript(result.text);
         setVoiceState('done');
@@ -281,7 +398,7 @@ export function CommandInputPanel({
   async function startBackendRecording(): Promise<void> {
     if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === 'undefined') {
       setVoiceState('missing-backend');
-      setVoiceMessage('Backend local não configurado. Configurar transcrição local: sudo pacman -S whisper.cpp ffmpeg');
+      setVoiceMessage('Backend local não configurado. Configurar transcrição local: sudo pacman -S ffmpeg whisper.cpp');
       return;
     }
 
@@ -526,12 +643,17 @@ export function CommandInputPanel({
         </button>
       </div>
       {voiceMessage ? (
-        <span
+        <div
           className={`voice-feedback voice-${voiceState}`}
           role={voiceState === 'error' || voiceState === 'missing-backend' || voiceState === 'permission-denied' ? 'alert' : 'status'}
         >
-          {voiceMessage}
-        </span>
+          <span>{voiceMessage}</span>
+          {voiceState === 'missing-backend' || voiceState === 'error' ? (
+            <button type="button" className="voice-config-button" onClick={openSttSetup}>
+              Configurar transcrição local
+            </button>
+          ) : null}
+        </div>
       ) : null}
       {fileManagerOpen ? (
         <FileManagerModal
@@ -541,6 +663,87 @@ export function CommandInputPanel({
           onSelect={addAttachment}
         />
       ) : null}
+      <PremiumModal
+        open={sttSetupOpen}
+        title="Configurar transcrição local"
+        description="STT local com ffmpeg, whisper.cpp, faster-whisper ou Vosk. Nada é instalado sem confirmação externa."
+        onClose={() => setSttSetupOpen(false)}
+        className="stt-config-modal"
+      >
+        <section className="stt-config-shell">
+          <div className="stt-config-summary">
+            <StatusDot tone={sttSnapshot?.ready ? 'ready' : 'warning'} />
+            <span>{sttSnapshot?.message ?? (sttSetupLoading ? 'Detectando backends locais...' : 'Abra a detecção para configurar.')}</span>
+          </div>
+          {sttSetupError ? <div className="input-error-tip" role="alert">{sttSetupError}</div> : null}
+          {sttSnapshot && !sttSnapshot.ready ? (
+            <div className="stt-command-box" role="status">
+              <strong>Comando Arch sugerido</strong>
+              <code>{sttSnapshot.installCommand}</code>
+            </div>
+          ) : null}
+
+          <div className="stt-tool-grid" aria-label="Backends de transcrição">
+            <div className="stt-tool-row">
+              <StatusDot tone={sttSnapshot?.ffmpeg.installed ? 'ready' : 'error'} />
+              <span>
+                <strong>ffmpeg</strong>
+                <small>{sttSnapshot?.ffmpeg.message ?? 'Conversor de áudio'}</small>
+              </span>
+            </div>
+            {(sttSnapshot?.backends ?? []).map((backend) => (
+              <div key={backend.id} className="stt-tool-row">
+                <StatusDot tone={backend.ready ? 'ready' : backend.installed ? 'warning' : 'offline'} />
+                <span>
+                  <strong>{backend.label}</strong>
+                  <small>{backend.message}</small>
+                </span>
+              </div>
+            ))}
+          </div>
+
+          <label className="stt-model-path">
+            Caminho do modelo
+            <input
+              className="input-modern"
+              value={sttModelPath}
+              placeholder="~/.codex/models/ggml-base.bin"
+              onChange={(event) => setSttModelPath(event.target.value)}
+            />
+          </label>
+          {sttSnapshot?.modelCandidates.length ? (
+            <div className="stt-candidate-list" aria-label="Modelos locais detectados">
+              {sttSnapshot.modelCandidates.slice(0, 6).map((candidate) => (
+                <button
+                  key={`${candidate.source}:${candidate.path}`}
+                  type="button"
+                  className={candidate.exists ? '' : 'disabled'}
+                  disabled={!candidate.exists}
+                  title={candidate.path}
+                  onClick={() => setSttModelPath(candidate.path)}
+                >
+                  <span>{candidate.label}</span>
+                  <small>{candidate.source}</small>
+                </button>
+              ))}
+            </div>
+          ) : null}
+
+          {sttMicMessage ? <div className="stt-mic-status" role="status">{sttMicMessage}</div> : null}
+
+          <div className="dialog-actions">
+            <button type="button" className="btn-modern" disabled={sttSetupLoading} onClick={() => void saveSttModelPath()}>
+              Salvar caminho
+            </button>
+            <button type="button" className="btn-modern" onClick={() => void testMicrophone()}>
+              Testar microfone
+            </button>
+            <button type="button" className="btn-modern btn-modern-primary" disabled={sttTestRecording} onClick={() => void recordShortSttTest()}>
+              {sttTestRecording ? 'Gravando...' : 'Gravar teste curto'}
+            </button>
+          </div>
+        </section>
+      </PremiumModal>
     </section>
   );
 }

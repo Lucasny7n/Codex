@@ -172,6 +172,34 @@ export interface VoiceTranscriptionResult {
   technicalDetails?: string;
 }
 
+export interface LocalSttToolStatus {
+  id: string;
+  label: string;
+  installed: boolean;
+  path?: string;
+  ready: boolean;
+  message: string;
+}
+
+export interface LocalSttModelCandidate {
+  label: string;
+  path: string;
+  source: string;
+  exists: boolean;
+}
+
+export interface LocalSttConfigSnapshot {
+  ffmpeg: LocalSttToolStatus;
+  backends: LocalSttToolStatus[];
+  modelPath?: string;
+  modelExists: boolean;
+  modelCandidates: LocalSttModelCandidate[];
+  ready: boolean;
+  installCommand: string;
+  message: string;
+  checkedAt: string;
+}
+
 export interface AgentProfile {
   id: string;
   label: string;
