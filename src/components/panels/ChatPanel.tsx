@@ -1,6 +1,8 @@
 import { useState } from 'react';
 import type { AgentSession, ChatMessage } from '../../types/domain';
+import { UiIcon } from '../common/AppIcons';
 import { PopupMenu } from '../common/PremiumUI';
+import { fileIconNameForKind, formatFileSize } from '../file/fileDisplay';
 
 interface ChatPanelProps {
   session?: AgentSession;
@@ -113,13 +115,6 @@ function ProviderErrorCard({ error, onOpenEnvironment }: { error: ParsedProvider
   );
 }
 
-function formatAttachmentSize(size?: number): string {
-  if (typeof size !== 'number') return '';
-  if (size < 1024) return `${size} B`;
-  if (size < 1024 * 1024) return `${(size / 1024).toFixed(1)} KB`;
-  return `${(size / 1024 / 1024).toFixed(1)} MB`;
-}
-
 export function ChatPanel({ session, emptyTitle = 'Pronto para criar algo?', onOpenEnvironment }: ChatPanelProps): JSX.Element {
   const [menuMessageId, setMenuMessageId] = useState<string>();
   const [copiedMessageId, setCopiedMessageId] = useState<string>();
@@ -168,8 +163,9 @@ export function ChatPanel({ session, emptyTitle = 'Pronto para criar algo?', onO
                   <div className="message-attachment-list" aria-label="Anexos da mensagem">
                     {message.attachments.map((attachment) => (
                       <span key={`${message.id}-${attachment.path}`} className="message-attachment-chip" title={attachment.path}>
+                        <UiIcon name={fileIconNameForKind(attachment.kind)} className="message-attachment-icon" />
                         <strong>{attachment.name}</strong>
-                        <small>{[attachment.kind, formatAttachmentSize(attachment.size)].filter(Boolean).join(' · ')}</small>
+                        <small>{[attachment.kind, formatFileSize(attachment.size)].filter(Boolean).join(' · ')}</small>
                       </span>
                     ))}
                   </div>

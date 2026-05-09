@@ -1,8 +1,9 @@
 import { FormEvent, KeyboardEvent, useEffect, useMemo, useState } from 'react';
 import { getFileAttachment, listFileDirectory } from '../../lib/api';
-import type { FileBrowserEntry, FileEntryKind, SelectedFileAttachment } from '../../types/domain';
-import { UiIcon, type UiIconName } from '../common/AppIcons';
+import type { FileBrowserEntry, SelectedFileAttachment } from '../../types/domain';
+import { UiIcon } from '../common/AppIcons';
 import { PremiumModal } from '../common/PremiumUI';
+import { fileIconNameForKind, fileKindLabel, formatFileSize } from './fileDisplay';
 
 interface FileManagerModalProps {
   open: boolean;
@@ -12,45 +13,6 @@ interface FileManagerModalProps {
 }
 
 const SEARCH_LIMIT = 240;
-
-export function fileIconNameForKind(kind: FileEntryKind): UiIconName {
-  if (kind === 'directory') return 'folder';
-  if (kind === 'pdf') return 'filePdf';
-  if (kind === 'zip') return 'zip';
-  if (kind === 'text') return 'fileText';
-  if (kind === 'json') return 'fileJson';
-  if (kind === 'image') return 'image';
-  if (kind === 'code') return 'fileCode';
-  if (kind === 'audio') return 'music';
-  if (kind === 'video') return 'video';
-  return 'file';
-}
-
-export function formatFileSize(size?: number): string {
-  if (typeof size !== 'number') return 'Pasta';
-  if (size < 1024) return `${size} B`;
-  const units = ['KB', 'MB', 'GB', 'TB'];
-  let value = size / 1024;
-  let unit = units[0];
-  for (let index = 1; index < units.length && value >= 1024; index += 1) {
-    value /= 1024;
-    unit = units[index];
-  }
-  return `${value >= 10 ? value.toFixed(0) : value.toFixed(1)} ${unit}`;
-}
-
-function kindLabel(entry: Pick<FileBrowserEntry, 'kind' | 'extension' | 'isDirectory'>): string {
-  if (entry.isDirectory) return 'Pasta';
-  if (entry.kind === 'pdf') return 'PDF';
-  if (entry.kind === 'zip') return 'ZIP';
-  if (entry.kind === 'json') return 'JSON';
-  if (entry.kind === 'image') return 'Imagem';
-  if (entry.kind === 'code') return entry.extension ? `Código .${entry.extension}` : 'Código';
-  if (entry.kind === 'text') return entry.extension ? `Texto .${entry.extension}` : 'Texto';
-  if (entry.kind === 'audio') return 'Áudio';
-  if (entry.kind === 'video') return 'Vídeo';
-  return entry.extension ? `.${entry.extension}` : 'Arquivo';
-}
 
 function formatDate(value?: string): string {
   if (!value) return '-';
@@ -245,7 +207,7 @@ export function FileManagerModal({ open, initialPathMode = false, onClose, onSel
                     <UiIcon name={fileIconNameForKind(entry.kind)} className="file-manager-file-icon" />
                     <span title={entry.name}>{entry.name}</span>
                   </span>
-                  <span>{kindLabel(entry)}</span>
+                  <span>{fileKindLabel(entry)}</span>
                   <span>{entry.isDirectory ? '-' : formatFileSize(entry.size)}</span>
                   <span>{formatDate(entry.modifiedAt)}</span>
                 </button>
@@ -260,7 +222,7 @@ export function FileManagerModal({ open, initialPathMode = false, onClose, onSel
               {selectedEntry ? (
                 <>
                   <strong>{selectedEntry.name}</strong>
-                  <span>{kindLabel(selectedEntry)} · {selectedEntry.isDirectory ? 'pasta' : formatFileSize(selectedEntry.size)}</span>
+                  <span>{fileKindLabel(selectedEntry)} · {selectedEntry.isDirectory ? 'pasta' : formatFileSize(selectedEntry.size)}</span>
                 </>
               ) : (
                 <span>Selecione um arquivo para anexar ao contexto.</span>

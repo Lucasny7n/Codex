@@ -253,7 +253,7 @@ describe('CommandInputPanel', () => {
     );
 
     fireEvent.click(screen.getByLabelText('Entrada por voz'));
-    expect(await screen.findByRole('status')).toHaveTextContent('Gravando...');
+    expect(await screen.findByRole('status')).toHaveTextContent('Ouvindo...');
     fireEvent.click(screen.getByLabelText('Parar transcrição de voz'));
 
     await waitFor(() => {
@@ -293,6 +293,7 @@ describe('CommandInputPanel', () => {
     fireEvent.click(screen.getByLabelText('Entrada por voz'));
     fireEvent.click(await screen.findByLabelText('Parar transcrição de voz'));
 
+    expect(await screen.findByRole('alert')).toHaveTextContent('Backend local não configurado');
     expect(await screen.findByRole('alert')).toHaveTextContent('sudo pacman -S whisper.cpp ffmpeg');
   });
 
@@ -364,6 +365,72 @@ describe('CommandInputPanel', () => {
           kind: 'text',
           previewAvailable: true,
           previewTextLimited: 'preview seguro',
+        }),
+      ]);
+    });
+  });
+
+  it('mantém chip de arquivo com nome longo sem despejar TXT no composer', async () => {
+    const longName = 'relatorio-final-com-nome-muito-longo-para-validar-truncamento-do-chip-de-anexo.md';
+    vi.mocked(api.listFileDirectory).mockResolvedValueOnce({
+      path: '/tmp',
+      parentPath: '/',
+      shortcuts: [],
+      entries: [
+        {
+          name: longName,
+          path: `/tmp/${longName}`,
+          kind: 'text',
+          extension: 'md',
+          isDirectory: false,
+          size: 34567,
+          modifiedAt: '2026-05-08T12:00:00Z',
+        },
+      ],
+      truncated: false,
+    });
+    vi.mocked(api.getFileAttachment).mockResolvedValueOnce({
+      name: longName,
+      path: `/tmp/${longName}`,
+      kind: 'text',
+      extension: 'md',
+      isDirectory: false,
+      size: 34567,
+      modifiedAt: '2026-05-08T12:00:00Z',
+      preview: 'conteúdo TXT que não deve aparecer no campo visível',
+      previewKind: 'text',
+      previewTruncated: false,
+    });
+
+    const onSendOrder = vi.fn().mockResolvedValue(undefined);
+    render(
+      <CommandInputPanel
+        busy={false}
+        privilegedActions={[]}
+        actionJsonExamples={{}}
+        onSendOrder={onSendOrder}
+        onExecuteCommand={vi.fn()}
+        onRequestPrivilegedAction={vi.fn()}
+      />,
+    );
+
+    fireEvent.click(screen.getByLabelText('Mais ações'));
+    fireEvent.click(screen.getByText('Selecionar arquivo'));
+    fireEvent.click(await screen.findByText(longName));
+    fireEvent.click(screen.getByRole('button', { name: 'Selecionar' }));
+
+    await waitFor(() => {
+      expect(screen.getByTitle(`/tmp/${longName}`)).toBeInTheDocument();
+    });
+    expect(screen.queryByDisplayValue(/conteúdo TXT/)).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByLabelText('Enviar'));
+
+    await waitFor(() => {
+      expect(onSendOrder).toHaveBeenCalledWith('Anexo enviado.', 'auto', [
+        expect.objectContaining({
+          name: longName,
+          previewTextLimited: 'conteúdo TXT que não deve aparecer no campo visível',
         }),
       ]);
     });

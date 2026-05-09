@@ -1,6 +1,7 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import type { ComponentProps } from 'react';
 import { describe, expect, it, vi } from 'vitest';
+import * as api from '../src/lib/api';
 import { SettingsPanel } from '../src/components/panels/SettingsPanel';
 import type {
   AgentProfile,
@@ -9,6 +10,11 @@ import type {
   ProviderDescriptor,
   ProviderRuntimeStatus,
 } from '../src/types/domain';
+
+vi.mock('../src/lib/api', () => ({
+  getFileAttachment: vi.fn(),
+  listFileDirectory: vi.fn(),
+}));
 
 const readyStatus: ProviderRuntimeStatus = {
   state: 'ready',
@@ -160,7 +166,7 @@ describe('SettingsPanel', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Interface' }));
 
     expect(screen.getByText('Geração automática de título')).toBeInTheDocument();
-    expect(screen.getByText('Cópia automática da resposta para área de transferência')).toBeInTheDocument();
+    expect(screen.getByText('Cópia automática da resposta')).toBeInTheDocument();
     expect(screen.getByText('Colar texto grande como arquivo')).toBeInTheDocument();
     expect(screen.getAllByRole('switch').length).toBe(3);
   });
@@ -222,6 +228,51 @@ describe('SettingsPanel', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Confirmar' }));
     await waitFor(() => {
       expect(onDeleteAllConversations).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  it('Conversas mostra erro inline em importação inválida', async () => {
+    vi.mocked(api.listFileDirectory).mockResolvedValue({
+      path: '/tmp',
+      parentPath: '/',
+      shortcuts: [],
+      entries: [
+        {
+          name: 'quebrado.json',
+          path: '/tmp/quebrado.json',
+          kind: 'json',
+          extension: 'json',
+          isDirectory: false,
+          size: 50,
+          modifiedAt: new Date().toISOString(),
+        },
+      ],
+      truncated: false,
+    });
+    vi.mocked(api.getFileAttachment).mockResolvedValue({
+      name: 'quebrado.json',
+      path: '/tmp/quebrado.json',
+      kind: 'json',
+      extension: 'json',
+      isDirectory: false,
+      size: 50,
+      modifiedAt: new Date().toISOString(),
+      previewTruncated: false,
+    });
+    const onImportConversations = vi.fn().mockRejectedValue(new Error('Importação inválida.'));
+
+    renderSettings({
+      initialTab: 'conversations',
+      onImportConversations,
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Importar' }));
+    fireEvent.click(await screen.findByText('quebrado.json'));
+    fireEvent.click(screen.getByRole('button', { name: 'Selecionar' }));
+
+    await waitFor(() => {
+      expect(onImportConversations).toHaveBeenCalledWith('/tmp/quebrado.json');
+      expect(screen.getByRole('alert')).toHaveTextContent('Importação inválida.');
     });
   });
 

@@ -89,14 +89,23 @@ function ModelOptionRow({
       >
         <span className="model-picker-option-copy">
           <strong>{option.label}</strong>
-          <small>
+          <small className="model-picker-status-label">
             {option.statusLabel ?? (option.available ? 'Configurado' : 'Configurar ou testar')}
             {option.heavy ? ' · Pesado' : ''}
           </small>
         </span>
       </button>
       {showConfigure ? (
-        <button type="button" className="model-picker-row-config" aria-label={`Configurar ${option.label}`} onClick={onConfigure}>
+        <button
+          type="button"
+          className="model-picker-row-config"
+          aria-label={`Configurar ${option.label}`}
+          onMouseDown={(event) => event.stopPropagation()}
+          onClick={(event) => {
+            event.stopPropagation();
+            onConfigure();
+          }}
+        >
           ⋯
         </button>
       ) : <span className="model-picker-row-config-placeholder" aria-hidden="true" />}
@@ -356,7 +365,12 @@ export function TopBar({
                   />
                 ))}
               </section>
-            )) : <span className="model-picker-empty">Nenhum resultado para a busca.</span>}
+            )) : (
+              <div className="model-picker-empty" role="status">
+                <strong>Nenhum modelo encontrado</strong>
+                <span>Ajuste a busca ou troque entre Nuvem e Local.</span>
+              </div>
+            )}
           </div>
           <span className="popup-menu-separator" aria-hidden="true" />
           <button
@@ -404,6 +418,16 @@ export function TopBar({
             <span>{configTarget.option.providerLabel ?? configTarget.option.providerId ?? 'Provider cloud'}</span>
             <small>Esta chave será usada pelos modelos deste provedor.</small>
           </div>
+          <div className="model-config-meta">
+            <span>
+              <strong>Fornecedor</strong>
+              {configTarget.option.providerLabel ?? configTarget.option.providerId ?? 'Não informado'}
+            </span>
+            <span>
+              <strong>Modelo</strong>
+              {configTarget.option.modelId ?? configTarget.option.id}
+            </span>
+          </div>
           <label>
             API Key
             <CredentialInput
@@ -433,6 +457,16 @@ export function TopBar({
           <div className="model-config-summary">
             <strong>{configTarget.option.label}</strong>
             <span>{configTarget.option.providerLabel ?? 'Ollama'}</span>
+          </div>
+          <div className="model-config-meta">
+            <span>
+              <strong>Runtime</strong>
+              {configTarget.option.providerLabel ?? 'Ollama'}
+            </span>
+            <span>
+              <strong>Modelo</strong>
+              {configTarget.option.modelId ?? configTarget.option.id}
+            </span>
           </div>
           <div className="model-config-status">
             <StatusDot tone={configTarget.option.installed ? 'ready' : configStatus === 'error' ? 'error' : 'offline'} />

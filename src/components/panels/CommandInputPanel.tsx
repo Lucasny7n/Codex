@@ -3,7 +3,8 @@ import { transcribeAudio } from '../../lib/api';
 import type { PrivilegedActionSpec } from '../../types/domain';
 import type { ChatAttachment, SelectedFileAttachment } from '../../types/domain';
 import { UiIcon } from '../common/AppIcons';
-import { FileManagerModal, fileIconNameForKind, formatFileSize } from '../file/FileManagerModal';
+import { FileManagerModal } from '../file/FileManagerModal';
+import { fileIconNameForKind, formatFileSize } from '../file/fileDisplay';
 import { PopupMenu } from '../common/PremiumUI';
 
 interface CommandInputPanelProps {
@@ -100,6 +101,14 @@ type VoiceState =
   | 'error'
   | 'missing-backend'
   | 'permission-denied';
+
+function localTranscriptionMessage(message?: string, command?: string): string {
+  const normalized = message?.toLowerCase() ?? '';
+  const reason = normalized.includes('whisper') && (normalized.includes('modelo') || normalized.includes('model'))
+    ? 'Modelo Whisper não encontrado.'
+    : 'Backend local não configurado.';
+  return command ? `${reason} Configurar transcrição local: ${command}` : `${reason} Configure transcrição local.`;
+}
 
 function mimeTypeForAttachment(attachment: SelectedFileAttachment): string | undefined {
   const extension = attachment.extension?.toLowerCase();
@@ -247,7 +256,7 @@ export function CommandInputPanel({
     }
 
     setVoiceState('transcribing');
-    setVoiceMessage('Transcrevendo localmente...');
+    setVoiceMessage('Transcrevendo...');
     try {
       const result = await transcribeAudio(await blobToBytes(blob), blob.type || undefined);
       if (result.status === 'done' && result.text?.trim()) {
@@ -258,7 +267,7 @@ export function CommandInputPanel({
       }
       if (result.status === 'missing_backend') {
         setVoiceState('missing-backend');
-        setVoiceMessage(result.command ? `${result.message} Comando sugerido: ${result.command}` : result.message);
+        setVoiceMessage(localTranscriptionMessage(result.message, result.command));
         return;
       }
       setVoiceState('error');
@@ -272,7 +281,7 @@ export function CommandInputPanel({
   async function startBackendRecording(): Promise<void> {
     if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === 'undefined') {
       setVoiceState('missing-backend');
-      setVoiceMessage('Captura de áudio indisponível nesta WebView. Instale um backend local de STT e use um build com MediaRecorder.');
+      setVoiceMessage('Backend local não configurado. Configurar transcrição local: sudo pacman -S whisper.cpp ffmpeg');
       return;
     }
 
@@ -308,13 +317,13 @@ export function CommandInputPanel({
 
       recorder.start();
       setVoiceState('recording');
-      setVoiceMessage('Gravando... clique novamente para transcrever.');
+      setVoiceMessage('Ouvindo... clique novamente para transcrever.');
     } catch (cause) {
       stopRecordingTracks();
       const name = cause instanceof DOMException ? cause.name : '';
       if (name === 'NotAllowedError' || name === 'SecurityError') {
         setVoiceState('permission-denied');
-        setVoiceMessage('Permissão de microfone negada. Libere o microfone para o app e tente novamente.');
+        setVoiceMessage('Permissão negada. Libere o microfone para continuar.');
         return;
       }
       if (name === 'NotFoundError' || name === 'DevicesNotFoundError') {
@@ -371,7 +380,7 @@ export function CommandInputPanel({
     recognition.onerror = (event) => {
       if (event.error === 'not-allowed' || event.error === 'service-not-allowed') {
         setVoiceState('permission-denied');
-        setVoiceMessage('Permissão de microfone negada.');
+        setVoiceMessage('Permissão negada.');
         return;
       }
       setVoiceState('error');

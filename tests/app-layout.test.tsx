@@ -186,6 +186,7 @@ describe('App layout visibility', () => {
 
     const mockedApi = vi.mocked(api);
     mockedApi.getBasePrompt.mockResolvedValue('prompt base');
+    mockedApi.updateSettings.mockImplementation(async (next) => next);
     mockedApi.listPrivilegedActions.mockResolvedValue([]);
     mockedApi.listProviderCredentials.mockResolvedValue([]);
     mockedApi.listProviderProfiles.mockResolvedValue([]);
@@ -277,8 +278,64 @@ describe('App layout visibility', () => {
     fireEvent.change(screen.getByLabelText('Buscar modelo ou provedor'), { target: { value: 'OpenAI' } });
     expect(screen.getByText('GPT-5.5')).toBeInTheDocument();
 
+    fireEvent.change(screen.getByLabelText('Buscar modelo ou provedor'), { target: { value: 'modelo-inexistente-xyz' } });
+    expect(screen.getByText('Nenhum modelo encontrado')).toBeInTheDocument();
+
     fireEvent.click(screen.getByText('Configurar modelos'));
     expect(screen.queryByRole('tab', { name: 'Prontos' })).not.toBeInTheDocument();
+  });
+
+  it('seleciona modelo local disponível e mantém modelo cloud indisponível em configuração', async () => {
+    vi.mocked(api.bootstrapState).mockResolvedValue(payload([baseSession()]));
+    vi.mocked(api.getLocalRuntimeState).mockResolvedValue({
+      state: 'ready',
+      message: 'Runtime pronto',
+      modelsDir: '/tmp/.codex/models',
+      installedModels: [{ id: 'qwen2.5-coder:1.5b' }],
+      installed: true,
+      serviceActive: true,
+      apiReachable: true,
+      apiUrl: 'http://127.0.0.1:11434',
+      canUsePacman: true,
+      hasPkexec: true,
+      hasSudo: true,
+      diskOk: true,
+      problems: [],
+      repairActions: [],
+      at: new Date().toISOString()
+    });
+
+    render(<App />);
+
+    await waitFor(() => {
+      expect(screen.getByText('mock-development-model')).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByTitle(/mock-development-model/));
+    fireEvent.change(screen.getByLabelText('Buscar modelo ou provedor'), { target: { value: 'GPT-5.5' } });
+    fireEvent.mouseEnter(screen.getByTestId('model-row-gpt-5.5'));
+    fireEvent.click(screen.getByLabelText('Configurar GPT-5.5'));
+
+    expect(screen.getByRole('dialog', { name: 'GPT-5.5' })).toBeInTheDocument();
+    expect(vi.mocked(api.updateSettings)).not.toHaveBeenCalledWith(expect.objectContaining({ selectedModelId: 'gpt-5.5' }));
+
+    fireEvent.keyDown(document, { key: 'Escape' });
+    await waitFor(() => {
+      expect(screen.queryByRole('dialog', { name: 'GPT-5.5' })).not.toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByTitle(/mock-development-model/));
+    fireEvent.click(screen.getAllByRole('tab', { name: 'Local' })[0]);
+    fireEvent.change(screen.getByLabelText('Buscar modelo ou provedor'), { target: { value: 'Qwen2.5 Coder 1.5B' } });
+    fireEvent.click(screen.getByText('Qwen2.5 Coder 1.5B'));
+
+    await waitFor(() => {
+      expect(api.updateSettings).toHaveBeenCalledWith(expect.objectContaining({
+        executionMode: 'local',
+        selectedProviderId: 'local-ollama',
+        selectedModelId: 'qwen2.5-coder:1.5b',
+      }));
+    });
   });
 
   it('abre configuração específica de modelo cloud e local pelo botão de três pontos', async () => {
@@ -313,6 +370,16 @@ describe('App layout visibility', () => {
     await waitFor(() => {
       expect(api.testProviderConnection).toHaveBeenCalledWith('openai-api');
       expect(screen.getByText(/Status: funcionando/)).toBeInTheDocument();
+    });
+
+    vi.mocked(api.testProviderConnection).mockResolvedValueOnce({
+      state: 'error',
+      message: 'API key inválida.',
+      checkedAt: new Date().toISOString(),
+    });
+    fireEvent.click(screen.getByText('Testar API'));
+    await waitFor(() => {
+      expect(screen.getByRole('alert')).toHaveTextContent('API key inválida.');
     });
 
     fireEvent.keyDown(document, { key: 'Escape' });

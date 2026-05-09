@@ -84,6 +84,8 @@ const ADVANCED_PERSONALIZATION: Array<{
   { key: 'localImageUpscaling', label: 'Ampliação local da imagem', description: 'Preferência para processamento local quando houver runtime.' },
 ];
 
+const UNKNOWN_MODEL_VALUE = 'Não informado';
+
 function modelProviderLabel(model: ModelProfile): string {
   return model.providerLabel.replace(/\s+API$/i, '').replace(/^Google\s+/i, '');
 }
@@ -294,7 +296,7 @@ export function SettingsPanel({
                 <div className="settings-line">
                   <span>
                     <strong>Tema</strong>
-                    <small>Escolha o tema do app. Sistema acompanha a preferência do PC.</small>
+                    <small>Sistema acompanha a preferência do PC.</small>
                   </span>
                   <div className="settings-segmented" role="radiogroup" aria-label="Tema">
                     {[
@@ -322,6 +324,7 @@ export function SettingsPanel({
                     <small>Preferência enviada como contexto para o modelo, sem traduzir a UI.</small>
                   </span>
                   <select
+                    aria-label="Idioma das respostas da IA"
                     value={settings.aiResponseLanguage ?? 'pt-BR'}
                     onChange={(event) => void commit({ aiResponseLanguage: event.target.value as AiResponseLanguage })}
                   >
@@ -349,8 +352,8 @@ export function SettingsPanel({
                   onChange={(value) => void commit({ autoGenerateTitles: value })}
                 />
                 <SwitchRow
-                  label="Cópia automática da resposta para área de transferência"
-                  description="Mantém desligado por padrão para evitar sobrescrever seu clipboard."
+                  label="Cópia automática da resposta"
+                  description="Evita sobrescrever seu clipboard quando desligado."
                   checked={settings.autoCopyResponses ?? false}
                   onChange={(value) => void commit({ autoCopyResponses: value })}
                 />
@@ -378,16 +381,22 @@ export function SettingsPanel({
                   const status = modelStatusLabel(model, providers, localRuntime);
                   return (
                     <article key={model.id} className={`settings-model-accordion ${expanded ? 'open' : ''}`}>
-                      <button type="button" className="settings-model-trigger" onClick={() => setExpandedModelId(expanded ? '' : model.id)}>
-                        <span>{expanded ? '⌄' : '›'}</span>
+                      <button
+                        type="button"
+                        className="settings-model-trigger"
+                        aria-expanded={expanded}
+                        onClick={() => setExpandedModelId(expanded ? '' : model.id)}
+                      >
+                        <span className="settings-model-chevron" aria-hidden="true">{expanded ? '⌄' : '›'}</span>
                         <strong>{model.displayName}</strong>
+                        <small>{modelStatusLabel(model, providers, localRuntime)}</small>
                       </button>
                       {expanded ? (
                         <div className="settings-model-details">
                           <p>{model.recommendedUse ? `${model.displayName} é indicado para ${model.recommendedUse.toLowerCase()}.` : `${model.displayName} está no catálogo local do app.`}</p>
                           <div className="settings-model-facts">
                             <span><strong>Comprimento máximo do contexto</strong>{model.estimatedLimits.summary}</span>
-                            <span><strong>Comprimento máximo de geração</strong>Não informado no registry local.</span>
+                            <span><strong>Comprimento máximo de geração</strong>{UNKNOWN_MODEL_VALUE}</span>
                             <span><strong>Modalidade</strong>{modelModality(model)}</span>
                             <span><strong>Fornecedor</strong>{modelProviderLabel(model)}</span>
                             <span><strong>Tipo</strong>{modelTypeLabel(model)}</span>

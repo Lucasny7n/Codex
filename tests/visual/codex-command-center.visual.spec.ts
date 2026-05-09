@@ -88,6 +88,7 @@ async function installTauriMock(page: Page): Promise<void> {
       status: { state: 'ready', message: 'Mock pronto para screenshot.', checkedAt: now },
       models: [{ id: 'mock-development-model', label: 'Mock', providerId: 'mock-development', supportsTools: false }],
     };
+    const longAttachmentName = 'relatorio-final-com-nome-muito-longo-para-validar-chip-premium.md';
     const localRuntime = {
       state: 'ready',
       message: 'Ollama pronto',
@@ -140,6 +141,39 @@ async function installTauriMock(page: Page): Promise<void> {
         if (cmd === 'export_all_conversations') return { path: '/tmp/codex-conversas.json', format: 'json', bytes: 100 };
         if (cmd === 'archive_all_sessions') return [];
         if (cmd === 'delete_all_sessions') return 1;
+        if (cmd === 'list_file_directory') {
+          return {
+            path: '/tmp',
+            parentPath: '/',
+            shortcuts: [],
+            entries: [
+              {
+                name: longAttachmentName,
+                path: `/tmp/${longAttachmentName}`,
+                kind: 'text',
+                extension: 'md',
+                isDirectory: false,
+                size: 34567,
+                modifiedAt: now,
+              },
+            ],
+            truncated: false,
+          };
+        }
+        if (cmd === 'get_file_attachment') {
+          return {
+            name: longAttachmentName,
+            path: `/tmp/${longAttachmentName}`,
+            kind: 'text',
+            extension: 'md',
+            isDirectory: false,
+            size: 34567,
+            modifiedAt: now,
+            preview: 'Conteúdo de texto usado apenas no payload.',
+            previewKind: 'text',
+            previewTruncated: false,
+          };
+        }
         return undefined;
       },
     };
@@ -158,40 +192,76 @@ async function screenshot(page: Page, name: string): Promise<void> {
 }
 
 test('captura fluxos visuais principais', async ({ page }) => {
+  await page.setViewportSize({ width: 1366, height: 768 });
   await openApp(page, 'dark');
-  await screenshot(page, 'home-dark');
+  await screenshot(page, 'pass-12-home-dark');
 
   await page.getByTitle(/mock-development-model/).click();
   await expect(page.locator('.model-picker-title')).toHaveText('Modelos');
-  await screenshot(page, 'topbar-model-selector');
+  await screenshot(page, 'pass-12-model-selector');
+
+  await page.getByLabel('Buscar modelo ou provedor').fill('GPT-5.5');
+  await page.getByTestId('model-row-gpt-5.5').hover();
+  await page.getByLabel('Configurar GPT-5.5').click();
+  await expect(page.getByRole('dialog', { name: 'GPT-5.5' })).toBeVisible();
+  await screenshot(page, 'pass-12-model-config-cloud');
+
+  await page.keyboard.press('Escape');
+  await page.getByTitle(/mock-development-model/).click();
+  await page.getByRole('tab', { name: 'Local' }).click();
+  await page.getByLabel('Buscar modelo ou provedor').fill('Qwen2.5 Coder 7B');
+  await page.getByTestId('model-row-qwen2.5-coder:7b').hover();
+  await page.getByLabel('Configurar Qwen2.5 Coder 7B').click();
+  await expect(page.getByRole('dialog', { name: 'Qwen2.5 Coder 7B' })).toBeVisible();
+  await screenshot(page, 'pass-12-model-config-local');
 
   await page.keyboard.press('Escape');
   await page.getByLabel('Selecionar modo de resposta').click();
   await expect(page.getByText('Pensamento')).toBeVisible();
-  await screenshot(page, 'menu-modos');
+  await screenshot(page, 'pass-12-menu-modos');
+
+  await page.keyboard.press('Escape');
+  await page.getByLabel('Mais ações').click();
+  await page.getByText('Selecionar arquivo').click();
+  await expect(page.getByRole('dialog', { name: 'Selecionar arquivo' })).toBeVisible();
+  await page.getByText('relatorio-final-com-nome-muito-longo-para-validar-chip-premium.md').click();
+  await page.getByRole('button', { name: 'Selecionar', exact: true }).click();
+  await expect(page.getByLabel('Arquivos selecionados')).toBeVisible();
+  await screenshot(page, 'pass-12-attachment-chip');
 
   await page.keyboard.press('Escape');
   await page.getByLabel(/Iniciar Bate-papo Temporário/).click();
   await expect(page.getByRole('heading', { name: 'Bate-papo Temporário' })).toBeVisible();
-  await screenshot(page, 'temporary-chat');
+  await screenshot(page, 'pass-12-temporary-chat');
 
   await page.getByLabel('Recolher sidebar').click();
   await expect(page.getByLabel('Abrir sidebar')).toBeVisible();
-  await screenshot(page, 'sidebar-colapsada');
+  await screenshot(page, 'pass-12-sidebar-collapsed');
 });
 
 test('captura tema claro e configurações', async ({ page }) => {
+  await page.setViewportSize({ width: 1920, height: 1080 });
   await openApp(page, 'light');
-  await screenshot(page, 'home-light');
+  await screenshot(page, 'pass-12-home-light');
 
   await page.getByLabel('Menu do usuário').click();
   await page.getByText('Configurações').click();
   await expect(page.getByRole('dialog', { name: 'Configurações' })).toBeVisible();
-  await screenshot(page, 'settings-geral-light');
+  await screenshot(page, 'pass-12-settings-general-light');
 
   await page.getByRole('button', { name: 'Modelos' }).click();
   await expect(page.getByText('Informações dos modelos')).toBeVisible();
-  await screenshot(page, 'settings-modelos-light');
+  await screenshot(page, 'pass-12-settings-models');
+});
+
+test('captura configurações em tema escuro', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await openApp(page, 'dark');
+
+  await page.getByLabel('Menu do usuário').click();
+  await page.getByText('Configurações').click();
+  await expect(page.getByRole('dialog', { name: 'Configurações' })).toBeVisible();
+  await screenshot(page, 'pass-12-settings-general-dark');
 });
 
 test('mantém data fixa para evitar ruído de screenshots', () => {

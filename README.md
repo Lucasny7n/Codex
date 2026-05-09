@@ -48,6 +48,7 @@ cd src-tauri && cargo fmt --check && cargo check && cargo test
 Visual screenshots use Playwright:
 
 ```bash
+npx playwright install chromium
 npm run screenshots
 ```
 
@@ -101,6 +102,7 @@ cd src-tauri && cargo fmt --check && cargo check && cargo test
 Capturas visuais usam Playwright:
 
 ```bash
+npx playwright install chromium
 npm run screenshots
 ```
 
