@@ -30,7 +30,25 @@ Codex Command Center is a desktop application focused on controlling AI coding w
 
 ```bash
 npm install
+npm run dev
 npm run tauri dev
+```
+
+### Local validation
+
+```bash
+npm ci
+npm run lint
+npm run typecheck
+npm run test -- --run
+npm run build
+cd src-tauri && cargo fmt --check && cargo check && cargo test
+```
+
+Visual screenshots use Playwright:
+
+```bash
+npm run screenshots
 ```
 
 ### Build
@@ -65,7 +83,25 @@ Codex Command Center é um aplicativo desktop para controlar fluxos de programa�
 
 ```bash
 npm install
+npm run dev
 npm run tauri dev
+```
+
+### Validação local
+
+```bash
+npm ci
+npm run lint
+npm run typecheck
+npm run test -- --run
+npm run build
+cd src-tauri && cargo fmt --check && cargo check && cargo test
+```
+
+Capturas visuais usam Playwright:
+
+```bash
+npm run screenshots
 ```
 
 ### Build

@@ -192,11 +192,11 @@
 :root[data-theme='light'] {
   color-scheme: light;
 
-  --bg-primary: #f6f8fc;
-  --bg-secondary: #eef2f8;
-  --bg-tertiary: #e7ecf5;
-  --ccc-bg-main: #f6f8fc;
-  --ccc-bg-sidebar: #ffffff;
+  --bg-primary: #f4f7fb;
+  --bg-secondary: #edf2f8;
+  --bg-tertiary: #e4ebf4;
+  --ccc-bg-main: #f4f7fb;
+  --ccc-bg-sidebar: #fbfcfe;
   --ccc-bg-elevated: #ffffff;
   --surface-1: rgba(255, 255, 255, 0.78);
   --surface-2: rgba(255, 255, 255, 0.88);
@@ -214,11 +214,11 @@
   --border-medium: rgba(15, 23, 42, 0.14);
   --border-strong: rgba(15, 23, 42, 0.22);
   --border-focus: rgba(37, 99, 235, 0.38);
-  --accent-primary: #2563eb;
-  --accent-hover: #1d4ed8;
-  --accent-soft: rgba(37, 99, 235, 0.11);
-  --accent-border: rgba(37, 99, 235, 0.22);
-  --accent-glow: rgba(37, 99, 235, 0.14);
+  --accent-primary: #2768c9;
+  --accent-hover: #1f5aa9;
+  --accent-soft: rgba(39, 104, 201, 0.10);
+  --accent-border: rgba(39, 104, 201, 0.20);
+  --accent-glow: rgba(39, 104, 201, 0.12);
   --danger-soft: rgba(220, 38, 38, 0.09);
   --danger-border: rgba(220, 38, 38, 0.18);
   --danger-text: #b91c1c;
@@ -234,13 +234,13 @@
   --text-faint: rgba(15, 23, 42, 0.32);
   --menu-bg: rgba(255, 255, 255, 0.98);
   --menu-border: rgba(15, 23, 42, 0.10);
-  --menu-shadow: 0 22px 54px rgba(15, 23, 42, 0.16);
+  --menu-shadow: 0 18px 48px rgba(31, 41, 55, 0.14);
   --menu-danger-color: #dc2626;
   --menu-active-bg: rgba(37, 99, 235, 0.08);
-  --shadow-soft: 0 14px 38px rgba(15, 23, 42, 0.10);
-  --shadow-premium: 0 28px 70px rgba(15, 23, 42, 0.16);
-  --shadow-popup: 0 20px 44px rgba(15, 23, 42, 0.14);
-  --shadow-modal: 0 32px 90px rgba(15, 23, 42, 0.22);
+  --shadow-soft: 0 12px 34px rgba(31, 41, 55, 0.09);
+  --shadow-premium: 0 26px 64px rgba(31, 41, 55, 0.14);
+  --shadow-popup: 0 18px 42px rgba(31, 41, 55, 0.13);
+  --shadow-modal: 0 30px 82px rgba(31, 41, 55, 0.20);
   --glow-subtle: 0 0 20px rgba(37, 99, 235, 0.10);
   --bg-main: var(--ccc-bg-main);
   --bg-app: var(--ccc-bg-main);
@@ -253,11 +253,11 @@
   --accent-2: var(--accent-hover);
   --accent-action: var(--accent-primary);
   --accent-strong: var(--accent-hover);
-  --accent-blue: #2563eb;
-  --accent-ring: rgba(37, 99, 235, 0.36);
+  --accent-blue: #2768c9;
+  --accent-ring: rgba(39, 104, 201, 0.34);
   --text-main: var(--text-primary);
   --text-dim: var(--text-muted);
   --text-invert: #ffffff;
   --border-main: var(--border-medium);
-  --border-accent: rgba(37, 99, 235, 0.36);
+  --border-accent: rgba(39, 104, 201, 0.34);
 }

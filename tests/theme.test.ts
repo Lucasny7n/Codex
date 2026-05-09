@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { applyAppTheme } from '../src/lib/theme';
+import { applyAppTheme, resolveThemePreference } from '../src/lib/theme';
 
 const accent = {
   accentPrimary: '#2d95ec',
@@ -14,6 +14,18 @@ afterEach(() => {
 });
 
 describe('theme preferences', () => {
+  it('resolveThemePreference respeita claro, escuro e sistema', () => {
+    expect(resolveThemePreference('light')).toBe('light');
+    expect(resolveThemePreference('dark')).toBe('dark');
+
+    vi.stubGlobal('matchMedia', vi.fn().mockReturnValue({
+      matches: false,
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+    }));
+    expect(resolveThemePreference('system')).toBe('dark');
+  });
+
   it('troca para tema claro e persiste a preferência no atributo do root', () => {
     applyAppTheme(accent, 'light');
 

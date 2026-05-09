@@ -6,18 +6,22 @@ import { useAppStore } from '../src/stores/appStore';
 import type { AgentSession, BootstrapPayload } from '../src/types/domain';
 
 vi.mock('../src/lib/api', () => ({
+  archiveAllSessions: vi.fn(),
   bootstrapState: vi.fn(),
   createSession: vi.fn(),
+  deleteAllSessions: vi.fn(),
   deleteSession: vi.fn(),
   decidePermission: vi.fn(),
   duplicateSession: vi.fn(),
   exportSession: vi.fn(),
+  exportAllConversations: vi.fn(),
   getBasePrompt: vi.fn(),
   getAppHealthCheck: vi.fn(),
   getFileAttachment: vi.fn(),
   getLocalRuntimeState: vi.fn(),
   installLocalModel: vi.fn(),
   installLocalRuntime: vi.fn(),
+  importConversations: vi.fn(),
   listProviderProfiles: vi.fn(),
   listProviderCredentials: vi.fn(),
   listFileDirectory: vi.fn(),
@@ -368,6 +372,7 @@ describe('App layout visibility', () => {
 
   it('ativa Bate-papo Temporário sem salvar conversa no histórico', async () => {
     vi.mocked(api.bootstrapState).mockResolvedValue(payload([baseSession()]));
+    vi.mocked(api.exportAllConversations).mockResolvedValue({ path: '/tmp/conversas.json', format: 'json', bytes: 10 });
 
     render(<App />);
 
@@ -388,6 +393,17 @@ describe('App layout visibility', () => {
     expect(vi.mocked(api.sendOrderToAgent)).not.toHaveBeenCalled();
     expect(await screen.findByText('mensagem sem histórico')).toBeInTheDocument();
 
+    fireEvent.click(screen.getByLabelText('Menu do usuário'));
+    fireEvent.click(screen.getByText('Configurações'));
+    fireEvent.click(await screen.findByRole('button', { name: 'Conversas' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Exportar' }));
+    await waitFor(() => {
+      expect(api.exportAllConversations).toHaveBeenCalledTimes(1);
+    });
+    expect(vi.mocked(api.createSession)).not.toHaveBeenCalled();
+    expect(vi.mocked(api.sendOrderToAgent)).not.toHaveBeenCalled();
+
+    fireEvent.keyDown(document, { key: 'Escape' });
     fireEvent.click(screen.getByLabelText('Sair do Bate-papo Temporário'));
     await waitFor(() => {
       expect(screen.getByText('O que gostaria de explorar?')).toBeInTheDocument();

@@ -10,3 +10,5 @@ src-tauri/target/
 *.pem
 *.token
 *.secret
+playwright-report/
+test-results/

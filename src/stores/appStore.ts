@@ -51,6 +51,7 @@ interface AppStoreState {
     memory: MemorySnapshot;
     theme: SystemTheme;
   }) => void;
+  replaceSessions: (sessions: AgentSession[], selectedSessionId?: string) => void;
   upsertSession: (session: AgentSession) => void;
   removeSession: (sessionId: string) => void;
   selectSession: (sessionId?: string) => void;
@@ -117,7 +118,22 @@ export const useAppStore = create<AppStoreState>((set, get) => ({
       executionMode: payload.settings.executionMode,
       selectedModelId: resolveActiveModelId(payload.settings),
     }),
+  replaceSessions: (sessions, selectedSessionId) =>
+    set({
+      sessions: sessions
+        .filter((session) => !session.archived)
+        .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)),
+      selectedSessionId,
+    }),
   upsertSession: (session) => {
+    if (session.archived) {
+      const next = get().sessions.filter((candidate) => candidate.id !== session.id);
+      set({
+        sessions: next,
+        selectedSessionId: get().selectedSessionId === session.id ? undefined : get().selectedSessionId,
+      });
+      return;
+    }
     const current = get().sessions;
     const index = current.findIndex((candidate) => candidate.id === session.id);
     if (index === -1) {

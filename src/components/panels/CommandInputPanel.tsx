@@ -118,6 +118,11 @@ function mimeTypeForAttachment(attachment: SelectedFileAttachment): string | und
 }
 
 function toChatAttachment(attachment: SelectedFileAttachment): ChatAttachment {
+  const preview = attachment.preview && attachment.preview.length <= 2400
+    ? attachment.preview
+    : attachment.preview
+      ? `${attachment.preview.slice(0, 2400)}\n[preview truncado pelo composer]`
+      : undefined;
   return {
     path: attachment.path,
     name: attachment.name,
@@ -125,7 +130,7 @@ function toChatAttachment(attachment: SelectedFileAttachment): ChatAttachment {
     size: attachment.size,
     kind: attachment.kind,
     previewAvailable: Boolean(attachment.preview),
-    previewTextLimited: attachment.preview,
+    previewTextLimited: preview,
   };
 }
 

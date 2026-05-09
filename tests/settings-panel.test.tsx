@@ -1,10 +1,9 @@
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import type { ComponentProps } from 'react';
 import { describe, expect, it, vi } from 'vitest';
 import { SettingsPanel } from '../src/components/panels/SettingsPanel';
 import type {
   AgentProfile,
-  AppHealthCheck,
   AppSettings,
   LocalRuntimeSnapshot,
   ProviderDescriptor,
@@ -38,6 +37,21 @@ function settings(): AppSettings {
     autoGenerateTitles: true,
     autoCopyResponses: false,
     pasteLargeTextAsFile: true,
+    personalization: {
+      memoriesStored: true,
+      referenceChatHistory: true,
+      customizeCodexQwen: false,
+      manageCookies: false,
+      webPageExtraction: false,
+      imageSearch: false,
+      webSearch: true,
+      imageGeneration: false,
+      codeInterpreter: true,
+      recoverHistoricalMemories: true,
+      imageEditing: false,
+      memoryUpdate: true,
+      localImageUpscaling: false,
+    },
   };
 }
 
@@ -92,45 +106,19 @@ function localRuntime(): LocalRuntimeSnapshot {
   };
 }
 
-function health(): AppHealthCheck {
-  return {
-    baseDir: '/tmp/workspace',
-    expectedBaseDir: '/tmp/workspace',
-    correctBaseDir: true,
-    nodeOk: true,
-    npmOk: true,
-    cargoOk: true,
-    tauriOk: true,
-    providers: [],
-    ollama: localRuntime(),
-    recentErrors: [],
-    overallStatus: 'ok',
-    actions: [],
-  };
-}
-
 function renderSettings(overrides: Partial<ComponentProps<typeof SettingsPanel>> = {}) {
   return render(
     <SettingsPanel
       settings={settings()}
       providers={providers()}
-      providerProfiles={[]}
       profiles={profiles()}
-      credentials={[]}
       sessions={[]}
       localRuntime={localRuntime()}
-      healthCheck={health()}
-      healthLoading={false}
       onChange={vi.fn().mockResolvedValue(undefined)}
-      onTestProvider={vi.fn()}
-      onSaveProviderProfileCredential={vi.fn()}
-      onRemoveProviderCredential={vi.fn()}
-      onRemoveProviderProfile={vi.fn()}
-      onSetDefaultProviderProfile={vi.fn()}
-      onRenameProviderProfile={vi.fn()}
-      onInstallRuntime={vi.fn()}
-      onStartRuntime={vi.fn()}
-      onRunHealthCheck={vi.fn()}
+      onExportConversations={vi.fn().mockResolvedValue('/tmp/conversas.json')}
+      onImportConversations={vi.fn().mockResolvedValue('Importadas: 1')}
+      onArchiveAllConversations={vi.fn().mockResolvedValue(undefined)}
+      onDeleteAllConversations={vi.fn().mockResolvedValue(undefined)}
       {...overrides}
     />,
   );
@@ -190,16 +178,51 @@ describe('SettingsPanel', () => {
     expect(screen.queryByText('Salvar API')).not.toBeInTheDocument();
   });
 
-  it('Conversas mostra ações principais com confirmação para exclusão', () => {
-    renderSettings({ initialTab: 'conversations' });
+  it('Conversas chama backend real para exportar, arquivar e excluir', async () => {
+    const onExportConversations = vi.fn().mockResolvedValue('/tmp/conversas.json');
+    const onArchiveAllConversations = vi.fn().mockResolvedValue(undefined);
+    const onDeleteAllConversations = vi.fn().mockResolvedValue(undefined);
+    renderSettings({
+      initialTab: 'conversations',
+      sessions: [
+        {
+          id: 's1',
+          title: 'Sessão',
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+          status: 'idle',
+          messages: [],
+          tasks: [],
+        },
+      ],
+      onExportConversations,
+      onArchiveAllConversations,
+      onDeleteAllConversations,
+    });
 
     expect(screen.getByText('Importar Conversas')).toBeInTheDocument();
     expect(screen.getByText('Exportar Conversas')).toBeInTheDocument();
     expect(screen.getByText('Arquivar todos os chats')).toBeInTheDocument();
     expect(screen.getByText('Excluir todas as conversas')).toBeInTheDocument();
 
+    fireEvent.click(screen.getByRole('button', { name: 'Exportar' }));
+    await waitFor(() => {
+      expect(onExportConversations).toHaveBeenCalledTimes(1);
+      expect(screen.getByRole('status')).toHaveTextContent('/tmp/conversas.json');
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Arquivar' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Confirmar' }));
+    await waitFor(() => {
+      expect(onArchiveAllConversations).toHaveBeenCalledTimes(1);
+    });
+
     fireEvent.click(screen.getByRole('button', { name: 'Excluir' }));
     expect(screen.getByRole('alert')).toHaveTextContent('Confirmar exclusão');
+    fireEvent.click(screen.getByRole('button', { name: 'Confirmar' }));
+    await waitFor(() => {
+      expect(onDeleteAllConversations).toHaveBeenCalledTimes(1);
+    });
   });
 
   it('Personalização mostra memória e funções avançadas persistíveis', () => {
@@ -208,7 +231,7 @@ describe('SettingsPanel', () => {
     expect(screen.getByText('Memórias guardadas')).toBeInTheDocument();
     expect(screen.getByText('Histórico de chat de referência')).toBeInTheDocument();
     expect(screen.getByText('Personalizar o Codex/Qwen')).toBeInTheDocument();
-    expect(screen.getByText('Gerenciar Cookies')).toBeInTheDocument();
+    expect(screen.getByText('Gerenciar cookies')).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: /Avançado/ }));
 

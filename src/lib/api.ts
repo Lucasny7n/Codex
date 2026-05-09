@@ -25,6 +25,7 @@ import type {
   LocalModelInstallProgress,
   SessionExportFormat,
   SessionExportResult,
+  ConversationImportResult,
   EnvironmentSelectionInput,
   VoiceTranscriptionResult,
   ChatAttachment,
@@ -46,12 +47,28 @@ export async function deleteSession(sessionId: string): Promise<void> {
   await invoke('delete_session', { sessionId });
 }
 
+export async function archiveAllSessions(): Promise<AgentSession[]> {
+  return invoke('archive_all_sessions');
+}
+
+export async function deleteAllSessions(): Promise<number> {
+  return invoke('delete_all_sessions');
+}
+
 export async function duplicateSession(sessionId: string): Promise<AgentSession> {
   return invoke('duplicate_session', { sessionId });
 }
 
 export async function exportSession(sessionId: string, format: SessionExportFormat): Promise<SessionExportResult> {
   return invoke('export_session', { sessionId, format });
+}
+
+export async function exportAllConversations(): Promise<SessionExportResult> {
+  return invoke('export_all_conversations');
+}
+
+export async function importConversations(path: string): Promise<ConversationImportResult> {
+  return invoke('import_conversations', { path });
 }
 
 export async function updateSessionEnvironment(

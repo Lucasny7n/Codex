@@ -1,14 +1,16 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
   bootstrapState,
+  archiveAllSessions,
   createSession,
+  deleteAllSessions,
   deleteSession,
   duplicateSession,
+  exportAllConversations,
   exportSession,
-  getAppHealthCheck,
   getLocalRuntimeState,
   installLocalModel,
-  installLocalRuntime,
+  importConversations,
   listProviderCredentials,
   listProviderProfiles,
   listPrivilegedActions,
@@ -23,14 +25,10 @@ import {
   onStatusNote,
   openFileInVscode,
   openProjectInVscode,
-  removeProviderCredential,
-  removeProviderProfile,
   requestExecution,
   requestPrivilegedAction,
   renameSession,
-  renameProviderProfile,
   saveProviderProfileCredential,
-  setDefaultProviderProfile,
   sendOrderToAgent,
   startLocalRuntime,
   testProviderConnection,
@@ -50,7 +48,6 @@ import {
   resolveModelStatus,
 } from './lib/providerStatus';
 import type {
-  AppHealthCheck,
   AppSettings,
   ExecutionMode,
   AgentSession,
@@ -187,13 +184,18 @@ function localFamilyLabel(model: LocalModelProfile): string {
   return 'Outros locais';
 }
 
-function statusLabelFromState(state: string): string {
+function statusLabelFromState(state: string, mode: ExecutionMode): string {
+  if (mode === 'local' && state === 'ready') return 'Instalado';
   if (state === 'ready') return 'Configurado';
-  if (state === 'model_missing') return 'Não instalado';
-  if (state === 'pulling' || state === 'installing') return 'Baixando';
+  if (state === 'model_missing') return mode === 'local' ? 'Download' : 'Catálogo';
+  if (state === 'pulling' || state === 'installing') return mode === 'local' ? 'Baixando' : 'Testando';
   if (state === 'testing') return 'Testar conexão';
-  if (state === 'requires_api_key') return 'Adicionar API key';
+  if (state === 'requires_api_key' || state === 'invalid_api_key') return 'Adicionar API key';
   if (state === 'requires_login' || state === 'requires_cli_auth' || state === 'requires_oauth') return 'Fazer login';
+  if (state === 'not_installed') return mode === 'local' ? 'Instalar runtime' : 'Catálogo';
+  if (state === 'service_offline') return 'Iniciar serviço';
+  if (state === 'api_unreachable') return 'Reparar local';
+  if (['misconfigured', 'experimental', 'unavailable', 'provider_unavailable', 'not_configured'].includes(state)) return 'Catálogo';
   return state.replace(/_/g, ' ');
 }
 
@@ -363,8 +365,6 @@ export default function App(): JSX.Element {
   const [installationProgress, setInstallationProgress] = useState<Record<string, LocalModelInstallProgress>>({});
   const [providerCredentials, setProviderCredentials] = useState<ProviderCredentialStatus[]>([]);
   const [providerAccountProfiles, setProviderAccountProfiles] = useState<ProviderAccountProfile[]>([]);
-  const [healthCheck, setHealthCheck] = useState<AppHealthCheck>();
-  const [healthLoading, setHealthLoading] = useState(false);
   const [settingsTabRequest, setSettingsTabRequest] = useState<{ tab: SettingsTab; nonce: number }>();
   const [sessionInfoId, setSessionInfoId] = useState<string>();
   const [controlModalOpen, setControlModalOpen] = useState(false);
@@ -421,6 +421,7 @@ export default function App(): JSX.Element {
     setLoading,
     bootstrap,
     upsertSession,
+    replaceSessions,
     removeSession,
     selectSession,
     appendStatus,
@@ -570,7 +571,8 @@ export default function App(): JSX.Element {
           providerId: model.providerId,
           label: model.displayName,
           providerLabel: model.providerLabel,
-          statusLabel: statusLabelFromState(status),
+          status,
+          statusLabel: statusLabelFromState(status, 'cloud'),
           available: canSelectModel(status),
         };
       });
@@ -591,7 +593,8 @@ export default function App(): JSX.Element {
           label: model.displayName,
           providerLabel: model.providerLabel,
           family: localFamilyLabel(model),
-          statusLabel: installed ? 'Instalado' : statusLabelFromState(status),
+          status,
+          statusLabel: installed ? 'Instalado' : statusLabelFromState(status, 'local'),
           available: canSelectModel(status),
           installed,
           heavy: localCompatibility(model) === 'heavy' || localCompatibility(model) === 'not_recommended',
@@ -622,7 +625,7 @@ export default function App(): JSX.Element {
     }
 
     if (selectedProviderProfile && selectedProviderProfile.status !== 'ready') {
-      return `${selectedProviderProfile.message} Ação: ajuste o profile em Ambiente > Contas.`;
+      return `${selectedProviderProfile.message} Ação: ajuste a conta em Configurações > Modelos.`;
     }
 
     return undefined;
@@ -780,7 +783,6 @@ export default function App(): JSX.Element {
       setActiveProject(undefined);
       writeLocalStorage('codex-command-center-active-project', '');
     }
-    pushToast('success', `Projeto excluído: ${project}`);
   }
 
   useEffect(() => {
@@ -1041,14 +1043,6 @@ export default function App(): JSX.Element {
     setProviderAccountProfiles(accountProfiles);
   }
 
-  async function handleRemoveProviderCredential(providerId: string): Promise<ProviderCredentialStatus> {
-    const status = await removeProviderCredential(providerId);
-    await refreshProviderCredentials();
-    const runtimeStatus = await handleTestProvider(providerId);
-    updateProviderStatus(providerId, runtimeStatus);
-    return status;
-  }
-
   async function handleSaveProviderProfileCredential(
     providerId: string,
     profileId: string | undefined,
@@ -1059,40 +1053,6 @@ export default function App(): JSX.Element {
     const profile = await saveProviderProfileCredential(providerId, profileId, name, key, makeDefault);
     await refreshProviderCredentials();
     return profile;
-  }
-
-  async function handleRemoveProviderProfile(profileId: string): Promise<void> {
-    await removeProviderProfile(profileId);
-    await refreshProviderCredentials();
-  }
-
-  async function handleSetDefaultProviderProfile(providerId: string, profileId: string): Promise<void> {
-    await setDefaultProviderProfile(providerId, profileId);
-    await refreshProviderCredentials();
-    if (settings) {
-      await applySettings({
-        ...settings,
-        selectedProviderId: providerId,
-        selectedProviderProfileId: profileId,
-      });
-    }
-  }
-
-  async function handleRenameProviderProfile(profileId: string, name: string): Promise<void> {
-    await renameProviderProfile(profileId, name);
-    await refreshProviderCredentials();
-  }
-
-  async function refreshHealthCheck(): Promise<AppHealthCheck> {
-    setHealthLoading(true);
-    try {
-      const snapshot = await getAppHealthCheck();
-      setHealthCheck(snapshot);
-      setLocalRuntime(snapshot.ollama);
-      return snapshot;
-    } finally {
-      setHealthLoading(false);
-    }
   }
 
   async function handleRunCheckEnvironment(): Promise<void> {
@@ -1256,35 +1216,6 @@ export default function App(): JSX.Element {
     setLocalRuntime(snapshot);
   }
 
-  async function handleInstallRuntime(): Promise<void> {
-    setModelActionBusyId('runtime');
-    try {
-      const snapshot = await installLocalRuntime();
-      setLocalRuntime(snapshot);
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : 'Falha ao instalar runtime local.');
-    } finally {
-      setModelActionBusyId(undefined);
-    }
-  }
-
-  async function handleStartRuntime(): Promise<void> {
-    setModelActionBusyId('runtime');
-    try {
-      const snapshot = await startLocalRuntime();
-      setLocalRuntime(snapshot);
-      if (snapshot.state !== 'ready') {
-        setError(translateError(snapshot.problems[0] ?? snapshot.state, snapshot.message).message);
-      } else {
-        setError(undefined);
-      }
-    } catch (cause) {
-      setError(translateError(cause instanceof Error ? cause.message : 'ollama_service_offline').message);
-    } finally {
-      setModelActionBusyId(undefined);
-    }
-  }
-
   async function handleInstallLocalModel(model: LocalModelProfile): Promise<void> {
     setModelActionBusyId(model.id);
     try {
@@ -1313,7 +1244,6 @@ export default function App(): JSX.Element {
       setSessionInfoId(undefined);
     }
     setDeleteSessionTarget(undefined);
-    pushToast('success', 'Sessão excluída.');
   }
 
   async function handleDuplicateSession(session: AgentSession): Promise<void> {
@@ -1329,6 +1259,31 @@ export default function App(): JSX.Element {
     const result = await exportSession(session.id, format);
     setExportSessionTarget(undefined);
     pushToast('success', `Sessão exportada: ${result.path}`);
+  }
+
+  async function handleExportAllConversations(): Promise<string> {
+    const result = await exportAllConversations();
+    return result.path;
+  }
+
+  async function handleImportConversations(path: string): Promise<string> {
+    const result = await importConversations(path);
+    for (const session of result.sessions) {
+      upsertSession(session);
+    }
+    return `Importadas: ${result.imported}${result.reassignedIds > 0 ? ` · IDs recriados: ${result.reassignedIds}` : ''}${result.skipped > 0 ? ` · ignoradas: ${result.skipped}` : ''}`;
+  }
+
+  async function handleArchiveAllConversations(): Promise<void> {
+    const visibleSessions = await archiveAllSessions();
+    replaceSessions(visibleSessions, undefined);
+    selectSession(undefined);
+  }
+
+  async function handleDeleteAllConversations(): Promise<void> {
+    await deleteAllSessions();
+    replaceSessions([], undefined);
+    selectSession(undefined);
   }
 
   function handleSessionMenuAction(session: AgentSession, action: 'pin' | 'archive' | 'share' | 'move-to-project' | 'remove-from-project'): void {
@@ -1611,24 +1566,14 @@ export default function App(): JSX.Element {
           key={settingsTabRequest?.nonce ?? 'settings-modal-panel'}
           settings={settings}
           providers={providers}
-          providerProfiles={effectiveProviderProfiles}
           profiles={profiles}
-          credentials={providerCredentials}
           localRuntime={localRuntime}
           sessions={sessions}
-          healthCheck={healthCheck}
-          healthLoading={healthLoading}
           onChange={(next) => handleUpdateSettings(next)}
-          onTestProvider={(providerId) => handleTestProvider(providerId)}
-          onSaveProviderProfileCredential={handleSaveProviderProfileCredential}
-          onRemoveProviderCredential={(providerId) => handleRemoveProviderCredential(providerId)}
-          onRemoveProviderProfile={handleRemoveProviderProfile}
-          onSetDefaultProviderProfile={handleSetDefaultProviderProfile}
-          onRenameProviderProfile={handleRenameProviderProfile}
-          onInstallRuntime={handleInstallRuntime}
-          onStartRuntime={handleStartRuntime}
-          onRunHealthCheck={refreshHealthCheck}
-          onOpenEnvironment={(tab) => openEnvironmentTab(tab)}
+          onExportConversations={handleExportAllConversations}
+          onImportConversations={handleImportConversations}
+          onArchiveAllConversations={handleArchiveAllConversations}
+          onDeleteAllConversations={handleDeleteAllConversations}
           initialTab={settingsTabRequest?.tab ?? 'general'}
         />
       </PremiumModal>

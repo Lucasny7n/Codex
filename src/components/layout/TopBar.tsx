@@ -8,6 +8,7 @@ import type {
   ProviderCredentialStatus,
   ProviderRuntimeStatus,
 } from '../../types/domain';
+import type { ProviderStatus } from '../../lib/providerStatus';
 
 export interface TopBarModelOption {
   id: string;
@@ -17,6 +18,7 @@ export interface TopBarModelOption {
   providerLabel?: string;
   family?: string;
   statusLabel?: string;
+  status?: ProviderStatus;
   available: boolean;
   installed?: boolean;
   heavy?: boolean;
@@ -66,6 +68,7 @@ function ModelOptionRow({
   onClick: () => void;
   onConfigure: () => void;
 }): JSX.Element {
+  const canOpenConfig = !option.available;
   return (
     <div
       className={`model-picker-option-row ${active ? 'active' : ''} ${option.available ? '' : 'disabled'} ${showConfigure ? 'show-config' : ''}`}
@@ -77,10 +80,19 @@ function ModelOptionRow({
         if (!event.currentTarget.contains(event.relatedTarget)) onHover(false);
       }}
     >
-      <button type="button" className="model-picker-option menu-item" aria-current={active ? 'true' : undefined} disabled={!option.available} onClick={onClick}>
+      <button
+        type="button"
+        className="model-picker-option menu-item"
+        aria-current={active ? 'true' : undefined}
+        data-status={option.status}
+        onClick={option.available ? onClick : canOpenConfig ? onConfigure : undefined}
+      >
         <span className="model-picker-option-copy">
           <strong>{option.label}</strong>
-          <small>{option.statusLabel ?? (option.available ? 'Configurado' : 'Configurar ou testar')}</small>
+          <small>
+            {option.statusLabel ?? (option.available ? 'Configurado' : 'Configurar ou testar')}
+            {option.heavy ? ' · Pesado' : ''}
+          </small>
         </span>
       </button>
       {showConfigure ? (
@@ -268,6 +280,30 @@ export function TopBar({
     }
   }
 
+  async function installLocalModelFromModal(): Promise<void> {
+    const target = configTarget;
+    const modelId = target?.option.modelId ?? target?.option.id;
+    if (!target || !modelId || !onInstallLocalModel) return;
+    setConfigStatus('testing');
+    setConfigError(undefined);
+    try {
+      await onInstallLocalModel(modelId);
+      setConfigTarget({
+        ...target,
+        option: {
+          ...target.option,
+          installed: true,
+          available: true,
+          statusLabel: 'Instalado',
+        },
+      });
+      setConfigStatus('ready');
+    } catch (cause) {
+      setConfigStatus('error');
+      setConfigError(cause instanceof Error ? cause.message : 'Falha ao baixar modelo local.');
+    }
+  }
+
   return (
     <>
     <header className="topbar-clean">
@@ -363,6 +399,11 @@ export function TopBar({
     >
       {configTarget?.mode === 'cloud' ? (
         <div className="model-config-form">
+          <div className="model-config-summary">
+            <strong>{configTarget.option.label}</strong>
+            <span>{configTarget.option.providerLabel ?? configTarget.option.providerId ?? 'Provider cloud'}</span>
+            <small>Esta chave será usada pelos modelos deste provedor.</small>
+          </div>
           <label>
             API Key
             <CredentialInput
@@ -389,6 +430,10 @@ export function TopBar({
       ) : null}
       {configTarget?.mode === 'local' ? (
         <div className="model-config-form">
+          <div className="model-config-summary">
+            <strong>{configTarget.option.label}</strong>
+            <span>{configTarget.option.providerLabel ?? 'Ollama'}</span>
+          </div>
           <div className="model-config-status">
             <StatusDot tone={configTarget.option.installed ? 'ready' : configStatus === 'error' ? 'error' : 'offline'} />
             <span>Status: {configTarget.option.installed ? 'Instalado' : 'Não instalado'}</span>
@@ -402,7 +447,7 @@ export function TopBar({
                 type="button"
                 className="btn-modern btn-modern-primary"
                 disabled={!onInstallLocalModel || busyModelId === configTarget.option.id}
-                onClick={() => void onInstallLocalModel?.(configTarget.option.modelId ?? configTarget.option.id)}
+                onClick={() => void installLocalModelFromModal()}
               >
                 Download{typeof localProgress?.progressPercent === 'number' ? ` ${localProgress.progressPercent}%` : ''}
               </button>

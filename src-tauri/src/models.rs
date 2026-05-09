@@ -35,6 +35,8 @@ pub struct AgentSession {
     pub messages: Vec<ChatMessage>,
     pub tasks: Vec<SessionTask>,
     #[serde(default)]
+    pub archived: bool,
+    #[serde(default)]
     pub provider_id: Option<String>,
     #[serde(default)]
     pub model_id: Option<String>,
@@ -363,16 +365,31 @@ fn default_true() -> bool {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AppPersonalizationSettings {
+    #[serde(default = "default_true")]
     pub memories_stored: bool,
+    #[serde(default = "default_true")]
     pub reference_chat_history: bool,
+    #[serde(default)]
+    pub customize_codex_qwen: bool,
+    #[serde(default)]
+    pub manage_cookies: bool,
+    #[serde(default)]
     pub web_page_extraction: bool,
+    #[serde(default)]
     pub image_search: bool,
+    #[serde(default = "default_true")]
     pub web_search: bool,
+    #[serde(default)]
     pub image_generation: bool,
+    #[serde(default = "default_true")]
     pub code_interpreter: bool,
+    #[serde(default = "default_true")]
     pub recover_historical_memories: bool,
+    #[serde(default)]
     pub image_editing: bool,
+    #[serde(default = "default_true")]
     pub memory_update: bool,
+    #[serde(default)]
     pub local_image_upscaling: bool,
 }
 
@@ -381,6 +398,8 @@ impl Default for AppPersonalizationSettings {
         Self {
             memories_stored: true,
             reference_chat_history: true,
+            customize_codex_qwen: false,
+            manage_cookies: false,
             web_page_extraction: false,
             image_search: false,
             web_search: true,
@@ -698,6 +717,31 @@ pub struct SessionExportResult {
     pub path: String,
     pub format: SessionExportFormat,
     pub bytes: usize,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ConversationExportMetadata {
+    pub source: String,
+    pub sessions_count: usize,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ConversationExportEnvelope {
+    pub version: String,
+    pub exported_at: String,
+    pub metadata: ConversationExportMetadata,
+    pub sessions: Vec<AgentSession>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ConversationImportResult {
+    pub imported: usize,
+    pub skipped: usize,
+    pub reassigned_ids: usize,
+    pub sessions: Vec<AgentSession>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

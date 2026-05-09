@@ -1,48 +1,29 @@
 import { useMemo, useState } from 'react';
 import { modelRegistry, type ModelProfile } from '../../lib/modelRegistry';
+import { resolveModelStatus } from '../../lib/providerStatus';
 import type {
   AgentProfile,
   AgentSession,
   AiResponseLanguage,
-  AppHealthCheck,
   AppPersonalizationSettings,
   AppSettings,
   LocalRuntimeSnapshot,
-  ProviderAccountProfile,
-  ProviderCredentialStatus,
   ProviderDescriptor,
-  ProviderRuntimeStatus,
   ThemePreference,
 } from '../../types/domain';
-import type { EnvironmentTab } from './ModelSelector';
+import { FileManagerModal } from '../file/FileManagerModal';
 
 interface SettingsPanelProps {
   settings?: AppSettings;
   providers: ProviderDescriptor[];
-  providerProfiles: ProviderAccountProfile[];
   profiles: AgentProfile[];
-  credentials: ProviderCredentialStatus[];
   sessions: AgentSession[];
   localRuntime?: LocalRuntimeSnapshot;
-  healthCheck?: AppHealthCheck;
-  healthLoading: boolean;
   onChange: (next: AppSettings) => Promise<void>;
-  onTestProvider: (providerId: string) => Promise<ProviderRuntimeStatus>;
-  onSaveProviderProfileCredential: (
-    providerId: string,
-    profileId: string | undefined,
-    name: string,
-    key: string,
-    makeDefault: boolean,
-  ) => Promise<ProviderAccountProfile>;
-  onRemoveProviderCredential: (providerId: string) => Promise<ProviderCredentialStatus>;
-  onRemoveProviderProfile: (profileId: string) => Promise<void>;
-  onSetDefaultProviderProfile: (providerId: string, profileId: string) => Promise<void>;
-  onRenameProviderProfile: (profileId: string, name: string) => Promise<void>;
-  onInstallRuntime: () => Promise<void>;
-  onStartRuntime: () => Promise<void>;
-  onRunHealthCheck: () => Promise<AppHealthCheck>;
-  onOpenEnvironment?: (tab: EnvironmentTab) => void;
+  onExportConversations: () => Promise<string>;
+  onImportConversations: (path: string) => Promise<string>;
+  onArchiveAllConversations: () => Promise<void>;
+  onDeleteAllConversations: () => Promise<void>;
   initialTab?: SettingsTab;
 }
 
@@ -74,6 +55,8 @@ const FEATURED_MODEL_IDS = [
 const DEFAULT_PERSONALIZATION: AppPersonalizationSettings = {
   memoriesStored: true,
   referenceChatHistory: true,
+  customizeCodexQwen: false,
+  manageCookies: false,
   webPageExtraction: false,
   imageSearch: false,
   webSearch: true,
@@ -114,6 +97,25 @@ function modelModality(model: ModelProfile): string {
   return supportsCode ? 'Texto e código' : 'Texto';
 }
 
+function modelStatusLabel(model: ModelProfile, providers: ProviderDescriptor[], localRuntime?: LocalRuntimeSnapshot): string {
+  if (model.mode === 'cloud') {
+    const provider = providers.find((item) => item.id === model.providerId);
+    const status = resolveModelStatus(model, provider?.status, localRuntime);
+    if (status === 'ready') return 'Configurado';
+    if (status === 'requires_api_key' || status === 'invalid_api_key') return 'Adicionar API key';
+    if (status === 'requires_login' || status === 'requires_cli_auth' || status === 'requires_oauth') return 'Requer login';
+    if (status === 'testing') return 'Testar conexão';
+    return 'Catálogo';
+  }
+
+  const status = resolveModelStatus(model, undefined, localRuntime);
+  if (status === 'ready') return 'Instalado';
+  if (status === 'pulling' || status === 'installing') return 'Baixando';
+  if (status === 'model_missing') return 'Não instalado';
+  if (status === 'not_installed') return 'Runtime ausente';
+  return status.replaceAll('_', ' ');
+}
+
 function normalizeSettingsTab(tab?: SettingsTab): SettingsTab {
   return tab && SETTINGS_TABS.some((item) => item.id === tab) ? tab : 'general';
 }
@@ -149,12 +151,14 @@ function ActionRow({
   description,
   action,
   danger,
+  disabled,
   onClick,
 }: {
   label: string;
   description: string;
   action: string;
   danger?: boolean;
+  disabled?: boolean;
   onClick: () => void;
 }): JSX.Element {
   return (
@@ -163,7 +167,7 @@ function ActionRow({
         <strong>{label}</strong>
         <small>{description}</small>
       </span>
-      <button type="button" className={`settings-pill-button ${danger ? 'danger' : ''}`} onClick={onClick}>
+      <button type="button" className={`settings-pill-button ${danger ? 'danger' : ''}`} disabled={disabled} onClick={onClick}>
         {action}
       </button>
     </div>
@@ -177,28 +181,29 @@ export function SettingsPanel({
   sessions,
   localRuntime,
   onChange,
+  onExportConversations,
+  onImportConversations,
+  onArchiveAllConversations,
+  onDeleteAllConversations,
   initialTab,
 }: SettingsPanelProps): JSX.Element {
   const [activeTab, setActiveTab] = useState<SettingsTab>(normalizeSettingsTab(initialTab));
   const [expandedModelId, setExpandedModelId] = useState<string>(FEATURED_MODEL_IDS[0]);
   const [advancedOpen, setAdvancedOpen] = useState(false);
   const [conversationConfirm, setConversationConfirm] = useState<'archive' | 'delete'>();
+  const [conversationBusy, setConversationBusy] = useState(false);
+  const [importPickerOpen, setImportPickerOpen] = useState(false);
   const [inlineMessage, setInlineMessage] = useState<string>();
   const [inlineError, setInlineError] = useState<string>();
 
   const modelItems = useMemo(() => {
-    const ids = new Set<string>(FEATURED_MODEL_IDS);
-    if (settings?.selectedModelId) ids.add(settings.selectedModelId);
-    if (settings?.selectedLocalModelId) ids.add(settings.selectedLocalModelId);
-    for (const item of settings?.modelSelectionHistory ?? []) {
-      ids.add(item.modelId);
-    }
-
-    return Array.from(ids)
-      .map((id) => modelRegistry.byId(id))
-      .filter((model): model is ModelProfile => Boolean(model))
-      .slice(0, 12);
-  }, [settings]);
+    const featured = new Set(FEATURED_MODEL_IDS);
+    return [...modelRegistry.all()].sort((left, right) => {
+      const leftFeatured = featured.has(left.id) ? 0 : 1;
+      const rightFeatured = featured.has(right.id) ? 0 : 1;
+      return leftFeatured - rightFeatured || left.providerLabel.localeCompare(right.providerLabel) || left.displayName.localeCompare(right.displayName);
+    });
+  }, []);
 
   if (!settings) {
     return (
@@ -216,7 +221,6 @@ export function SettingsPanel({
 
   const personalization = preference(settings);
   const selectedAgentLabel = profiles.find((profile) => profile.id === settings.selectedAgentId)?.label ?? 'Padrão';
-  const providerStatusById = new Map(providers.map((provider) => [provider.id, provider.status.state]));
   const installedLocalModels = new Set(localRuntime?.installedModels.map((model) => model.id) ?? []);
 
   async function commit(patch: Partial<AppSettings>): Promise<void> {
@@ -238,9 +242,18 @@ export function SettingsPanel({
     });
   }
 
-  function markActionPending(label: string): void {
+  async function runConversationAction(action: () => Promise<void>, showMessage?: string): Promise<void> {
     setInlineError(undefined);
-    setInlineMessage(`${label}: ação preparada na interface; backend dedicado ainda não foi conectado.`);
+    setInlineMessage(undefined);
+    setConversationBusy(true);
+    try {
+      await action();
+      if (showMessage) setInlineMessage(showMessage);
+    } catch (cause) {
+      setInlineError(cause instanceof Error ? cause.message : 'Ação de conversa falhou.');
+    } finally {
+      setConversationBusy(false);
+    }
   }
 
   return (
@@ -361,8 +374,8 @@ export function SettingsPanel({
               <section className="settings-model-list" aria-label="Informações dos modelos">
                 {modelItems.map((model) => {
                   const expanded = expandedModelId === model.id;
-                  const providerState = providerStatusById.get(model.providerId);
-                  const installed = model.mode === 'local' && installedLocalModels.has(model.id);
+                  const installed = model.mode === 'local' && (installedLocalModels.has(model.id) || installedLocalModels.has(model.modelId));
+                  const status = modelStatusLabel(model, providers, localRuntime);
                   return (
                     <article key={model.id} className={`settings-model-accordion ${expanded ? 'open' : ''}`}>
                       <button type="button" className="settings-model-trigger" onClick={() => setExpandedModelId(expanded ? '' : model.id)}>
@@ -378,8 +391,8 @@ export function SettingsPanel({
                             <span><strong>Modalidade</strong>{modelModality(model)}</span>
                             <span><strong>Fornecedor</strong>{modelProviderLabel(model)}</span>
                             <span><strong>Tipo</strong>{modelTypeLabel(model)}</span>
-                            {model.mode === 'local' ? <span><strong>Status local</strong>{installed ? 'Instalado' : 'Não instalado'}</span> : null}
-                            {providerState ? <span><strong>Status do fornecedor</strong>{providerState.replaceAll('_', ' ')}</span> : null}
+                            {model.mode === 'local' ? <span><strong>Status local</strong>{installed ? 'Instalado' : status}</span> : null}
+                            {model.mode === 'cloud' ? <span><strong>Status</strong>{status}</span> : null}
                           </div>
                         </div>
                       ) : null}
@@ -398,15 +411,45 @@ export function SettingsPanel({
               </header>
 
               <section className="settings-block">
-                <ActionRow label="Importar Conversas" description="Trazer conversas de um arquivo compatível." action="Importar" onClick={() => markActionPending('Importar conversas')} />
-                <ActionRow label="Exportar Conversas" description={`${sessions.length} conversa(s) disponíveis para exportação.`} action="Exportar" onClick={() => markActionPending('Exportar conversas')} />
-                <ActionRow label="Arquivar todos os chats" description="Move todas as conversas para uma área arquivada após confirmação." action="Arquivar" onClick={() => setConversationConfirm('archive')} />
-                <ActionRow label="Excluir todas as conversas" description="Ação destrutiva. Exige confirmação antes de qualquer execução." action="Excluir" danger onClick={() => setConversationConfirm('delete')} />
+                <ActionRow
+                  label="Importar Conversas"
+                  description="Escolha um JSON exportado por este app. IDs duplicados serão recriados com segurança."
+                  action="Importar"
+                  disabled={conversationBusy}
+                  onClick={() => setImportPickerOpen(true)}
+                />
+                <ActionRow
+                  label="Exportar Conversas"
+                  description={`${sessions.length} conversa(s) visível(eis); conversas arquivadas também entram no backup global.`}
+                  action="Exportar"
+                  disabled={conversationBusy}
+                  onClick={() => {
+                    void runConversationAction(async () => {
+                      const path = await onExportConversations();
+                      setInlineMessage(`Exportado em ${path}`);
+                    });
+                  }}
+                />
+                <ActionRow
+                  label="Arquivar todos os chats"
+                  description="Move as conversas salvas para a área arquivada e remove da lista principal."
+                  action="Arquivar"
+                  disabled={conversationBusy || sessions.length === 0}
+                  onClick={() => setConversationConfirm('archive')}
+                />
+                <ActionRow
+                  label="Excluir todas as conversas"
+                  description="Remove as conversas persistidas. Bate-papo temporário não é persistido nem tocado."
+                  action="Excluir"
+                  danger
+                  disabled={conversationBusy}
+                  onClick={() => setConversationConfirm('delete')}
+                />
                 {conversationConfirm ? (
                   <div className="settings-confirm-inline" role="alert">
                     <span>
                       {conversationConfirm === 'delete'
-                        ? 'Confirmar exclusão de todas as conversas? Nenhuma ação será executada sem backend dedicado.'
+                        ? 'Confirmar exclusão de todas as conversas persistidas?'
                         : 'Confirmar arquivamento de todos os chats?'}
                     </span>
                     <button type="button" className="settings-pill-button" onClick={() => setConversationConfirm(undefined)}>Cancelar</button>
@@ -414,8 +457,11 @@ export function SettingsPanel({
                       type="button"
                       className={`settings-pill-button ${conversationConfirm === 'delete' ? 'danger' : ''}`}
                       onClick={() => {
-                        markActionPending(conversationConfirm === 'delete' ? 'Excluir todas as conversas' : 'Arquivar todos os chats');
+                        const action = conversationConfirm;
                         setConversationConfirm(undefined);
+                        void runConversationAction(
+                          action === 'delete' ? onDeleteAllConversations : onArchiveAllConversations,
+                        );
                       }}
                     >
                       Confirmar
@@ -423,6 +469,20 @@ export function SettingsPanel({
                   </div>
                 ) : null}
               </section>
+              {importPickerOpen ? (
+                <FileManagerModal
+                  open={importPickerOpen}
+                  initialPathMode={false}
+                  onClose={() => setImportPickerOpen(false)}
+                  onSelect={(attachment) => {
+                    setImportPickerOpen(false);
+                    void runConversationAction(async () => {
+                      const message = await onImportConversations(attachment.path);
+                      setInlineMessage(message);
+                    });
+                  }}
+                />
+              ) : null}
             </div>
           ) : null}
 
@@ -440,24 +500,18 @@ export function SettingsPanel({
               </section>
 
               <section className="settings-block">
-                <div className="settings-line settings-action-row">
-                  <span>
-                    <strong>Personalizar o Codex/Qwen</strong>
-                    <small>Perfil atual: {selectedAgentLabel}. Ajustes profundos entram em uma tela dedicada depois.</small>
-                  </span>
-                  <button type="button" className="settings-pill-button" onClick={() => markActionPending('Personalizar o Codex/Qwen')}>
-                    Configurações
-                  </button>
-                </div>
-                <div className="settings-line settings-action-row">
-                  <span>
-                    <strong>Gerenciar Cookies</strong>
-                    <small>Gerenciamento visual preparado para integrações web futuras.</small>
-                  </span>
-                  <button type="button" className="settings-pill-button" onClick={() => markActionPending('Gerenciar cookies')}>
-                    Gerenciar
-                  </button>
-                </div>
+                <SwitchRow
+                  label="Personalizar o Codex/Qwen"
+                  description={`Mantém preferências de comportamento para o perfil ${selectedAgentLabel}.`}
+                  checked={personalization.customizeCodexQwen}
+                  onChange={(value) => updatePersonalization('customizeCodexQwen', value)}
+                />
+                <SwitchRow
+                  label="Gerenciar cookies"
+                  description="Guarda a preferência para fluxos web que exigirem estado de navegador."
+                  checked={personalization.manageCookies}
+                  onChange={(value) => updatePersonalization('manageCookies', value)}
+                />
               </section>
 
               <section className="settings-block">

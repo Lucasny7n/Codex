@@ -17,6 +17,7 @@ export interface AgentSession {
   status: SessionStatus;
   messages: ChatMessage[];
   tasks: SessionTask[];
+  archived?: boolean;
   providerId?: string;
   modelId?: string;
   agentProfileId?: string;
@@ -293,6 +294,8 @@ export type AiResponseLanguage = 'pt-BR' | 'en' | 'es';
 export interface AppPersonalizationSettings {
   memoriesStored: boolean;
   referenceChatHistory: boolean;
+  customizeCodexQwen: boolean;
+  manageCookies: boolean;
   webPageExtraction: boolean;
   imageSearch: boolean;
   webSearch: boolean;
@@ -491,6 +494,13 @@ export interface SessionExportResult {
   path: string;
   format: SessionExportFormat;
   bytes: number;
+}
+
+export interface ConversationImportResult {
+  imported: number;
+  skipped: number;
+  reassignedIds: number;
+  sessions: AgentSession[];
 }
 
 export interface EnvironmentSelectionInput {

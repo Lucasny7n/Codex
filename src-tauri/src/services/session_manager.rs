@@ -1,5 +1,5 @@
 use chrono::Utc;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -10,7 +10,8 @@ use crate::error::AppResult;
 use serde_json::Value;
 
 use crate::models::{
-    now_iso, AgentSession, ChatMessage, ChatRole, SessionExportFormat, SessionExportResult,
+    now_iso, AgentSession, ChatMessage, ChatRole, ConversationExportEnvelope,
+    ConversationExportMetadata, ConversationImportResult, SessionExportFormat, SessionExportResult,
     SessionStatus, SessionTask, StatusKind, TaskStatus,
 };
 
@@ -58,6 +59,30 @@ impl SessionManager {
             .sessions
             .read()
             .values()
+            .filter(|session| !session.archived)
+            .cloned()
+            .collect::<Vec<AgentSession>>();
+        items.sort_by(|a, b| b.updated_at.cmp(&a.updated_at));
+        items
+    }
+
+    pub fn list_archived_sessions(&self) -> Vec<AgentSession> {
+        let mut items = self
+            .sessions
+            .read()
+            .values()
+            .filter(|session| session.archived)
+            .cloned()
+            .collect::<Vec<AgentSession>>();
+        items.sort_by(|a, b| b.updated_at.cmp(&a.updated_at));
+        items
+    }
+
+    pub fn list_all_sessions(&self) -> Vec<AgentSession> {
+        let mut items = self
+            .sessions
+            .read()
+            .values()
             .cloned()
             .collect::<Vec<AgentSession>>();
         items.sort_by(|a, b| b.updated_at.cmp(&a.updated_at));
@@ -74,6 +99,7 @@ impl SessionManager {
             status: SessionStatus::Idle,
             messages: vec![],
             tasks: vec![],
+            archived: false,
             provider_id: None,
             model_id: None,
             agent_profile_id: None,
@@ -174,6 +200,48 @@ impl SessionManager {
         Ok(())
     }
 
+    pub fn archive_all_sessions(&self) -> AppResult<Vec<AgentSession>> {
+        let now = now_iso();
+        let mut sessions = self.sessions.write();
+        let mut archived = Vec::new();
+
+        for session in sessions.values_mut() {
+            if session.archived {
+                continue;
+            }
+            session.archived = true;
+            session.updated_at = now.clone();
+            archived.push(session.clone());
+        }
+        drop(sessions);
+
+        for session in &archived {
+            self.persist_session(session)?;
+        }
+
+        Ok(archived)
+    }
+
+    pub fn delete_all_sessions(&self) -> AppResult<usize> {
+        let ids = self
+            .sessions
+            .read()
+            .keys()
+            .cloned()
+            .collect::<Vec<String>>();
+        let count = ids.len();
+
+        for id in &ids {
+            let file = self.sessions_dir.join(format!("{id}.json"));
+            if file.exists() {
+                fs::remove_file(file)?;
+            }
+        }
+
+        self.sessions.write().clear();
+        Ok(count)
+    }
+
     pub fn duplicate_session(&self, session_id: &str) -> AppResult<AgentSession> {
         let source = self
             .sessions
@@ -188,6 +256,7 @@ impl SessionManager {
         duplicate.created_at = now.clone();
         duplicate.updated_at = now;
         duplicate.status = SessionStatus::Idle;
+        duplicate.archived = false;
 
         self.persist_session(&duplicate)?;
         self.sessions
@@ -227,6 +296,91 @@ impl SessionManager {
             path: file.to_string_lossy().to_string(),
             format,
             bytes: body.len(),
+        })
+    }
+
+    pub fn export_all_conversations(&self) -> AppResult<SessionExportResult> {
+        let sessions = self.list_all_sessions();
+        let exports_dir = self.export_dir.clone();
+        fs::create_dir_all(&exports_dir)?;
+        let file = unique_export_path(&exports_dir, "codex-conversas", "json");
+        let envelope = ConversationExportEnvelope {
+            version: "codex-command-center.conversations.v1".to_owned(),
+            exported_at: now_iso(),
+            metadata: ConversationExportMetadata {
+                source: "Codex Command Center".to_owned(),
+                sessions_count: sessions.len(),
+            },
+            sessions,
+        };
+        let body = serde_json::to_string_pretty(&envelope)?;
+        fs::write(&file, &body)?;
+
+        Ok(SessionExportResult {
+            path: file.to_string_lossy().to_string(),
+            format: SessionExportFormat::Json,
+            bytes: body.len(),
+        })
+    }
+
+    pub fn import_conversations_from_file(
+        &self,
+        path: &Path,
+    ) -> AppResult<ConversationImportResult> {
+        let raw = fs::read_to_string(path)?;
+        let parsed: serde_json::Value = serde_json::from_str(&raw)?;
+        let mut sessions: Vec<AgentSession> = if parsed.is_array() {
+            serde_json::from_value(parsed)?
+        } else {
+            let envelope: ConversationExportEnvelope = serde_json::from_value(parsed)?;
+            if envelope.version != "codex-command-center.conversations.v1" {
+                return Err(
+                    anyhow::anyhow!("Arquivo de conversas com versão incompatível.").into(),
+                );
+            }
+            envelope.sessions
+        };
+
+        let mut store = self.sessions.write();
+        let mut used_ids = store.keys().cloned().collect::<HashSet<String>>();
+        let mut imported = Vec::new();
+        let mut reassigned_ids = 0;
+        let mut skipped = 0;
+        let now = now_iso();
+
+        for mut session in sessions.drain(..) {
+            if session.title.trim().is_empty() {
+                skipped += 1;
+                continue;
+            }
+            if session.created_at.trim().is_empty() {
+                session.created_at = now.clone();
+            }
+            if session.updated_at.trim().is_empty() {
+                session.updated_at = now.clone();
+            }
+            if session.id.trim().is_empty() || used_ids.contains(&session.id) {
+                session.id = Uuid::new_v4().to_string();
+                reassigned_ids += 1;
+            }
+            used_ids.insert(session.id.clone());
+            store.insert(session.id.clone(), session.clone());
+            imported.push(session);
+        }
+        drop(store);
+
+        for session in &imported {
+            self.persist_session(session)?;
+        }
+
+        Ok(ConversationImportResult {
+            imported: imported.len(),
+            skipped,
+            reassigned_ids,
+            sessions: imported
+                .into_iter()
+                .filter(|session| !session.archived)
+                .collect(),
         })
     }
 
@@ -612,6 +766,106 @@ mod tests {
             .expect("delete deve funcionar");
         assert!(!file.exists());
         assert!(manager.list_sessions().is_empty());
+
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn archive_all_sessions_hides_from_main_list_but_keeps_disk() {
+        let dir = temp_sessions_dir();
+        let manager = SessionManager::new(&dir).expect("manager deve iniciar");
+        let session = manager
+            .create_session("arquivar")
+            .expect("sessão deve ser criada");
+
+        let archived = manager
+            .archive_all_sessions()
+            .expect("arquivamento deve funcionar");
+
+        assert_eq!(archived.len(), 1);
+        assert!(archived[0].archived);
+        assert!(manager.list_sessions().is_empty());
+        assert_eq!(manager.list_archived_sessions().len(), 1);
+        assert!(dir.join(format!("{}.json", session.id)).exists());
+
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn export_and_import_all_conversations_reassigns_conflicting_ids() {
+        let dir = temp_sessions_dir();
+        let exports_dir = dir.join("exports");
+        let manager = SessionManager::new_with_export_dir(&dir, exports_dir.clone())
+            .expect("manager deve iniciar");
+        let session = manager
+            .create_session("Exportável")
+            .expect("sessão deve ser criada");
+        manager
+            .append_user_message(&session.id, "mensagem exportada")
+            .expect("mensagem deve ser persistida");
+
+        let export = manager
+            .export_all_conversations()
+            .expect("export global deve funcionar");
+        assert!(export
+            .path
+            .starts_with(exports_dir.to_string_lossy().as_ref()));
+        assert!(fs::read_to_string(&export.path)
+            .expect("export deve existir")
+            .contains("codex-command-center.conversations.v1"));
+
+        let import_result = manager
+            .import_conversations_from_file(Path::new(&export.path))
+            .expect("import deve funcionar");
+
+        assert_eq!(import_result.imported, 1);
+        assert_eq!(import_result.reassigned_ids, 1);
+        assert_eq!(manager.list_sessions().len(), 2);
+
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn import_conversations_rejects_invalid_json() {
+        let dir = temp_sessions_dir();
+        let manager = SessionManager::new(&dir).expect("manager deve iniciar");
+        let file = dir.join("invalido.json");
+        fs::write(&file, "{ invalido").expect("fixture deve ser escrita");
+
+        let result = manager.import_conversations_from_file(&file);
+
+        assert!(result.is_err());
+        assert!(manager.list_sessions().is_empty());
+
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn delete_all_sessions_removes_archived_and_visible_files() {
+        let dir = temp_sessions_dir();
+        let manager = SessionManager::new(&dir).expect("manager deve iniciar");
+        manager.create_session("um").expect("sessão um");
+        manager.create_session("dois").expect("sessão dois");
+        manager
+            .archive_all_sessions()
+            .expect("arquivamento deve funcionar");
+
+        let removed = manager
+            .delete_all_sessions()
+            .expect("delete global deve funcionar");
+
+        assert_eq!(removed, 2);
+        assert!(manager.list_all_sessions().is_empty());
+        assert_eq!(
+            fs::read_dir(&dir)
+                .expect("diretório deve existir")
+                .flatten()
+                .filter(
+                    |entry| entry.path().extension().and_then(|ext| ext.to_str()) == Some("json")
+                )
+                .count(),
+            0
+        );
 
         let _ = fs::remove_dir_all(dir);
     }

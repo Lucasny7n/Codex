@@ -76,7 +76,7 @@ function parseProviderError(message: ChatMessage): ParsedProviderError | undefin
     .filter((line) => !/^(Status|Provider|Modelo):/i.test(line))
     .filter((line) => !line.startsWith('{') && !line.startsWith('['));
   const title = statusCopy?.title ?? lines[0] ?? 'Erro de provider';
-  const body = statusCopy?.message ?? lines.slice(1).find((line) => !/^Detalhe:/i.test(line)) ?? 'Revise a conta ou o modelo no Ambiente.';
+  const body = statusCopy?.message ?? lines.slice(1).find((line) => !/^Detalhe:/i.test(line)) ?? 'Revise a conta ou o modelo em Configurações.';
 
   return {
     title,

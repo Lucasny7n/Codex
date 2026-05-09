@@ -15,11 +15,12 @@ use crate::error::{AppError, ErrorPayload};
 use crate::models::{
     ActionableError, ActionableErrorSeverity, AgentSession, AppHealthAction, AppHealthCheck,
     AppHealthOverallStatus, AppHealthProvider, AppSettings, BootstrapPayload, CommandLogChunk,
-    ExecutionRequestInput, ExecutionResponse, LocalModelInstallProgress, LocalRuntimeSnapshot,
-    LogStream, PendingIntentKind, PermissionDecision, PermissionOutcome, PermissionOutcomeStatus,
-    PermissionRequest, PrivilegedActionRequestInput, PrivilegedActionSpec, ProviderAccountProfile,
-    ProviderCredentialStatus, ProviderGenerateRequest, ProviderRuntimeStatus, ProviderStatusState,
-    SessionExportFormat, SessionExportResult, SessionStatus, StatusKind, TaskStatus, WorkspaceMeta,
+    ConversationImportResult, ExecutionRequestInput, ExecutionResponse, LocalModelInstallProgress,
+    LocalRuntimeSnapshot, LogStream, PendingIntentKind, PermissionDecision, PermissionOutcome,
+    PermissionOutcomeStatus, PermissionRequest, PrivilegedActionRequestInput, PrivilegedActionSpec,
+    ProviderAccountProfile, ProviderCredentialStatus, ProviderGenerateRequest,
+    ProviderRuntimeStatus, ProviderStatusState, SessionExportFormat, SessionExportResult,
+    SessionStatus, StatusKind, TaskStatus, WorkspaceMeta,
 };
 use crate::services::privileged_actions;
 use crate::services::privileged_helper_client::HelperRequest;
@@ -561,7 +562,8 @@ fn faster_whisper_local_model() -> Option<PathBuf> {
 }
 
 fn run_whisper_cpp(audio_path: &Path) -> Result<Option<String>, String> {
-    let Some(binary) = command_in_path("whisper-cli") else {
+    let Some(binary) = command_in_path("whisper-cli").or_else(|| command_in_path("whisper.cpp"))
+    else {
         return Ok(None);
     };
     let Some(model) = whisper_cpp_model_path() else {
@@ -1391,6 +1393,39 @@ pub fn delete_session(state: State<AppState>, session_id: String) -> Result<(), 
 }
 
 #[tauri::command]
+pub fn list_archived_sessions(state: State<AppState>) -> Vec<AgentSession> {
+    state.session_manager.list_archived_sessions()
+}
+
+#[tauri::command]
+pub fn archive_all_sessions(
+    app: AppHandle,
+    state: State<AppState>,
+) -> Result<Vec<AgentSession>, ErrorPayload> {
+    let archived = state
+        .session_manager
+        .archive_all_sessions()
+        .map_err(map_err)?;
+    for session in &archived {
+        let _ = app.emit("session-changed", session.clone());
+    }
+    Ok(state.session_manager.list_sessions())
+}
+
+#[tauri::command]
+pub fn delete_all_sessions(app: AppHandle, state: State<AppState>) -> Result<usize, ErrorPayload> {
+    let sessions = state.session_manager.list_all_sessions();
+    let count = state
+        .session_manager
+        .delete_all_sessions()
+        .map_err(map_err)?;
+    for session in sessions {
+        let _ = app.emit("session-deleted", session.id);
+    }
+    Ok(count)
+}
+
+#[tauri::command]
 pub fn duplicate_session(
     app: AppHandle,
     state: State<AppState>,
@@ -1414,6 +1449,38 @@ pub fn export_session(
         .session_manager
         .export_session(&session_id, format)
         .map_err(map_err)
+}
+
+#[tauri::command]
+pub fn export_all_conversations(
+    state: State<AppState>,
+) -> Result<SessionExportResult, ErrorPayload> {
+    state
+        .session_manager
+        .export_all_conversations()
+        .map_err(map_err)
+}
+
+#[tauri::command]
+pub fn import_conversations(
+    app: AppHandle,
+    state: State<AppState>,
+    path: String,
+) -> Result<ConversationImportResult, ErrorPayload> {
+    let file = expand_user_path(&path).map_err(map_err)?;
+    if !file.is_file() {
+        return Err(map_err(AppError::Message(
+            "Arquivo JSON de conversas não encontrado.".to_owned(),
+        )));
+    }
+    let result = state
+        .session_manager
+        .import_conversations_from_file(&file)
+        .map_err(map_err)?;
+    for session in &result.sessions {
+        let _ = app.emit("session-changed", session.clone());
+    }
+    Ok(result)
 }
 
 #[tauri::command]

@@ -354,7 +354,7 @@ export const cloudModelRegistry: CloudModelProfile[] = [
     bestFor: ['Uso futuro como provider agentico validado', 'Terminal controlado', 'Fluxos de codigo'],
     tags: ['codigo', 'requer-config', 'cli', 'cloud'],
     capabilities: { speed: 4, reasoning: 4, coding: 5, text: 4, longContext: 4 },
-    caveats: ['Nao simula resposta; se auth/adapter faltar, direciona para Ambiente > Diagnóstico.'],
+    caveats: ['Nao simula resposta; se auth/adapter faltar, direciona para Configurações > Modelos.'],
   }),
   cloudModel({
     id: 'gemini-cli-default',
