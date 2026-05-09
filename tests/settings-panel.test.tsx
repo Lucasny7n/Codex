@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import type { ComponentProps } from 'react';
 import { describe, expect, it, vi } from 'vitest';
 import { SettingsPanel } from '../src/components/panels/SettingsPanel';
@@ -7,9 +7,8 @@ import type {
   AppHealthCheck,
   AppSettings,
   LocalRuntimeSnapshot,
-  ProviderCredentialStatus,
   ProviderDescriptor,
-  ProviderRuntimeStatus
+  ProviderRuntimeStatus,
 } from '../src/types/domain';
 
 const readyStatus: ProviderRuntimeStatus = {
@@ -17,30 +16,28 @@ const readyStatus: ProviderRuntimeStatus = {
   message: 'Gemini CLI instalado.',
   command: '/home/lucas/.local/bin/gemini --version',
   version: '0.41.1',
-  checkedAt: new Date().toISOString()
-};
-
-const errorStatus: ProviderRuntimeStatus = {
-  state: 'error',
-  message: 'Teste do Gemini CLI falhou de forma controlada.',
-  command: 'gemini --prompt <teste>',
-  checkedAt: new Date().toISOString()
+  checkedAt: new Date().toISOString(),
 };
 
 function settings(): AppSettings {
   return {
     workspaceRoot: '/tmp/workspace',
     codexRoot: '/tmp/codex',
-      selectedProviderId: 'gemini-cli',
-      selectedModelId: 'gemini-cli-default',
-      selectedAgentId: 'equilibrado',
-      selectedProviderProfileId: 'gemini-cli:default',
+    selectedProviderId: 'gemini-cli',
+    selectedModelId: 'gemini-cli-default',
+    selectedAgentId: 'equilibrado',
+    selectedProviderProfileId: 'gemini-cli:default',
     preferredShell: '/usr/bin/bash',
     autoApproveSafeRead: true,
     executionMode: 'cloud',
-    selectedLocalModelId: undefined,
+    selectedLocalModelId: 'qwen2.5-coder:1.5b',
     modelSelectionHistory: [],
-    localModelsRoot: '/tmp/.codex/models'
+    localModelsRoot: '/tmp/.codex/models',
+    themePreference: 'dark',
+    aiResponseLanguage: 'pt-BR',
+    autoGenerateTitles: true,
+    autoCopyResponses: false,
+    pasteLargeTextAsFile: true,
   };
 }
 
@@ -57,29 +54,10 @@ function providers(status: ProviderRuntimeStatus = readyStatus): ProviderDescrip
           id: 'gemini-cli-default',
           label: 'Gemini CLI padrão',
           providerId: 'gemini-cli',
-          supportsTools: false
-        }
-      ]
+          supportsTools: false,
+        },
+      ],
     },
-    {
-      id: 'mock-development',
-      label: 'Mock Provider (desenvolvimento)',
-      configurable: false,
-      enabled: true,
-      status: {
-        state: 'mock',
-        message: 'Mock explícito.',
-        checkedAt: new Date().toISOString()
-      },
-      models: [
-        {
-          id: 'mock-development-model',
-          label: 'Mock de desenvolvimento',
-          providerId: 'mock-development',
-          supportsTools: false
-        }
-      ]
-    }
   ];
 }
 
@@ -89,13 +67,9 @@ function profiles(): AgentProfile[] {
       id: 'equilibrado',
       label: 'Equilibrado',
       description: 'Diagnóstico sólido.',
-      mode: 'equilibrado'
-    }
+      mode: 'equilibrado',
+    },
   ];
-}
-
-function credentials(): ProviderCredentialStatus[] {
-  return [];
 }
 
 function localRuntime(): LocalRuntimeSnapshot {
@@ -103,7 +77,7 @@ function localRuntime(): LocalRuntimeSnapshot {
     state: 'ready',
     message: 'Ollama pronto',
     modelsDir: '/tmp/.codex/models',
-    installedModels: [],
+    installedModels: [{ id: 'qwen2.5-coder:1.5b' }],
     installed: true,
     serviceActive: true,
     apiReachable: true,
@@ -114,7 +88,7 @@ function localRuntime(): LocalRuntimeSnapshot {
     diskOk: true,
     problems: [],
     repairActions: [],
-    at: new Date().toISOString()
+    at: new Date().toISOString(),
   };
 }
 
@@ -131,7 +105,7 @@ function health(): AppHealthCheck {
     ollama: localRuntime(),
     recentErrors: [],
     overallStatus: 'ok',
-    actions: []
+    actions: [],
   };
 }
 
@@ -142,12 +116,12 @@ function renderSettings(overrides: Partial<ComponentProps<typeof SettingsPanel>>
       providers={providers()}
       providerProfiles={[]}
       profiles={profiles()}
-      credentials={credentials()}
+      credentials={[]}
       sessions={[]}
       localRuntime={localRuntime()}
       healthCheck={health()}
       healthLoading={false}
-      onChange={vi.fn()}
+      onChange={vi.fn().mockResolvedValue(undefined)}
       onTestProvider={vi.fn()}
       onSaveProviderProfileCredential={vi.fn()}
       onRemoveProviderCredential={vi.fn()}
@@ -163,60 +137,93 @@ function renderSettings(overrides: Partial<ComponentProps<typeof SettingsPanel>>
 }
 
 describe('SettingsPanel', () => {
-  it('mostra status real do provider selecionado', () => {
+  it('renderiza somente as abas principais e remove telas antigas', () => {
     renderSettings();
 
-    fireEvent.click(screen.getByText('IA'));
-    expect(screen.getByText('Gemini CLI instalado.')).toBeInTheDocument();
-    expect(screen.getByText('0.41.1')).toBeInTheDocument();
-    expect(screen.getAllByText('Testar conexão')[0]).toBeInTheDocument();
+    for (const label of ['Geral', 'Interface', 'Modelos', 'Conversas', 'Personalização']) {
+      expect(screen.getByRole('button', { name: label })).toBeInTheDocument();
+    }
+
+    for (const label of ['Conta', 'Sobre', 'Áudio', 'Voz', 'Terminal', 'Sessões', 'Diagnóstico', 'Avançado', 'Conexões', 'Ambiente', 'Abrir Ambiente', 'Controle']) {
+      expect(screen.queryByText(label)).not.toBeInTheDocument();
+    }
   });
 
-  it('mostra erro inline quando teste do provider falha', async () => {
-    renderSettings({ onTestProvider: vi.fn().mockResolvedValue(errorStatus) });
+  it('Geral mostra tema e idioma da IA, salvando preferência', () => {
+    const onChange = vi.fn().mockResolvedValue(undefined);
+    renderSettings({ onChange });
 
-    fireEvent.click(screen.getByText('IA'));
-    fireEvent.click(screen.getAllByText('Testar conexão')[0]);
+    expect(screen.getByRole('radio', { name: 'Sistema' })).toBeInTheDocument();
+    expect(screen.getByRole('radio', { name: 'Claro' })).toBeInTheDocument();
+    expect(screen.getByRole('radio', { name: 'Escuro' })).toBeInTheDocument();
+    expect(screen.getByText('Idioma das respostas da IA')).toBeInTheDocument();
+    expect(screen.getByDisplayValue('Português (Brasil)')).toBeInTheDocument();
 
-    await waitFor(() => {
-      expect(screen.getByRole('alert')).toHaveTextContent('Provider indisponível');
-    });
+    fireEvent.click(screen.getByRole('radio', { name: 'Claro' }));
+    expect(onChange).toHaveBeenCalledWith(expect.objectContaining({ themePreference: 'light' }));
+
+    fireEvent.change(screen.getByDisplayValue('Português (Brasil)'), { target: { value: 'en' } });
+    expect(onChange).toHaveBeenCalledWith(expect.objectContaining({ aiResponseLanguage: 'en' }));
   });
 
-  it('renderiza abas essenciais', () => {
+  it('Interface contém switches visuais simples', () => {
     renderSettings();
 
-    expect(screen.getAllByText('Configurações').length).toBeGreaterThan(0);
-    expect(screen.getByText('IA')).toBeInTheDocument();
-    expect(screen.getByText('Contas')).toBeInTheDocument();
-    expect(screen.getByText('Modelos locais')).toBeInTheDocument();
-    expect(screen.getAllByText('Sessões').length).toBeGreaterThan(0);
-    expect(screen.getByText('Terminal')).toBeInTheDocument();
-    expect(screen.getAllByText('Diagnóstico').length).toBeGreaterThan(0);
+    fireEvent.click(screen.getByRole('button', { name: 'Interface' }));
+
+    expect(screen.getByText('Geração automática de título')).toBeInTheDocument();
+    expect(screen.getByText('Cópia automática da resposta para área de transferência')).toBeInTheDocument();
+    expect(screen.getByText('Colar texto grande como arquivo')).toBeInTheDocument();
+    expect(screen.getAllByRole('switch').length).toBe(3);
   });
 
-  it('abre aba solicitada pelo seletor de modelos', () => {
-    renderSettings({ initialTab: 'providers' });
+  it('Modelos mostra accordions informativos sem configuração de credencial', () => {
+    renderSettings({ initialTab: 'models' });
 
-    expect(screen.getByText('Gemini CLI instalado.')).toBeInTheDocument();
+    expect(screen.getByText('GPT-5.5')).toBeInTheDocument();
+    expect(screen.getByText('GPT-5.4 Mini via OpenRouter')).toBeInTheDocument();
+    expect(screen.getByText('Qwen2.5 Coder 1.5B')).toBeInTheDocument();
+    expect(screen.getByText('Gemini 2.5 Flash')).toBeInTheDocument();
+    expect(screen.getByText('Comprimento máximo do contexto')).toBeInTheDocument();
+    expect(screen.getByText('Fornecedor')).toBeInTheDocument();
+    expect(screen.queryByText('API Key')).not.toBeInTheDocument();
+    expect(screen.queryByText('Salvar API')).not.toBeInTheDocument();
   });
 
-  it('Controle encaminha IA, contas e locais para Ambiente sem duplicar formulário', () => {
-    const onOpenEnvironment = vi.fn();
-    renderSettings({ onOpenEnvironment });
+  it('Conversas mostra ações principais com confirmação para exclusão', () => {
+    renderSettings({ initialTab: 'conversations' });
 
-    fireEvent.click(screen.getByText('IA'));
-    expect(screen.getByText('Abrir Ambiente')).toBeInTheDocument();
-    expect(screen.queryByText('Adicionar API key')).not.toBeInTheDocument();
-    fireEvent.click(screen.getByText('Abrir Ambiente'));
-    expect(onOpenEnvironment).toHaveBeenCalledWith('configure');
+    expect(screen.getByText('Importar Conversas')).toBeInTheDocument();
+    expect(screen.getByText('Exportar Conversas')).toBeInTheDocument();
+    expect(screen.getByText('Arquivar todos os chats')).toBeInTheDocument();
+    expect(screen.getByText('Excluir todas as conversas')).toBeInTheDocument();
 
-    fireEvent.click(screen.getByText('Contas'));
-    fireEvent.click(screen.getByText('Abrir Contas'));
-    expect(onOpenEnvironment).toHaveBeenCalledWith('accounts');
+    fireEvent.click(screen.getByRole('button', { name: 'Excluir' }));
+    expect(screen.getByRole('alert')).toHaveTextContent('Confirmar exclusão');
+  });
 
-    fireEvent.click(screen.getByText('Modelos locais'));
-    fireEvent.click(screen.getByText('Abrir Locais'));
-    expect(onOpenEnvironment).toHaveBeenCalledWith('local');
+  it('Personalização mostra memória e funções avançadas persistíveis', () => {
+    renderSettings({ initialTab: 'personalization' });
+
+    expect(screen.getByText('Memórias guardadas')).toBeInTheDocument();
+    expect(screen.getByText('Histórico de chat de referência')).toBeInTheDocument();
+    expect(screen.getByText('Personalizar o Codex/Qwen')).toBeInTheDocument();
+    expect(screen.getByText('Gerenciar Cookies')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: /Avançado/ }));
+
+    for (const label of [
+      'Extração da página web',
+      'Pesquisa por imagens',
+      'Pesquisa na web',
+      'Geração de imagens',
+      'Interpretador de código',
+      'Recuperar memórias históricas',
+      'Edição de imagens',
+      'Atualizar memória',
+      'Ampliação local da imagem',
+    ]) {
+      expect(screen.getByText(label)).toBeInTheDocument();
+    }
   });
 });

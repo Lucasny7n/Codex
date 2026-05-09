@@ -1,8 +1,96 @@
-import { fireEvent, render, screen } from '@testing-library/react';
-import { describe, expect, it, vi } from 'vitest';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import * as api from '../src/lib/api';
 import { CommandInputPanel } from '../src/components/panels/CommandInputPanel';
 
+vi.mock('../src/lib/api', () => ({
+  getFileAttachment: vi.fn(),
+  listFileDirectory: vi.fn(),
+  transcribeAudio: vi.fn(),
+}));
+
+function mockFileListing(): void {
+  vi.mocked(api.listFileDirectory).mockResolvedValue({
+    path: '/tmp',
+    parentPath: '/',
+    shortcuts: [
+      { id: 'home', label: 'Home', path: '/home/lucas', exists: true },
+      { id: 'downloads', label: 'Downloads', path: '/home/lucas/Downloads', exists: true },
+    ],
+    entries: [
+      {
+        name: 'relatorio.md',
+        path: '/tmp/relatorio.md',
+        kind: 'text',
+        extension: 'md',
+        isDirectory: false,
+        size: 1200,
+        modifiedAt: '2026-05-08T12:00:00Z',
+      },
+    ],
+    truncated: false,
+  });
+}
+
 describe('CommandInputPanel', () => {
+  class MockMediaRecorder {
+    static isTypeSupported = vi.fn(() => true);
+    mimeType = 'audio/webm';
+    state: RecordingState = 'inactive';
+    ondataavailable: ((event: BlobEvent) => void) | null = null;
+    onerror: (() => void) | null = null;
+    onstop: (() => void) | null = null;
+    start(): void {
+      this.state = 'recording';
+    }
+    stop(): void {
+      this.state = 'inactive';
+      this.ondataavailable?.({ data: new Blob(['audio']) } as BlobEvent);
+      this.onstop?.();
+    }
+  }
+
+  class MockSpeechRecognition {
+    lang = '';
+    interimResults = false;
+    continuous = false;
+    onstart: (() => void) | null = null;
+    onresult: ((event: Event & { results: ArrayLike<ArrayLike<{ transcript: string }>> }) => void) | null = null;
+    onerror: ((event: Event & { error?: string }) => void) | null = null;
+    onend: (() => void) | null = null;
+    start = vi.fn(() => {
+      this.onstart?.();
+    });
+    stop = vi.fn(() => {
+      this.onend?.();
+    });
+    abort = vi.fn();
+  }
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    Reflect.deleteProperty(window, 'SpeechRecognition');
+    Reflect.deleteProperty(window, 'webkitSpeechRecognition');
+    Reflect.deleteProperty(window.navigator, 'mediaDevices');
+    mockFileListing();
+    vi.mocked(api.getFileAttachment).mockResolvedValue({
+      name: 'relatorio.md',
+      path: '/tmp/relatorio.md',
+      kind: 'text',
+      extension: 'md',
+      isDirectory: false,
+      size: 1200,
+      modifiedAt: '2026-05-08T12:00:00Z',
+      preview: 'preview seguro',
+      previewKind: 'text',
+      previewTruncated: false,
+    });
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
   it('bloqueia envio de ordem quando provider está indisponível', () => {
     render(
       <CommandInputPanel
@@ -25,7 +113,7 @@ describe('CommandInputPanel', () => {
     expect(screen.getByLabelText('Enviar')).toHaveAttribute('title', 'Provider indisponível');
   });
 
-  it('mantem terminal fora da home ate ação explicita', () => {
+  it('mantem terminal fora da home ate ação explicita no menu de modos', () => {
     const onOpenTerminal = vi.fn();
 
     render(
@@ -40,10 +128,274 @@ describe('CommandInputPanel', () => {
       />,
     );
 
-    fireEvent.click(screen.getByLabelText('Mais ações'));
-    expect(screen.getByText('Usar terminal')).toBeInTheDocument();
-    fireEvent.click(screen.getByText('Usar terminal'));
+    fireEvent.click(screen.getByLabelText('Selecionar modo de resposta'));
+    fireEvent.click(screen.getByText('Terminal'));
     expect(onOpenTerminal).toHaveBeenCalledTimes(1);
     expect(screen.getByPlaceholderText('Comando de terminal')).toBeInTheDocument();
+  });
+
+  it('menu do + mostra somente Selecionar arquivo', () => {
+    render(
+      <CommandInputPanel
+        busy={false}
+        privilegedActions={[]}
+        actionJsonExamples={{}}
+        onSendOrder={vi.fn()}
+        onExecuteCommand={vi.fn()}
+        onRequestPrivilegedAction={vi.fn()}
+      />,
+    );
+
+    fireEvent.click(screen.getByLabelText('Mais ações'));
+
+    expect(screen.getByText('Selecionar arquivo')).toBeInTheDocument();
+    expect(screen.queryByText('Selecionar pasta')).not.toBeInTheDocument();
+    expect(screen.queryByText('Usar caminho do PC')).not.toBeInTheDocument();
+    expect(screen.queryByText('Usar terminal')).not.toBeInTheDocument();
+    expect(screen.queryByText('Configurar modelos')).not.toBeInTheDocument();
+  });
+
+  it('abre seletor de modos e envia o modo junto do pedido', async () => {
+    const onSendOrder = vi.fn().mockResolvedValue(undefined);
+
+    render(
+      <CommandInputPanel
+        busy={false}
+        privilegedActions={[]}
+        actionJsonExamples={{}}
+        onSendOrder={onSendOrder}
+        onExecuteCommand={vi.fn()}
+        onRequestPrivilegedAction={vi.fn()}
+      />,
+    );
+
+    fireEvent.click(screen.getByLabelText('Selecionar modo de resposta'));
+    expect(screen.getAllByText('Automático').length).toBeGreaterThan(1);
+    expect(screen.getByText('Pensamento')).toBeInTheDocument();
+    expect(screen.getByText('Rápido')).toBeInTheDocument();
+    expect(screen.getByText('Código')).toBeInTheDocument();
+    expect(screen.getByText('Terminal')).toBeInTheDocument();
+    expect(screen.queryByText('Agente')).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByText('Código'));
+    fireEvent.change(screen.getByPlaceholderText('Descreva o que quer construir, corrigir ou automatizar.'), {
+      target: { value: 'implemente teste' },
+    });
+    fireEvent.click(screen.getByLabelText('Enviar'));
+
+    await waitFor(() => {
+      expect(onSendOrder).toHaveBeenCalledWith('implemente teste', 'code', []);
+    });
+  });
+
+  it('transcreve voz quando SpeechRecognition existe', async () => {
+    let instance: MockSpeechRecognition | undefined;
+    const SpeechRecognitionMock = function SpeechRecognitionMock(): MockSpeechRecognition {
+      instance = new MockSpeechRecognition();
+      return instance;
+    } as unknown as typeof MockSpeechRecognition;
+    vi.stubGlobal('SpeechRecognition', SpeechRecognitionMock);
+
+    render(
+      <CommandInputPanel
+        busy={false}
+        privilegedActions={[]}
+        actionJsonExamples={{}}
+        onSendOrder={vi.fn()}
+        onExecuteCommand={vi.fn()}
+        onRequestPrivilegedAction={vi.fn()}
+      />,
+    );
+
+    fireEvent.click(screen.getByLabelText('Entrada por voz'));
+    expect(await screen.findByRole('status')).toHaveTextContent('Ouvindo...');
+
+    act(() => {
+      instance?.onresult?.({
+        type: 'result',
+        results: [[{ transcript: 'texto falado' }]],
+      } as unknown as Event & { results: ArrayLike<ArrayLike<{ transcript: string }>> });
+      instance?.onend?.();
+    });
+
+    await waitFor(() => {
+      expect(screen.getByDisplayValue('texto falado')).toBeInTheDocument();
+    });
+  });
+
+  it('tenta backend local quando Web Speech não existe e preenche o input', async () => {
+    const stop = vi.fn();
+    Object.defineProperty(window.navigator, 'mediaDevices', {
+      configurable: true,
+      value: {
+        getUserMedia: vi.fn().mockResolvedValue({
+          getTracks: () => [{ stop }],
+        }),
+      },
+    });
+    vi.stubGlobal('MediaRecorder', MockMediaRecorder);
+    vi.mocked(api.transcribeAudio).mockResolvedValue({
+      status: 'done',
+      text: 'texto local transcrito',
+      message: 'ok',
+      backend: 'whisper-cli',
+    });
+
+    render(
+      <CommandInputPanel
+        busy={false}
+        privilegedActions={[]}
+        actionJsonExamples={{}}
+        onSendOrder={vi.fn()}
+        onExecuteCommand={vi.fn()}
+        onRequestPrivilegedAction={vi.fn()}
+      />,
+    );
+
+    fireEvent.click(screen.getByLabelText('Entrada por voz'));
+    expect(await screen.findByRole('status')).toHaveTextContent('Gravando...');
+    fireEvent.click(screen.getByLabelText('Parar transcrição de voz'));
+
+    await waitFor(() => {
+      expect(api.transcribeAudio).toHaveBeenCalled();
+      expect(screen.getByDisplayValue('texto local transcrito')).toBeInTheDocument();
+    });
+    expect(stop).toHaveBeenCalled();
+  });
+
+  it('mostra erro útil quando backend local de voz está ausente', async () => {
+    Object.defineProperty(window.navigator, 'mediaDevices', {
+      configurable: true,
+      value: {
+        getUserMedia: vi.fn().mockResolvedValue({
+          getTracks: () => [{ stop: vi.fn() }],
+        }),
+      },
+    });
+    vi.stubGlobal('MediaRecorder', MockMediaRecorder);
+    vi.mocked(api.transcribeAudio).mockResolvedValue({
+      status: 'missing_backend',
+      message: 'Nenhum backend local de transcrição foi encontrado.',
+      command: 'sudo pacman -S whisper.cpp ffmpeg',
+    });
+
+    render(
+      <CommandInputPanel
+        busy={false}
+        privilegedActions={[]}
+        actionJsonExamples={{}}
+        onSendOrder={vi.fn()}
+        onExecuteCommand={vi.fn()}
+        onRequestPrivilegedAction={vi.fn()}
+      />,
+    );
+
+    fireEvent.click(screen.getByLabelText('Entrada por voz'));
+    fireEvent.click(await screen.findByLabelText('Parar transcrição de voz'));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('sudo pacman -S whisper.cpp ffmpeg');
+  });
+
+  it('abre seletor interno, adiciona chip de arquivo e remove o chip', async () => {
+    render(
+      <CommandInputPanel
+        busy={false}
+        privilegedActions={[]}
+        actionJsonExamples={{}}
+        onSendOrder={vi.fn()}
+        onExecuteCommand={vi.fn()}
+        onRequestPrivilegedAction={vi.fn()}
+      />,
+    );
+
+    fireEvent.click(screen.getByLabelText('Mais ações'));
+    fireEvent.click(screen.getByText('Selecionar arquivo'));
+
+    expect(await screen.findByRole('dialog', { name: 'Selecionar arquivo' })).toBeInTheDocument();
+    expect(await screen.findByText('relatorio.md')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByText('relatorio.md'));
+    fireEvent.click(screen.getByRole('button', { name: 'Selecionar' }));
+
+    await waitFor(() => {
+      expect(screen.queryByRole('dialog', { name: 'Selecionar arquivo' })).not.toBeInTheDocument();
+    });
+    expect(screen.getByText('relatorio.md')).toBeInTheDocument();
+    expect(screen.getByText('1.2 KB')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByLabelText('Remover relatorio.md'));
+    expect(screen.queryByText('relatorio.md')).not.toBeInTheDocument();
+  });
+
+  it('envia arquivo selecionado como anexo bruto/metadado sem despejar preview no texto', async () => {
+    const onSendOrder = vi.fn().mockResolvedValue(undefined);
+
+    render(
+      <CommandInputPanel
+        busy={false}
+        privilegedActions={[]}
+        actionJsonExamples={{}}
+        onSendOrder={onSendOrder}
+        onExecuteCommand={vi.fn()}
+        onRequestPrivilegedAction={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByLabelText('Enviar')).toBeDisabled();
+
+    fireEvent.click(screen.getByLabelText('Mais ações'));
+    fireEvent.click(screen.getByText('Selecionar arquivo'));
+    fireEvent.click(await screen.findByText('relatorio.md'));
+    fireEvent.click(screen.getByRole('button', { name: 'Selecionar' }));
+
+    await waitFor(() => {
+      expect(screen.getByLabelText('Enviar')).not.toBeDisabled();
+    });
+
+    fireEvent.click(screen.getByLabelText('Enviar'));
+
+    await waitFor(() => {
+      expect(onSendOrder).toHaveBeenCalledWith('Anexo enviado.', 'auto', [
+        expect.objectContaining({
+          path: '/tmp/relatorio.md',
+          name: 'relatorio.md',
+          mimeType: 'text/plain',
+          size: 1200,
+          kind: 'text',
+          previewAvailable: true,
+          previewTextLimited: 'preview seguro',
+        }),
+      ]);
+    });
+  });
+
+  it('mostra erro bonito para caminho local inválido e Esc fecha o modal', async () => {
+    vi.mocked(api.getFileAttachment).mockRejectedValueOnce(new Error('Caminho não encontrado ou inacessível.'));
+
+    render(
+      <CommandInputPanel
+        busy={false}
+        privilegedActions={[]}
+        actionJsonExamples={{}}
+        onSendOrder={vi.fn()}
+        onExecuteCommand={vi.fn()}
+        onRequestPrivilegedAction={vi.fn()}
+      />,
+    );
+
+    fireEvent.click(screen.getByLabelText('Mais ações'));
+    fireEvent.click(screen.getByText('Selecionar arquivo'));
+    fireEvent.click(await screen.findByText('Usar caminho do PC'));
+
+    const pathInput = await screen.findByLabelText('Caminho local');
+    fireEvent.change(pathInput, { target: { value: '/tmp/nao-existe.pdf' } });
+    fireEvent.click(screen.getByText('Validar'));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('Caminho não encontrado ou inacessível.');
+
+    fireEvent.keyDown(document, { key: 'Escape' });
+    await waitFor(() => {
+      expect(screen.queryByRole('dialog', { name: 'Selecionar arquivo' })).not.toBeInTheDocument();
+    });
   });
 });

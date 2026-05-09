@@ -12,6 +12,8 @@ import type {
   StatusNote,
   CommandLogChunk,
   FileChangeEntry,
+  FileDirectoryListing,
+  SelectedFileAttachment,
   AgentSession,
   PermissionRequest,
   AppSettings,
@@ -23,7 +25,9 @@ import type {
   LocalModelInstallProgress,
   SessionExportFormat,
   SessionExportResult,
-  EnvironmentSelectionInput
+  EnvironmentSelectionInput,
+  VoiceTranscriptionResult,
+  ChatAttachment,
 } from '../types/domain';
 
 export async function bootstrapState(): Promise<BootstrapPayload> {
@@ -79,12 +83,29 @@ export async function openExternalUrl(url: string): Promise<void> {
   await open(url);
 }
 
+export async function listFileDirectory(path?: string): Promise<FileDirectoryListing> {
+  return invoke('list_file_directory', { path });
+}
+
+export async function getFileAttachment(path: string): Promise<SelectedFileAttachment> {
+  return invoke('get_file_attachment', { path });
+}
+
+export async function transcribeAudio(audioBytes: number[], mimeType?: string): Promise<VoiceTranscriptionResult> {
+  return invoke('transcribe_audio', { audioBytes, mimeType });
+}
+
 export async function appendUserMessage(sessionId: string, content: string): Promise<AgentSession> {
   return invoke('append_user_message', { sessionId, content });
 }
 
-export async function sendOrderToAgent(sessionId: string, content: string): Promise<AgentSession> {
-  return invoke('send_order_to_agent', { sessionId, content });
+export async function sendOrderToAgent(
+  sessionId: string,
+  content: string,
+  mode?: string,
+  attachments: ChatAttachment[] = [],
+): Promise<AgentSession> {
+  return invoke('send_order_to_agent', { sessionId, content, mode, attachments });
 }
 
 export async function requestExecution(input: ExecutionRequestInput): Promise<ExecutionResponse> {

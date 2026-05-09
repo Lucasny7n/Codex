@@ -7,6 +7,8 @@ use parking_lot::RwLock;
 use uuid::Uuid;
 
 use crate::error::AppResult;
+use serde_json::Value;
+
 use crate::models::{
     now_iso, AgentSession, ChatMessage, ChatRole, SessionExportFormat, SessionExportResult,
     SessionStatus, SessionTask, StatusKind, TaskStatus,
@@ -229,13 +231,22 @@ impl SessionManager {
     }
 
     pub fn append_user_message(&self, session_id: &str, content: &str) -> AppResult<AgentSession> {
-        self.append_user_message_with_context(session_id, content, None, None, None, None)
+        self.append_user_message_with_context(
+            session_id,
+            content,
+            Vec::new(),
+            None,
+            None,
+            None,
+            None,
+        )
     }
 
     pub fn append_user_message_with_context(
         &self,
         session_id: &str,
         content: &str,
+        attachments: Vec<Value>,
         provider_id: Option<String>,
         model_id: Option<String>,
         agent_profile_id: Option<String>,
@@ -268,6 +279,7 @@ impl SessionManager {
             content: content.to_owned(),
             created_at: now_iso(),
             reasoning_summary: None,
+            attachments,
         });
 
         session.tasks.push(SessionTask {
@@ -337,6 +349,7 @@ impl SessionManager {
             content: content.to_owned(),
             created_at: now_iso(),
             reasoning_summary: summary,
+            attachments: Vec::new(),
         });
         session.status = status;
         session.updated_at = now_iso();
@@ -555,6 +568,7 @@ mod tests {
             .append_user_message_with_context(
                 &session.id,
                 "corrigir scroll de Settings",
+                Vec::new(),
                 Some("openai-api".to_owned()),
                 Some("gpt-5.5".to_owned()),
                 Some("equilibrado".to_owned()),

@@ -6,6 +6,9 @@ interface AppShellProps {
   main: ReactNode;
   sidebarRight: ReactNode;
   sidebarRightVisible?: boolean;
+  sidebarLeftVisible?: boolean;
+  sidebarLeftCollapsed?: boolean;
+  sidebarRestore?: ReactNode;
 }
 
 export function AppShell({
@@ -13,16 +16,22 @@ export function AppShell({
   sidebarLeft,
   main,
   sidebarRight,
-  sidebarRightVisible = true
+  sidebarRightVisible = true,
+  sidebarLeftVisible = true,
+  sidebarLeftCollapsed = false,
+  sidebarRestore,
 }: AppShellProps): JSX.Element {
   return (
     <div className="app-shell">
       {header ?? null}
-      <div className={`app-main-grid${sidebarRightVisible ? '' : ' app-main-grid-no-right'}`}>
-        <aside className="app-column app-sidebar-left">
-          {sidebarLeft}
-        </aside>
+      <div className={`app-main-grid${sidebarRightVisible ? '' : ' app-main-grid-no-right'}${sidebarLeftVisible ? '' : ' app-main-grid-no-left'}${sidebarLeftCollapsed ? ' app-main-grid-left-collapsed' : ''}`}>
+        {sidebarLeftVisible ? (
+          <aside className={`app-column app-sidebar-left${sidebarLeftCollapsed ? ' app-sidebar-left-collapsed' : ''}`}>
+            {sidebarLeft}
+          </aside>
+        ) : null}
         <main className="app-column-center">
+          {!sidebarLeftVisible ? sidebarRestore : null}
           {main}
         </main>
         {sidebarRightVisible ? (

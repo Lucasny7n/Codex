@@ -215,26 +215,10 @@ async fn enforce_privileged_policy(command: &str) -> AppResult<()> {
         ));
     }
 
-    if trimmed.starts_with("sudo ") {
-        if !trimmed.starts_with("sudo -n ") {
-            return Err(AppError::Message(
-                "Política de segurança: comandos sudo devem usar `sudo -n` (sem prompt)."
-                    .to_owned(),
-            ));
-        }
-
-        let status = Command::new("/usr/bin/bash")
-            .arg("-lc")
-            .arg("sudo -n true")
-            .status()
-            .await
-            .map_err(|cause| AppError::Message(format!("Falha ao validar sudo -n: {cause}")))?;
-
-        if !status.success() {
-            return Err(AppError::Message(
-                "Infra de privilégio não pronta: `sudo -n` não está liberado neste host. Use helper pkexec ou configure política NOPASSWD.".to_owned(),
-            ));
-        }
+    if trimmed.starts_with("sudo ") && trimmed.contains("sudo -S") {
+        return Err(AppError::Message(
+            "Política de segurança: `sudo -S` é bloqueado. Use sudo normal após aprovação Sim/Não, sem armazenar senha.".to_owned(),
+        ));
     }
 
     Ok(())
@@ -257,8 +241,14 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn blocks_sudo_without_noninteractive_flag() {
+    async fn allows_sudo_after_permission_layer() {
         let result = enforce_privileged_policy("sudo pacman -Syu").await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn blocks_sudo_password_stdin() {
+        let result = enforce_privileged_policy("sudo -S pacman -Syu").await;
         assert!(result.is_err());
     }
 }

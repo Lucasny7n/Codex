@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
   bootstrapState,
-  applyEnvironmentToAllSessions,
   createSession,
   deleteSession,
   duplicateSession,
@@ -24,7 +23,6 @@ import {
   onStatusNote,
   openFileInVscode,
   openProjectInVscode,
-  removeLocalModel,
   removeProviderCredential,
   removeProviderProfile,
   requestExecution,
@@ -36,16 +34,17 @@ import {
   sendOrderToAgent,
   startLocalRuntime,
   testProviderConnection,
-  updateSessionEnvironment,
   updateSettings,
 } from './lib/api';
 import { shellQuote, trimMultiline } from './lib/format';
 import {
+  localCompatibility,
   modelRegistry,
   type CloudModelProfile,
   type LocalModelProfile,
 } from './lib/modelRegistry';
 import { translateError } from './lib/errorTranslator';
+import { applyAppTheme } from './lib/theme';
 import {
   canSelectModel,
   resolveModelStatus,
@@ -55,6 +54,7 @@ import type {
   AppSettings,
   ExecutionMode,
   AgentSession,
+  ChatMessage,
   LocalModelInstallProgress,
   LocalRuntimeSnapshot,
   PrivilegedActionSpec,
@@ -63,33 +63,30 @@ import type {
   ProviderRuntimeStatus,
   ProviderStatusState,
   EnvironmentSelectionInput,
+  SelectedFileAttachment,
+  ChatAttachment,
 } from './types/domain';
 import { useAppStore } from './stores/appStore';
 
 import { AppShell } from './components/layout/AppShell';
-import { TopBar } from './components/layout/TopBar';
+import { TopBar, type TopBarModelOption } from './components/layout/TopBar';
 import { SessionsPanel } from './components/panels/SessionsPanel';
 import { ChatPanel } from './components/panels/ChatPanel';
 import { SettingsPanel, type SettingsTab } from './components/panels/SettingsPanel';
-import { CommandInputPanel } from './components/panels/CommandInputPanel';
+import { CommandInputPanel, type InputModeId } from './components/panels/CommandInputPanel';
 import { TerminalDrawer } from './components/panels/TerminalDrawer';
 import { HelpDrawer } from './components/panels/HelpDrawer';
-import { ModelSelector, type EnvironmentTab } from './components/panels/ModelSelector';
+import type { EnvironmentTab } from './components/panels/ModelSelector';
+import { FileManagerModal } from './components/file/FileManagerModal';
+import { UiIcon, type UiIconName } from './components/common/AppIcons';
 import {
   ConfirmDialog,
   ExportDialog,
   PremiumModal,
+  PopupMenu,
   ToastViewport,
   type ToastMessage,
 } from './components/common/PremiumUI';
-
-function applyTheme(accent: { accentPrimary: string; accentSecondary: string; background: string }): void {
-  const root = document.documentElement;
-  root.style.setProperty('--accent', accent.accentPrimary);
-  root.style.setProperty('--accent-2', accent.accentSecondary);
-  root.style.setProperty('--accent-strong', accent.accentSecondary);
-  root.style.setProperty('--end4-background', accent.background);
-}
 
 function homeFromCodexRoot(settings?: AppSettings): string | undefined {
   if (!settings?.codexRoot) return undefined;
@@ -176,6 +173,185 @@ function titleFromContent(content: string): string {
   return compact.length > 54 ? `${compact.slice(0, 51)}...` : compact;
 }
 
+function localFamilyLabel(model: LocalModelProfile): string {
+  const value = `${model.family} ${model.displayName}`.toLowerCase();
+  if (value.includes('qwen')) return 'Qwen';
+  if (value.includes('codellama')) return 'CodeLlama';
+  if (value.includes('llama')) return 'Llama';
+  if (value.includes('deepseek')) return 'DeepSeek';
+  if (value.includes('mistral') || value.includes('mixtral') || value.includes('codestral')) return 'Mistral';
+  if (value.includes('phi')) return 'Phi';
+  if (value.includes('gemma')) return 'Gemma';
+  if (value.includes('starcoder')) return 'StarCoder';
+  if (value.includes('yi')) return 'Yi';
+  return 'Outros locais';
+}
+
+function statusLabelFromState(state: string): string {
+  if (state === 'ready') return 'Configurado';
+  if (state === 'model_missing') return 'Não instalado';
+  if (state === 'pulling' || state === 'installing') return 'Baixando';
+  if (state === 'testing') return 'Testar conexão';
+  if (state === 'requires_api_key') return 'Adicionar API key';
+  if (state === 'requires_login' || state === 'requires_cli_auth' || state === 'requires_oauth') return 'Fazer login';
+  return state.replace(/_/g, ' ');
+}
+
+function readLocalStorage(key: string): string | undefined {
+  const storage = window.localStorage;
+  if (!storage || typeof storage.getItem !== 'function') return undefined;
+  try {
+    return storage.getItem(key) ?? undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function writeLocalStorage(key: string, value: string): void {
+  const storage = window.localStorage;
+  if (!storage || typeof storage.setItem !== 'function') return;
+  try {
+    storage.setItem(key, value);
+  } catch {
+    // Persistência de UI é opcional; o estado em memória continua válido.
+  }
+}
+
+function removeLocalStorage(key: string): void {
+  const storage = window.localStorage;
+  if (!storage || typeof storage.removeItem !== 'function') return;
+  try {
+    storage.removeItem(key);
+  } catch {
+    // Remoção local também é opcional para a execução principal.
+  }
+}
+
+function readSavedProjects(): string[] {
+  try {
+    const raw = readLocalStorage('codex-command-center-projects');
+    const parsed: unknown = raw ? JSON.parse(raw) : [];
+    return Array.isArray(parsed) ? parsed.filter((item): item is string => typeof item === 'string') : [];
+  } catch {
+    return [];
+  }
+}
+
+function readInitialActiveProject(savedProjects: string[]): string | undefined {
+  const active = readLocalStorage('codex-command-center-active-project')?.trim();
+  if (!active) return undefined;
+  if (savedProjects.includes(active)) return active;
+  writeLocalStorage('codex-command-center-active-project', '');
+  return undefined;
+}
+
+function readProjectMeta(project: string): StoredProjectMeta | undefined {
+  try {
+    const raw = readLocalStorage(`codex-command-center-project:${project}`);
+    const parsed: unknown = raw ? JSON.parse(raw) : undefined;
+    if (!parsed || typeof parsed !== 'object') return undefined;
+    const candidate = parsed as Partial<StoredProjectMeta> & {
+      memory?: string;
+      icon?: string;
+      color?: string;
+    };
+    return {
+      title: typeof candidate.title === 'string' ? candidate.title : project,
+      instructions: typeof candidate.instructions === 'string' ? candidate.instructions : '',
+      memoryScope: candidate.memoryScope === 'project' ? 'project' : 'default',
+      presetId: PROJECT_PRESETS.some((preset) => preset.id === candidate.presetId) ? candidate.presetId : undefined,
+      files: Array.isArray(candidate.files) ? candidate.files.filter((item): item is string => typeof item === 'string') : [],
+      updatedAt: typeof candidate.updatedAt === 'string' ? candidate.updatedAt : new Date().toISOString(),
+    };
+  } catch {
+    return undefined;
+  }
+}
+
+function ProjectFolderIcon(): JSX.Element {
+  return <UiIcon name="folder" className="project-workspace-icon" />;
+}
+
+type ProjectMemoryScope = 'default' | 'project';
+type ProjectPresetId = 'investment' | 'homework' | 'writing' | 'health' | 'travel';
+
+interface StoredProjectMeta {
+  title: string;
+  instructions: string;
+  memoryScope: ProjectMemoryScope;
+  presetId?: ProjectPresetId;
+  files: string[];
+  updatedAt: string;
+}
+
+const PROJECT_PRESETS: Array<{ id: ProjectPresetId; label: string; icon: UiIconName; instructions: string }> = [
+  {
+    id: 'investment',
+    label: 'Investimento',
+    icon: 'chart',
+    instructions: 'Trate o projeto como acompanhamento de investimento. Priorize riscos, premissas, números verificáveis e decisões auditáveis.',
+  },
+  {
+    id: 'homework',
+    label: 'Tarefa de casa',
+    icon: 'book',
+    instructions: 'Ajude a resolver tarefas passo a passo, explicando raciocínio, fontes usadas e próximos exercícios.',
+  },
+  {
+    id: 'writing',
+    label: 'Escrita',
+    icon: 'pen',
+    instructions: 'Atue como editor de escrita. Preserve intenção, melhore clareza, estrutura, tom e consistência.',
+  },
+  {
+    id: 'health',
+    label: 'Saúde',
+    icon: 'heart',
+    instructions: 'Organize informações de saúde com cautela. Diferencie orientação geral de decisão médica e recomende validação profissional quando necessário.',
+  },
+  {
+    id: 'travel',
+    label: 'Viagem',
+    icon: 'plane',
+    instructions: 'Planeje viagem com foco em orçamento, datas, deslocamentos, reservas, documentos e alternativas práticas.',
+  },
+];
+
+const PROJECT_MEMORY_OPTIONS: Array<{ id: ProjectMemoryScope; label: string; description: string }> = [
+  {
+    id: 'default',
+    label: 'Padrão',
+    description: 'Os chats acessarão as memórias da sua conta e contribuirão para elas.',
+  },
+  {
+    id: 'project',
+    label: 'Apenas projeto',
+    description: 'As memórias ficam isoladas neste projeto e não afetam a conta principal.',
+  },
+];
+
+function projectNameFromPath(path: string | undefined): string | undefined {
+  if (!path) return undefined;
+  const clean = path.trim().replace(/\/$/, '');
+  return clean.split('/').filter(Boolean).at(-1);
+}
+
+function cleanSidebarProjectName(value: string): string | undefined {
+  const clean = value.trim();
+  if (!clean) return undefined;
+  if (clean.includes('/home/lucas/Codex') && !clean.includes('/home/lucas/Codex-Codex')) return undefined;
+  if (clean.startsWith('~/.codex')) return undefined;
+  if (clean.includes('/')) {
+    const pathPart = clean.split(/\s|\(/u)[0];
+    return projectNameFromPath(pathPart);
+  }
+  return clean.length > 38 ? `${clean.slice(0, 35)}...` : clean;
+}
+
+function safeAgentProfileId(value: string | undefined): string {
+  return value && value !== 'agressivo' ? value : 'equilibrado';
+}
+
 export default function App(): JSX.Element {
   const [busy, setBusy] = useState(false);
   const [privilegedActions, setPrivilegedActions] = useState<PrivilegedActionSpec[]>([]);
@@ -190,15 +366,43 @@ export default function App(): JSX.Element {
   const [healthCheck, setHealthCheck] = useState<AppHealthCheck>();
   const [healthLoading, setHealthLoading] = useState(false);
   const [settingsTabRequest, setSettingsTabRequest] = useState<{ tab: SettingsTab; nonce: number }>();
-  const [environmentTabRequest, setEnvironmentTabRequest] = useState<{ tab: EnvironmentTab; nonce: number }>();
   const [sessionInfoId, setSessionInfoId] = useState<string>();
   const [controlModalOpen, setControlModalOpen] = useState(false);
-  const [renameSessionTarget, setRenameSessionTarget] = useState<AgentSession>();
-  const [renameSessionTitle, setRenameSessionTitle] = useState('');
   const [deleteSessionTarget, setDeleteSessionTarget] = useState<AgentSession>();
   const [exportSessionTarget, setExportSessionTarget] = useState<AgentSession>();
+  const [projectConversationMenuId, setProjectConversationMenuId] = useState<string>();
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
-
+  const [temporaryChatActive, setTemporaryChatActive] = useState(false);
+  const [temporaryMessages, setTemporaryMessages] = useState<ChatMessage[]>([]);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(() => readLocalStorage('codex-sidebar-collapsed') === 'true');
+  const [projectDialogOpen, setProjectDialogOpen] = useState(false);
+  const [projectFileManagerOpen, setProjectFileManagerOpen] = useState(false);
+  const [editingProjectName, setEditingProjectName] = useState<string>();
+  const [projectAdvancedOpen, setProjectAdvancedOpen] = useState(false);
+  const [projectMemoryMenuOpen, setProjectMemoryMenuOpen] = useState(false);
+  const [savedProjects, setSavedProjects] = useState<string[]>(readSavedProjects);
+  const [activeProject, setActiveProject] = useState(() => readInitialActiveProject(readSavedProjects()));
+  const [projectName, setProjectName] = useState('');
+  const [projectInstructions, setProjectInstructions] = useState('');
+  const [projectMemoryScope, setProjectMemoryScope] = useState<ProjectMemoryScope>('default');
+  const [projectPreset, setProjectPreset] = useState<ProjectPresetId>();
+  const [projectFiles, setProjectFiles] = useState<string[]>([]);
+  const [projectSessionIds, setProjectSessionIds] = useState<Record<string, string[]>>(() => {
+    try {
+      const raw = readLocalStorage('codex-command-center-project-sessions');
+      const parsed: unknown = raw ? JSON.parse(raw) : {};
+      if (!parsed || typeof parsed !== 'object') return {};
+      const entries = Object.entries(parsed as Record<string, unknown>)
+        .map(([project, value]) => [
+          project,
+          Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string') : [],
+        ] as const)
+        .filter(([project]) => project.trim().length > 0);
+      return Object.fromEntries(entries);
+    } catch {
+      return {};
+    }
+  });
   const {
     booted,
     loading,
@@ -213,7 +417,6 @@ export default function App(): JSX.Element {
     logs,
     selectedModelId,
     executionMode,
-    modelSelectorOpen,
     setError,
     setLoading,
     bootstrap,
@@ -230,7 +433,6 @@ export default function App(): JSX.Element {
     updateProviderStatus,
     selectModel,
     setExecutionMode,
-    setModelSelectorOpen,
   } = useAppStore();
 
   const selectedSession = useMemo(
@@ -238,10 +440,50 @@ export default function App(): JSX.Element {
     [sessions, selectedSessionId],
   );
 
+  const temporarySession = useMemo<AgentSession | undefined>(() => {
+    if (!temporaryChatActive) return undefined;
+    const now = new Date().toISOString();
+    return {
+      id: 'temporary-chat',
+      title: 'Bate-papo Temporário',
+      createdAt: temporaryMessages[0]?.createdAt ?? now,
+      updatedAt: temporaryMessages.at(-1)?.createdAt ?? now,
+      status: 'idle',
+      messages: temporaryMessages,
+      tasks: [],
+      providerId: settings?.selectedProviderId,
+      modelId: settings?.selectedModelId,
+      agentProfileId: settings?.selectedAgentId,
+      accountProfileId: settings?.selectedProviderProfileId,
+    };
+  }, [settings, temporaryChatActive, temporaryMessages]);
+
   const sessionInfo = useMemo(
     () => sessions.find((session) => session.id === sessionInfoId),
     [sessionInfoId, sessions],
   );
+
+  const sidebarProjects = useMemo(() => {
+    const projects = savedProjects
+      .map((item) => cleanSidebarProjectName(item ?? ''))
+      .filter((item): item is string => Boolean(item));
+    return Array.from(new Set(projects)).slice(0, 12);
+  }, [savedProjects]);
+
+  const projectSessionsByName = useMemo(() => {
+    const byId = new Map(sessions.map((session) => [session.id, session]));
+    const next: Record<string, AgentSession[]> = {};
+    for (const project of sidebarProjects) {
+      const ids = projectSessionIds[project] ?? [];
+      next[project] = ids
+        .map((id) => byId.get(id))
+        .filter((session): session is AgentSession => Boolean(session))
+        .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+    }
+    return next;
+  }, [projectSessionIds, sessions, sidebarProjects]);
+
+  const activeProjectConversations = activeProject ? projectSessionsByName[activeProject] ?? [] : [];
 
   const actionJsonExamples = useMemo(() => buildActionJsonExamples(settings), [settings]);
 
@@ -298,9 +540,9 @@ export default function App(): JSX.Element {
   }, [selectedModelId, settings?.selectedModelId]);
 
   const activeModelLabel = useMemo(() => {
-    if (executionMode === 'cloud' && selectedProviderStatus?.state !== 'ready') return 'Configurar Ambiente';
-    if (executionMode === 'cloud' && selectedProviderProfile && selectedProviderProfile.status !== 'ready') return 'Configurar Ambiente';
-    if (executionMode === 'local' && localRuntime?.state !== 'ready') return 'Configurar Ambiente local';
+    if (executionMode === 'cloud' && selectedProviderStatus?.state !== 'ready') return 'Configurar modelos';
+    if (executionMode === 'cloud' && selectedProviderProfile && selectedProviderProfile.status !== 'ready') return 'Configurar modelos';
+    if (executionMode === 'local' && localRuntime?.state !== 'ready') return 'Configurar modelos locais';
     return activeModel?.displayName ?? settings?.selectedModelId ?? 'modelo não selecionado';
   }, [
     activeModel?.displayName,
@@ -310,6 +552,52 @@ export default function App(): JSX.Element {
     selectedProviderStatus?.state,
     settings?.selectedModelId,
   ]);
+
+  const selectedModelDisplayLabel = useMemo(
+    () => activeModel?.displayName ?? selectedModelId ?? settings?.selectedModelId ?? 'Selecionar modelo',
+    [activeModel?.displayName, selectedModelId, settings?.selectedModelId],
+  );
+
+  const topbarCloudModels = useMemo<TopBarModelOption[]>(() => {
+    return modelRegistry.byMode('cloud')
+      .filter((model): model is CloudModelProfile => model.mode === 'cloud')
+      .map((model) => {
+        const provider = providers.find((item) => item.id === model.providerId);
+        const status = provider ? resolveModelStatus(model, provider.status, localRuntime) : 'unavailable';
+        return {
+          id: model.id,
+          modelId: model.modelId,
+          providerId: model.providerId,
+          label: model.displayName,
+          providerLabel: model.providerLabel,
+          statusLabel: statusLabelFromState(status),
+          available: canSelectModel(status),
+        };
+      });
+  }, [localRuntime, providers]);
+
+  const topbarLocalModels = useMemo<TopBarModelOption[]>(() => {
+    const installedIds = new Set(localRuntime?.installedModels.map((model) => model.id) ?? []);
+    return modelRegistry.byMode('local')
+      .filter((model): model is LocalModelProfile => model.mode === 'local')
+      .map((model) => {
+        const progress = installationProgress[model.id] ?? installationProgress[model.modelId];
+        const installed = installedIds.has(model.modelId) || installedIds.has(model.id);
+        const status = resolveModelStatus(model, selectedProviderStatus, localRuntime, progress);
+        return {
+          id: model.id,
+          modelId: model.modelId,
+          providerId: model.providerId,
+          label: model.displayName,
+          providerLabel: model.providerLabel,
+          family: localFamilyLabel(model),
+          statusLabel: installed ? 'Instalado' : statusLabelFromState(status),
+          available: canSelectModel(status),
+          installed,
+          heavy: localCompatibility(model) === 'heavy' || localCompatibility(model) === 'not_recommended',
+        };
+      });
+  }, [installationProgress, localRuntime, selectedProviderStatus]);
 
   const orderDisabledReason = useMemo(() => {
     if (!settings) return 'Configurações não carregadas.';
@@ -346,6 +634,7 @@ export default function App(): JSX.Element {
   };
 
   function pushToast(tone: ToastMessage['tone'], message: string): void {
+    if (tone === 'success') return;
     setToasts((current) => [
       ...current,
       {
@@ -354,6 +643,144 @@ export default function App(): JSX.Element {
         message,
       },
     ]);
+  }
+
+  function toggleSidebar(): void {
+    setSidebarCollapsed((current) => {
+      writeLocalStorage('codex-sidebar-collapsed', current ? 'false' : 'true');
+      return !current;
+    });
+  }
+
+  function openSettingsTab(tab: SettingsTab = 'general'): void {
+    setSettingsTabRequest({ tab, nonce: Date.now() });
+    setControlModalOpen(true);
+  }
+
+  function persistProjectSessionIds(next: Record<string, string[]>): void {
+    writeLocalStorage('codex-command-center-project-sessions', JSON.stringify(next));
+    setProjectSessionIds(next);
+  }
+
+  function resetProjectDialog(): void {
+    setEditingProjectName(undefined);
+    setProjectName('');
+    setProjectInstructions('');
+    setProjectMemoryScope('default');
+    setProjectPreset(undefined);
+    setProjectFiles([]);
+    setProjectAdvancedOpen(false);
+    setProjectMemoryMenuOpen(false);
+  }
+
+  function closeProjectDialog(): void {
+    setProjectDialogOpen(false);
+    setProjectFileManagerOpen(false);
+    resetProjectDialog();
+  }
+
+  function openNewProjectDialog(): void {
+    resetProjectDialog();
+    setProjectDialogOpen(true);
+  }
+
+  function openEditProjectDialog(project: string): void {
+    const meta = readProjectMeta(project);
+    setEditingProjectName(project);
+    setProjectName(meta?.title ?? project);
+    setProjectInstructions(meta?.instructions ?? '');
+    setProjectMemoryScope(meta?.memoryScope ?? 'default');
+    setProjectPreset(meta?.presetId);
+    setProjectFiles(meta?.files ?? []);
+    setProjectAdvancedOpen(Boolean(meta?.instructions || meta?.memoryScope === 'project' || (meta?.files.length ?? 0) > 0));
+    setProjectMemoryMenuOpen(false);
+    setProjectDialogOpen(true);
+  }
+
+  function chooseProjectPreset(presetId: ProjectPresetId): void {
+    const preset = PROJECT_PRESETS.find((item) => item.id === presetId);
+    if (!preset) return;
+    setProjectPreset(presetId);
+    setProjectInstructions(preset.instructions);
+  }
+
+  function addProjectFile(attachment: SelectedFileAttachment): void {
+    setProjectFiles((current) => [
+      attachment.path,
+      ...current.filter((path) => path !== attachment.path),
+    ].slice(0, 12));
+    pushToast('success', `Arquivo adicionado ao projeto: ${attachment.name}`);
+  }
+
+  function rememberProjectSession(project: string, sessionId: string): void {
+    const current = projectSessionIds[project] ?? [];
+    const next = {
+      ...projectSessionIds,
+      [project]: [sessionId, ...current.filter((id) => id !== sessionId)].slice(0, 60),
+    };
+    persistProjectSessionIds(next);
+  }
+
+  function forgetProjectSession(project: string, sessionId: string): void {
+    const current = projectSessionIds[project] ?? [];
+    const nextIds = current.filter((id) => id !== sessionId);
+    const next = { ...projectSessionIds };
+    if (nextIds.length > 0) {
+      next[project] = nextIds;
+    } else {
+      delete next[project];
+    }
+    persistProjectSessionIds(next);
+  }
+
+  function saveProject(): void {
+    const title = projectName.trim();
+    if (!title) return;
+
+    const renamed = editingProjectName && editingProjectName !== title;
+    const nextProjects = Array.from(new Set([title, ...savedProjects.filter((project) => project !== editingProjectName && project !== title)])).slice(0, 24);
+    const projectMeta: StoredProjectMeta = {
+      title,
+      instructions: projectInstructions.trim(),
+      memoryScope: projectMemoryScope,
+      presetId: projectPreset,
+      files: projectFiles,
+      updatedAt: new Date().toISOString(),
+    };
+    writeLocalStorage('codex-command-center-projects', JSON.stringify(nextProjects));
+    writeLocalStorage(`codex-command-center-project:${title}`, JSON.stringify(projectMeta));
+    if (renamed && editingProjectName) {
+      removeLocalStorage(`codex-command-center-project:${editingProjectName}`);
+      const nextSessionIds = { ...projectSessionIds };
+      nextSessionIds[title] = nextSessionIds[editingProjectName] ?? [];
+      delete nextSessionIds[editingProjectName];
+      persistProjectSessionIds(nextSessionIds);
+    }
+    writeLocalStorage('codex-command-center-active-project', title);
+    setSavedProjects(nextProjects);
+    setActiveProject(title);
+    selectSession(undefined);
+    closeProjectDialog();
+    pushToast('success', editingProjectName ? `Projeto atualizado: ${title}` : `Projeto criado: ${title}`);
+  }
+
+  function handleDeleteProject(project: string): void {
+    if (!savedProjects.includes(project)) {
+      pushToast('info', 'Projeto externo aparece via workspace ou memória e não foi removido daqui.');
+      return;
+    }
+    const nextProjects = savedProjects.filter((item) => item !== project);
+    const nextSessionIds = { ...projectSessionIds };
+    delete nextSessionIds[project];
+    writeLocalStorage('codex-command-center-projects', JSON.stringify(nextProjects));
+    removeLocalStorage(`codex-command-center-project:${project}`);
+    persistProjectSessionIds(nextSessionIds);
+    setSavedProjects(nextProjects);
+    if (activeProject === project) {
+      setActiveProject(undefined);
+      writeLocalStorage('codex-command-center-active-project', '');
+    }
+    pushToast('success', `Projeto excluído: ${project}`);
   }
 
   useEffect(() => {
@@ -366,7 +793,7 @@ export default function App(): JSX.Element {
         const payload = await bootstrapState();
         if (!mounted) return;
         bootstrap(payload);
-        applyTheme(payload.theme);
+        applyAppTheme(payload.theme, payload.settings.themePreference ?? 'dark');
         const actionCatalog = await listPrivilegedActions();
         if (mounted) {
           setPrivilegedActions(actionCatalog);
@@ -438,10 +865,23 @@ export default function App(): JSX.Element {
   ]);
 
   useEffect(() => {
-    if (theme) {
-      applyTheme(theme);
+    if (!theme) return undefined;
+
+    const preference = settings?.themePreference ?? 'dark';
+    const apply = (): void => {
+      applyAppTheme(theme, preference);
+    };
+
+    apply();
+
+    if (preference !== 'system' || typeof window.matchMedia !== 'function') {
+      return undefined;
     }
-  }, [theme]);
+
+    const media = window.matchMedia('(prefers-color-scheme: light)');
+    media.addEventListener('change', apply);
+    return () => media.removeEventListener('change', apply);
+  }, [settings?.themePreference, theme]);
 
   async function ensureSession(seed: string): Promise<string> {
     if (selectedSessionId) {
@@ -454,16 +894,69 @@ export default function App(): JSX.Element {
   }
 
   function handleCreateSession(): void {
+    setTemporaryChatActive(false);
+    setTemporaryMessages([]);
+    if (!activeProject) {
+      writeLocalStorage('codex-command-center-active-project', '');
+    }
     selectSession(undefined);
   }
 
-  async function handleSendPrompt(prompt: string): Promise<void> {
+  function handleSelectProject(project: string): void {
+    setTemporaryChatActive(false);
+    setTemporaryMessages([]);
+    setActiveProject(project);
+    writeLocalStorage('codex-command-center-active-project', project);
+    selectSession(undefined);
+  }
+
+  function handleSelectSession(sessionId?: string): void {
+    setTemporaryChatActive(false);
+    setTemporaryMessages([]);
+    setActiveProject(undefined);
+    writeLocalStorage('codex-command-center-active-project', '');
+    selectSession(sessionId);
+  }
+
+  function startTemporaryChat(): void {
+    setTemporaryChatActive(true);
+    setTemporaryMessages([]);
+    setActiveProject(undefined);
+    writeLocalStorage('codex-command-center-active-project', '');
+    selectSession(undefined);
+  }
+
+  function exitTemporaryChat(): void {
+    setTemporaryChatActive(false);
+    setTemporaryMessages([]);
+  }
+
+  async function handleSendPrompt(prompt: string, mode: InputModeId = 'auto', attachments: ChatAttachment[] = []): Promise<void> {
     const cleaned = trimMultiline(prompt);
-    if (!cleaned) return;
+    if (!cleaned && attachments.length === 0) return;
+    const visibleContent = cleaned || 'Anexo enviado.';
+
+    if (temporaryChatActive) {
+      setTemporaryMessages((current) => [
+        ...current,
+        {
+          id: `temporary-${Date.now()}-${current.length}`,
+          role: 'user',
+          content: visibleContent,
+          createdAt: new Date().toISOString(),
+          attachments,
+        },
+      ]);
+      return;
+    }
+
     setBusy(true);
     try {
-      const sessionId = await ensureSession(cleaned);
-      const updated = await sendOrderToAgent(sessionId, cleaned);
+      const sessionId = await ensureSession(visibleContent);
+      if (activeProject) {
+        rememberProjectSession(activeProject, sessionId);
+      }
+      const updated = await sendOrderToAgent(sessionId, visibleContent, mode, attachments);
       upsertSession(updated);
     } finally {
       setBusy(false);
@@ -530,8 +1023,8 @@ export default function App(): JSX.Element {
   }
 
   function openEnvironmentTab(tab: EnvironmentTab = 'ready'): void {
-    setEnvironmentTabRequest({ tab, nonce: Date.now() });
-    setModelSelectorOpen(true);
+    void tab;
+    openSettingsTab('models');
   }
 
   async function handleTestProvider(providerId: string): Promise<ProviderRuntimeStatus> {
@@ -626,86 +1119,6 @@ export default function App(): JSX.Element {
     }
   }
 
-  async function handleChangeMode(mode: ExecutionMode): Promise<void> {
-    if (!settings) return;
-    setExecutionMode(mode);
-
-    let next = { ...settings, executionMode: mode };
-    if (mode === 'local' && settings.selectedLocalModelId) {
-      next = {
-        ...next,
-        selectedProviderId: 'local-ollama',
-        selectedModelId: settings.selectedLocalModelId,
-      };
-    }
-
-    if (mode === 'cloud' && settings.selectedProviderId === 'local-ollama') {
-      const fallbackProvider = providers.find((provider) => provider.id !== 'local-ollama') ?? providers[0];
-      if (fallbackProvider) {
-        next = {
-          ...next,
-          selectedProviderId: fallbackProvider.id,
-          selectedModelId: fallbackProvider.models[0]?.id ?? next.selectedModelId,
-        };
-      }
-    }
-
-    await applySettings(next);
-  }
-
-  async function handleActivateCloud(model: CloudModelProfile): Promise<void> {
-    if (!settings) return;
-
-    const provider = providers.find((item) => item.id === model.providerId);
-    if (!provider) {
-      setError(`Provider ${model.providerLabel} não está registrado neste build.`);
-      return;
-    }
-
-    const status = resolveModelStatus(model, provider.status, localRuntime);
-    if (!canSelectModel(status)) {
-      const translated = translateError(status, provider.status.message);
-      setError(translated.message);
-      openEnvironmentTab('configure');
-      setModelSelectorOpen(false);
-      return;
-    }
-
-    const providerAccounts = effectiveProviderProfiles.filter((profile) => profile.providerId === model.providerId);
-    const readyProfile =
-      providerAccounts.find((profile) => profile.isDefault && profile.status === 'ready') ??
-      providerAccounts.find((profile) => profile.status === 'ready');
-    if (providerAccounts.length > 0 && !readyProfile) {
-      setError('Nenhum profile pronto para este provider. Configure ou teste a conta antes de selecionar.');
-      openEnvironmentTab('accounts');
-      setModelSelectorOpen(false);
-      return;
-    }
-
-    setModelActionBusyId(model.id);
-    try {
-      const next = pushHistory(
-        {
-          ...settings,
-          executionMode: 'cloud',
-          selectedProviderId: model.providerId,
-          selectedModelId: model.modelId,
-          selectedProviderProfileId: readyProfile?.id ?? settings.selectedProviderProfileId,
-        },
-        'cloud',
-        model.providerId,
-        model.modelId,
-      );
-
-      await applySettings(next);
-      setExecutionMode('cloud');
-      selectModel(model.id);
-      setModelSelectorOpen(false);
-    } finally {
-      setModelActionBusyId(undefined);
-    }
-  }
-
   async function handleActivateLocal(model: LocalModelProfile): Promise<void> {
     if (!settings) return;
 
@@ -714,7 +1127,6 @@ export default function App(): JSX.Element {
       const translated = translateError(status, localRuntime?.message);
       setError(translated.message);
       openEnvironmentTab('local');
-      setModelSelectorOpen(false);
       return;
     }
 
@@ -736,7 +1148,6 @@ export default function App(): JSX.Element {
       await applySettings(next);
       setExecutionMode('local');
       selectModel(model.id);
-      setModelSelectorOpen(false);
     } finally {
       setModelActionBusyId(undefined);
     }
@@ -767,7 +1178,7 @@ export default function App(): JSX.Element {
     return {
       providerId: model.providerId,
       modelId: model.modelId,
-      agentProfileId: settings.selectedAgentId,
+      agentProfileId: safeAgentProfileId(settings.selectedAgentId),
       accountProfileId: readyProfile?.id ?? settings.selectedProviderProfileId,
     };
   }
@@ -783,49 +1194,9 @@ export default function App(): JSX.Element {
     return {
       providerId: 'local-ollama',
       modelId: model.modelId,
-      agentProfileId: settings.selectedAgentId,
+      agentProfileId: safeAgentProfileId(settings.selectedAgentId),
       accountProfileId: undefined,
     };
-  }
-
-  async function handleUseCloudInChat(model: CloudModelProfile): Promise<void> {
-    const input = cloudEnvironmentInput(model);
-    if (!input) return;
-    if (!selectedSessionId) {
-      await handleSetGlobalCloud(model);
-      pushToast('info', 'Ambiente definido como padrão para o próximo chat.');
-      return;
-    }
-    setModelActionBusyId(model.id);
-    try {
-      const updated = await updateSessionEnvironment(selectedSessionId, input);
-      upsertSession(updated);
-      selectModel(model.id);
-      setModelSelectorOpen(false);
-      pushToast('success', `Ambiente aplicado neste chat: ${model.displayName}`);
-    } finally {
-      setModelActionBusyId(undefined);
-    }
-  }
-
-  async function handleUseLocalInChat(model: LocalModelProfile): Promise<void> {
-    const input = localEnvironmentInput(model);
-    if (!input) return;
-    if (!selectedSessionId) {
-      await handleSetGlobalLocal(model);
-      pushToast('info', 'Ambiente local definido como padrão para o próximo chat.');
-      return;
-    }
-    setModelActionBusyId(model.id);
-    try {
-      const updated = await updateSessionEnvironment(selectedSessionId, input);
-      upsertSession(updated);
-      selectModel(model.id);
-      setModelSelectorOpen(false);
-      pushToast('success', `Ambiente aplicado neste chat: ${model.displayName}`);
-    } finally {
-      setModelActionBusyId(undefined);
-    }
   }
 
   async function handleSetGlobalCloud(model: CloudModelProfile): Promise<void> {
@@ -848,7 +1219,6 @@ export default function App(): JSX.Element {
       await applySettings(next);
       setExecutionMode('cloud');
       selectModel(model.id);
-      setModelSelectorOpen(false);
       pushToast('success', `Padrão global definido: ${model.displayName}`);
     } finally {
       setModelActionBusyId(undefined);
@@ -875,66 +1245,7 @@ export default function App(): JSX.Element {
       await applySettings(next);
       setExecutionMode('local');
       selectModel(model.id);
-      setModelSelectorOpen(false);
       pushToast('success', `Padrão global local definido: ${model.displayName}`);
-    } finally {
-      setModelActionBusyId(undefined);
-    }
-  }
-
-  async function handleApplyCloudToAll(model: CloudModelProfile): Promise<void> {
-    const input = cloudEnvironmentInput(model);
-    if (!settings || !input) return;
-    setModelActionBusyId(model.id);
-    try {
-      const next = pushHistory(
-        {
-          ...settings,
-          executionMode: 'cloud',
-          selectedProviderId: input.providerId,
-          selectedModelId: input.modelId,
-          selectedProviderProfileId: input.accountProfileId,
-        },
-        'cloud',
-        input.providerId,
-        input.modelId,
-      );
-      await applySettings(next);
-      const updated = await applyEnvironmentToAllSessions(input);
-      for (const session of updated) upsertSession(session);
-      setExecutionMode('cloud');
-      selectModel(model.id);
-      setModelSelectorOpen(false);
-      pushToast('success', `Ambiente aplicado a ${updated.length} chat(s).`);
-    } finally {
-      setModelActionBusyId(undefined);
-    }
-  }
-
-  async function handleApplyLocalToAll(model: LocalModelProfile): Promise<void> {
-    const input = localEnvironmentInput(model);
-    if (!settings || !input) return;
-    setModelActionBusyId(model.id);
-    try {
-      const next = pushHistory(
-        {
-          ...settings,
-          executionMode: 'local',
-          selectedProviderId: 'local-ollama',
-          selectedModelId: input.modelId,
-          selectedLocalModelId: input.modelId,
-        },
-        'local',
-        'local-ollama',
-        input.modelId,
-      );
-      await applySettings(next);
-      const updated = await applyEnvironmentToAllSessions(input);
-      for (const session of updated) upsertSession(session);
-      setExecutionMode('local');
-      selectModel(model.id);
-      setModelSelectorOpen(false);
-      pushToast('success', `Ambiente local aplicado a ${updated.length} chat(s).`);
     } finally {
       setModelActionBusyId(undefined);
     }
@@ -988,28 +1299,11 @@ export default function App(): JSX.Element {
     }
   }
 
-  async function handleRemoveLocalModel(model: LocalModelProfile): Promise<void> {
-    setModelActionBusyId(model.id);
-    try {
-      const snapshot = await removeLocalModel(model.modelId);
-      setLocalRuntime(snapshot);
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : 'Falha ao remover modelo local.');
-    } finally {
-      setModelActionBusyId(undefined);
-    }
-  }
-
-  async function handleRenameSession(session: AgentSession): Promise<void> {
-    const nextTitle = renameSessionTitle.trim();
-    if (!nextTitle || nextTitle === session.title) {
-      setRenameSessionTarget(undefined);
-      return;
-    }
+  async function handleRenameSession(session: AgentSession, title: string): Promise<void> {
+    const nextTitle = title.trim();
+    if (!nextTitle || nextTitle === session.title) return;
     const updated = await renameSession(session.id, nextTitle);
     upsertSession(updated);
-    setRenameSessionTarget(undefined);
-    setRenameSessionTitle('');
   }
 
   async function handleDeleteSession(session: AgentSession): Promise<void> {
@@ -1026,12 +1320,45 @@ export default function App(): JSX.Element {
     const duplicated = await duplicateSession(session.id);
     upsertSession(duplicated);
     selectSession(duplicated.id);
+    if (activeProject) {
+      rememberProjectSession(activeProject, duplicated.id);
+    }
   }
 
   async function handleExportSession(session: AgentSession, format: 'markdown' | 'json' | 'txt'): Promise<void> {
     const result = await exportSession(session.id, format);
     setExportSessionTarget(undefined);
     pushToast('success', `Sessão exportada: ${result.path}`);
+  }
+
+  function handleSessionMenuAction(session: AgentSession, action: 'pin' | 'archive' | 'share' | 'move-to-project' | 'remove-from-project'): void {
+    if (action === 'pin') {
+      pushToast('info', 'Pino será conectado na próxima etapa.');
+      return;
+    }
+    if (action === 'archive') {
+      pushToast('info', 'Arquivo será conectado na próxima etapa.');
+      return;
+    }
+    if (action === 'share') {
+      pushToast('info', 'Compartilhamento será conectado na próxima etapa.');
+      return;
+    }
+    if (action === 'move-to-project') {
+      if (!activeProject) {
+        pushToast('info', 'Selecione um projeto antes de mover a conversa.');
+        return;
+      }
+      rememberProjectSession(activeProject, session.id);
+      pushToast('success', `Conversa movida para ${activeProject}.`);
+      return;
+    }
+    if (!activeProject) {
+      pushToast('info', 'Abra o projeto para remover a conversa dele.');
+      return;
+    }
+    forgetProjectSession(activeProject, session.id);
+    pushToast('success', `Conversa removida de ${activeProject}.`);
   }
 
   function handleOpenGuide(): void {
@@ -1056,8 +1383,54 @@ export default function App(): JSX.Element {
     if (settings?.codexRoot) void openProjectInVscode(`${settings.codexRoot}/codex-ui/logs`);
   }
 
+  function handleTopbarSelectModel(mode: ExecutionMode, modelId: string): void {
+    const model = modelRegistry.byId(modelId);
+    if (!model) return;
+    if (mode === 'local' && model.mode === 'local') {
+      void handleSetGlobalLocal(model);
+      return;
+    }
+    if (mode === 'cloud' && model.mode === 'cloud') {
+      void handleSetGlobalCloud(model);
+    }
+  }
+
+  async function handleInstallLocalModelById(modelId: string): Promise<void> {
+    const model = modelRegistry.byId(modelId);
+    if (model?.mode !== 'local') return;
+    await handleInstallLocalModel(model);
+  }
+
+  async function handleTestLocalModelById(modelId: string): Promise<boolean> {
+    const snapshot = await startLocalRuntime();
+    setLocalRuntime(snapshot);
+    return snapshot.state === 'ready' && isLocalModelInstalled(snapshot, modelId);
+  }
+
   if (loading) return <div className="centered" style={{ height: '100vh' }}>Inicializando central...</div>;
   if (error && !booted) return <div className="centered error" style={{ height: '100vh' }}>{error}</div>;
+
+  const activeChatSession = temporarySession ?? selectedSession;
+  const projectWorkspaceOpen = Boolean(activeProject && !selectedSession && !temporaryChatActive);
+  const selectedProjectMemoryOption = PROJECT_MEMORY_OPTIONS.find((option) => option.id === projectMemoryScope) ?? PROJECT_MEMORY_OPTIONS[0];
+  const commandInput = (
+    <CommandInputPanel
+      key={temporaryChatActive ? 'temporary-composer' : activeProject ? `project-${activeProject}` : 'regular-composer'}
+      busy={busy}
+      privilegedActions={privilegedActions}
+      onSendOrder={handleSendPrompt}
+      onExecuteCommand={handleExecuteCommand}
+      onRequestPrivilegedAction={handleRequestPrivilegedAction}
+      actionJsonExamples={actionJsonExamples}
+      orderDisabledReason={orderDisabledReason}
+      executionMode={executionMode}
+      activeModelLabel={activeModelLabel}
+      providerLabel={selectedProviderStatus?.state === 'ready' ? selectedProvider?.label : 'Configurar'}
+      runtimeState={executionMode === 'local' ? localRuntime?.state : undefined}
+      onOpenModelSelector={() => openEnvironmentTab('ready')}
+      onOpenTerminal={() => setTerminalOpen(true)}
+    />
+  );
 
   return (
     <>
@@ -1065,66 +1438,172 @@ export default function App(): JSX.Element {
         sidebarLeft={
           <SessionsPanel
             sessions={sessions}
+            projects={sidebarProjects}
+            projectSessions={projectSessionsByName}
+            activeProject={activeProject}
             selectedSessionId={selectedSessionId}
             onNewSession={handleCreateSession}
-            onSelect={selectSession}
-            onRename={(session) => {
-              setRenameSessionTarget(session);
-              setRenameSessionTitle(session.title);
-            }}
+            onNewProject={openNewProjectDialog}
+            onEditProject={openEditProjectDialog}
+            onDeleteProject={handleDeleteProject}
+            onSelectProject={handleSelectProject}
+            onToggleSidebar={toggleSidebar}
+            onSelect={handleSelectSession}
+            onRename={(session, title) => void handleRenameSession(session, title)}
             onDelete={(session) => setDeleteSessionTarget(session)}
             onExport={(session, format) => void handleExportSession(session, format)}
             onDuplicate={(session) => void handleDuplicateSession(session)}
-            onInfo={(session) => setSessionInfoId(session.id)}
+            onSessionMenuAction={handleSessionMenuAction}
+            onOpenSettings={openSettingsTab}
+            onOpenArchivedConversations={() => pushToast('info', 'Conversas arquivadas serão conectadas na próxima etapa.')}
+            onCloseSession={() => {
+              handleSelectSession(undefined);
+              setControlModalOpen(false);
+              pushToast('info', 'Saída da conta será conectada quando houver auth real.');
+            }}
+            collapsed={sidebarCollapsed}
           />
         }
         main={
-          <div className={`main-workspace ${selectedSession ? '' : 'main-workspace-home'}`}>
+          <div className={`main-workspace ${activeChatSession || projectWorkspaceOpen ? '' : 'main-workspace-home'} ${projectWorkspaceOpen ? 'main-workspace-project' : ''} ${temporaryChatActive ? 'main-workspace-temporary' : ''}`}>
             <TopBar
               providerStatus={selectedProviderStatus}
               executionMode={executionMode}
               activeModelLabel={activeModelLabel}
-              onOpenInspector={() => {
-                setSettingsTabRequest({ tab: 'general', nonce: Date.now() });
-                setControlModalOpen(true);
-              }}
-              onOpenModelSelector={() => openEnvironmentTab('ready')}
+              selectedModelLabel={selectedModelDisplayLabel}
+              selectedModelId={activeModel?.id ?? selectedModelId ?? settings?.selectedModelId}
+              cloudModels={topbarCloudModels}
+              localModels={topbarLocalModels}
+              credentials={providerCredentials}
+              providerProfiles={effectiveProviderProfiles}
+              installationProgress={installationProgress}
+              busyModelId={modelActionBusyId}
+              temporaryChatActive={temporaryChatActive}
+              onSelectModel={handleTopbarSelectModel}
+              onConfigureModels={() => openEnvironmentTab('ready')}
+              onSaveProviderProfileCredential={handleSaveProviderProfileCredential}
+              onTestProvider={handleTestProvider}
+              onInstallLocalModel={handleInstallLocalModelById}
+              onTestLocalModel={handleTestLocalModelById}
+              onStartTemporaryChat={startTemporaryChat}
+              onExitTemporaryChat={exitTemporaryChat}
             />
             {error ? (
               <div className="actionable-error-banner" role="alert">
                 <strong>{translateError(error).message}</strong>
-                <button type="button" className="btn-modern" onClick={() => setError(undefined)}>
-                  Dispensar
+                <button type="button" className="btn-modern" onClick={() => { setError(undefined); openEnvironmentTab('ready'); }}>
+                  Modelos
                 </button>
               </div>
             ) : null}
-            <ChatPanel session={selectedSession} onOpenEnvironment={() => openEnvironmentTab('accounts')} />
-            <CommandInputPanel
-              busy={busy}
-              privilegedActions={privilegedActions}
-              onSendOrder={handleSendPrompt}
-              onExecuteCommand={handleExecuteCommand}
-              onRequestPrivilegedAction={handleRequestPrivilegedAction}
-              actionJsonExamples={actionJsonExamples}
-              orderDisabledReason={orderDisabledReason}
-              executionMode={executionMode}
-              activeModelLabel={activeModelLabel}
-              providerLabel={selectedProviderStatus?.state === 'ready' ? selectedProvider?.label : 'Configurar'}
-              runtimeState={executionMode === 'local' ? localRuntime?.state : undefined}
-              onOpenModelSelector={() => openEnvironmentTab('ready')}
-              onOpenTerminal={() => setTerminalOpen(true)}
-            />
+            {temporaryChatActive ? (
+              <>
+                {temporaryMessages.length === 0 ? (
+                  <section className="temporary-chat-view" aria-label="Bate-papo Temporário">
+                    <h1>Bate-papo Temporário</h1>
+                    <p>Esta conversa não aparecerá no histórico e as suas mensagens não serão guardadas.</p>
+                  </section>
+                ) : (
+                  <ChatPanel session={temporarySession} emptyTitle="Bate-papo Temporário" onOpenEnvironment={() => openEnvironmentTab('ready')} />
+                )}
+                {commandInput}
+              </>
+            ) : projectWorkspaceOpen && activeProject ? (
+              <section className="project-workspace-view">
+                <div className="project-workspace-inner">
+                  <header className="project-workspace-header">
+                    <ProjectFolderIcon />
+                    <h1>{activeProject}</h1>
+                  </header>
+                  {commandInput}
+                  <section className="project-conversation-section" aria-label={`Conversas do projeto ${activeProject}`}>
+                    <h2>Conversas</h2>
+                    {activeProjectConversations.length > 0 ? (
+                      <div className="project-conversation-list">
+                        {activeProjectConversations.map((session) => (
+                          <article key={session.id} className={`project-conversation-row ${selectedSessionId === session.id ? 'active' : ''}`}>
+                            <button type="button" onClick={() => handleSelectSession(session.id)}>
+                              <span>{session.title}</span>
+                              <small>Hoje</small>
+                            </button>
+                            <div className="popup-anchor project-conversation-menu-anchor">
+                              <button
+                                type="button"
+                                className="project-conversation-more"
+                                aria-label={`Ações da conversa ${session.title}`}
+                                onClick={() => setProjectConversationMenuId((current) => current === session.id ? undefined : session.id)}
+                              >
+                                ⋯
+                              </button>
+                              <PopupMenu open={projectConversationMenuId === session.id} onClose={() => setProjectConversationMenuId(undefined)}>
+                                <button type="button" onClick={() => { setProjectConversationMenuId(undefined); handleSessionMenuAction(session, 'pin'); }}>
+                                  <UiIcon name="pin" className="menu-icon" />
+                                  Pino
+                                </button>
+                                <button type="button" onClick={() => { setProjectConversationMenuId(undefined); pushToast('info', 'Renomeie a conversa pela sidebar por enquanto.'); }}>
+                                  <UiIcon name="edit" className="menu-icon" />
+                                  Renomear
+                                </button>
+                                <button type="button" onClick={() => { setProjectConversationMenuId(undefined); void handleDuplicateSession(session); }}>
+                                  <UiIcon name="copy" className="menu-icon" />
+                                  Clonar
+                                </button>
+                                <button type="button" onClick={() => { setProjectConversationMenuId(undefined); handleSessionMenuAction(session, 'archive'); }}>
+                                  <UiIcon name="archive" className="menu-icon" />
+                                  Arquivo
+                                </button>
+                                <button type="button" onClick={() => { setProjectConversationMenuId(undefined); handleSessionMenuAction(session, 'share'); }}>
+                                  <UiIcon name="send" className="menu-icon" />
+                                  Compartilhar
+                                </button>
+                                <button type="button" onClick={() => { setProjectConversationMenuId(undefined); void handleExportSession(session, 'markdown'); }}>
+                                  <UiIcon name="download" className="menu-icon" />
+                                  Baixar
+                                </button>
+                                <button type="button" onClick={() => { setProjectConversationMenuId(undefined); handleSessionMenuAction(session, 'move-to-project'); }}>
+                                  <UiIcon name="moveToProject" className="menu-icon" />
+                                  Mover para Projeto
+                                </button>
+                                <button type="button" onClick={() => { setProjectConversationMenuId(undefined); handleSessionMenuAction(session, 'remove-from-project'); }}>
+                                  <UiIcon name="moveFromProject" className="menu-icon" />
+                                  Mover do Projeto
+                                </button>
+                                <button type="button" className="danger" onClick={() => { setProjectConversationMenuId(undefined); setDeleteSessionTarget(session); }}>
+                                  <UiIcon name="trash" className="menu-icon" />
+                                  Excluir
+                                </button>
+                              </PopupMenu>
+                            </div>
+                          </article>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="project-empty-conversations">
+                        <strong>Nenhuma conversa neste projeto</strong>
+                        <span>Envie uma mensagem pelo composer para criar a primeira conversa vinculada.</span>
+                      </div>
+                    )}
+                  </section>
+                </div>
+              </section>
+            ) : (
+              <>
+                <ChatPanel session={selectedSession} emptyTitle="O que gostaria de explorar?" onOpenEnvironment={() => openEnvironmentTab('accounts')} />
+                {commandInput}
+              </>
+            )}
             {terminalOpen ? <TerminalDrawer logs={logs} open={terminalOpen} onToggle={() => setTerminalOpen((current) => !current)} /> : null}
           </div>
         }
         sidebarRightVisible={false}
+        sidebarLeftCollapsed={sidebarCollapsed}
         sidebarRight={null}
       />
 
       <PremiumModal
         open={controlModalOpen}
-        title="Controle"
-        description="Configurações, IA, contas, terminal, sessões e diagnóstico em área ampla."
+        title="Configurações"
+        description="Preferências do app em uma superfície limpa, sem diagnóstico técnico na frente."
         onClose={() => setControlModalOpen(false)}
         className="control-modal"
       >
@@ -1154,48 +1633,6 @@ export default function App(): JSX.Element {
         />
       </PremiumModal>
 
-      <ModelSelector
-        key={environmentTabRequest?.nonce ?? 'environment-modal'}
-        open={modelSelectorOpen}
-        initialTab={environmentTabRequest?.tab ?? 'ready'}
-        mode={executionMode}
-        activeModelId={selectedModelId}
-        settings={settings}
-        selectedSession={selectedSession}
-        sessions={sessions}
-        providers={providers}
-        credentials={providerCredentials}
-        providerProfiles={effectiveProviderProfiles}
-        localRuntime={localRuntime}
-        healthCheck={healthCheck}
-        installationProgress={installationProgress}
-        busyModelId={modelActionBusyId}
-        onClose={() => setModelSelectorOpen(false)}
-        onModeChange={(mode) => {
-          void handleChangeMode(mode);
-        }}
-        onActivateCloud={handleActivateCloud}
-        onActivateLocal={handleActivateLocal}
-        onUseCloudInChat={handleUseCloudInChat}
-        onUseLocalInChat={handleUseLocalInChat}
-        onSetGlobalCloud={handleSetGlobalCloud}
-        onSetGlobalLocal={handleSetGlobalLocal}
-        onApplyCloudToAll={handleApplyCloudToAll}
-        onApplyLocalToAll={handleApplyLocalToAll}
-        onInstallLocalModel={handleInstallLocalModel}
-        onRemoveLocalModel={handleRemoveLocalModel}
-        onInstallRuntime={handleInstallRuntime}
-        onStartRuntime={handleStartRuntime}
-        onTestProvider={handleTestProvider}
-        onSaveProviderProfileCredential={handleSaveProviderProfileCredential}
-        onRemoveProviderCredential={handleRemoveProviderCredential}
-        onRemoveProviderProfile={handleRemoveProviderProfile}
-        onSetDefaultProviderProfile={handleSetDefaultProviderProfile}
-        onConfigureProvider={(providerId) => {
-          openEnvironmentTab(providerId === 'local-ollama' ? 'local' : 'configure');
-        }}
-      />
-
       <HelpDrawer
         open={helpOpen}
         busy={busy || localRuntimeLoading}
@@ -1208,39 +1645,10 @@ export default function App(): JSX.Element {
         onRunCheckEnvironment={() => void handleRunCheckEnvironment()}
       />
 
-      <PremiumModal
-        open={Boolean(renameSessionTarget)}
-        title="Renomear sessão"
-        onClose={() => setRenameSessionTarget(undefined)}
-        className="compact-modal"
-      >
-        <div className="credential-modal-form">
-          <label>
-            Nome da sessão
-            <input value={renameSessionTitle} onChange={(event) => setRenameSessionTitle(event.target.value)} />
-          </label>
-          <div className="dialog-actions">
-            <button type="button" className="btn-modern" onClick={() => setRenameSessionTarget(undefined)}>
-              Cancelar
-            </button>
-            <button
-              type="button"
-              className="btn-modern btn-modern-primary"
-              disabled={!renameSessionTitle.trim()}
-              onClick={() => {
-                if (renameSessionTarget) void handleRenameSession(renameSessionTarget);
-              }}
-            >
-              Salvar
-            </button>
-          </div>
-        </div>
-      </PremiumModal>
-
       <ConfirmDialog
         open={Boolean(deleteSessionTarget)}
-        title="Excluir sessão"
-        message={deleteSessionTarget ? `Excluir "${deleteSessionTarget.title}"? Esta ação remove o arquivo salvo.` : ''}
+        title="Excluir sessão?"
+        message="Essa ação remove a sessão salva. Não afeta outros projetos."
         confirmLabel="Excluir"
         danger
         onCancel={() => setDeleteSessionTarget(undefined)}
@@ -1258,6 +1666,132 @@ export default function App(): JSX.Element {
         }}
       />
 
+      <PremiumModal
+        open={projectDialogOpen}
+        title={editingProjectName ? 'Editar Projeto' : 'Novo Projeto'}
+        onClose={closeProjectDialog}
+        className="project-modal"
+      >
+        <div className="project-dialog project-dialog-simple">
+          <div className="project-name-row">
+            <span className="project-plus-mark" aria-hidden="true">
+              <UiIcon name="folderPlus" />
+            </span>
+            <input
+              value={projectName}
+              placeholder="Nome do Projeto"
+              onChange={(event) => setProjectName(event.target.value)}
+            />
+          </div>
+
+          <div className="project-preset-row" aria-label="Pré-configurações">
+            {PROJECT_PRESETS.map((preset) => (
+              <button
+                key={preset.id}
+                type="button"
+                className={projectPreset === preset.id ? 'active' : ''}
+                onClick={() => chooseProjectPreset(preset.id)}
+              >
+                <UiIcon name={preset.icon} className="project-preset-icon" />
+                {preset.label}
+              </button>
+            ))}
+          </div>
+
+          <button
+            type="button"
+            className="project-advanced-toggle"
+            onClick={() => setProjectAdvancedOpen((current) => !current)}
+            aria-expanded={projectAdvancedOpen}
+          >
+            Configurações Avançadas <span aria-hidden="true">{projectAdvancedOpen ? '⌄' : '›'}</span>
+          </button>
+
+          {projectAdvancedOpen ? (
+            <div className="project-advanced-panel">
+              <div className="project-memory-row">
+                <span>
+                  Memória
+                  <small aria-hidden="true">i</small>
+                </span>
+                <div className="popup-anchor">
+                  <button
+                    type="button"
+                    className="project-memory-select"
+                    onClick={() => setProjectMemoryMenuOpen((current) => !current)}
+                  >
+                    {selectedProjectMemoryOption.label} <span aria-hidden="true">{projectMemoryMenuOpen ? '⌃' : '⌄'}</span>
+                  </button>
+                  <PopupMenu open={projectMemoryMenuOpen} onClose={() => setProjectMemoryMenuOpen(false)} placement="auto">
+                    {PROJECT_MEMORY_OPTIONS.map((option) => (
+                      <button
+                        key={option.id}
+                        type="button"
+                        className={projectMemoryScope === option.id ? 'active' : ''}
+                        onClick={() => {
+                          setProjectMemoryScope(option.id);
+                          setProjectMemoryMenuOpen(false);
+                        }}
+                      >
+                        <span className="project-memory-option">
+                          <strong>{option.label}</strong>
+                          <small>{option.description}</small>
+                        </span>
+                      </button>
+                    ))}
+                  </PopupMenu>
+                </div>
+              </div>
+
+              <label className="project-advanced-field">
+                <span>
+                  Instruções
+                  <small aria-hidden="true">i</small>
+                </span>
+                <textarea
+                  value={projectInstructions}
+                  maxLength={1000}
+                  placeholder="O que deverá a IA saber sobre este projeto? (por exemplo, regras específicas, tom ou formatação)"
+                  onChange={(event) => setProjectInstructions(event.target.value)}
+                />
+                <small>{projectInstructions.length} / 1000</small>
+              </label>
+
+              <div className="project-files-row">
+                <span>
+                  Arquivos
+                  <small aria-hidden="true">i</small>
+                </span>
+                <button type="button" className="btn-modern project-file-button" onClick={() => setProjectFileManagerOpen(true)}>
+                  <UiIcon name="paperclip" className="menu-icon" />
+                  Adicionar Arquivos
+                </button>
+              </div>
+              {projectFiles.length > 0 ? (
+                <div className="project-file-list">
+                  {projectFiles.map((file) => <span key={file}>{file}</span>)}
+                </div>
+              ) : null}
+            </div>
+          ) : null}
+
+          <div className="project-dialog-footer">
+            <button type="button" className="btn-modern btn-modern-primary" disabled={!projectName.trim()} onClick={saveProject}>
+              {editingProjectName ? 'Salvar projeto' : 'Criar projeto'}
+            </button>
+          </div>
+        </div>
+      </PremiumModal>
+
+      <FileManagerModal
+        open={projectFileManagerOpen}
+        onClose={() => setProjectFileManagerOpen(false)}
+        onSelect={(attachment) => {
+          addProjectFile(attachment);
+          setProjectFileManagerOpen(false);
+        }}
+      />
+
       <ToastViewport
         toasts={toasts}
         onDismiss={(id) => setToasts((current) => current.filter((toast) => toast.id !== id))}
@@ -1265,43 +1799,29 @@ export default function App(): JSX.Element {
 
       <PremiumModal
         open={Boolean(sessionInfo)}
-        title={sessionInfo?.title ?? 'Informações da sessão'}
-        description={sessionInfo?.id}
+        title="Informações da sessão"
+        description={sessionInfo?.title}
         onClose={() => setSessionInfoId(undefined)}
         className="compact-modal"
       >
         {sessionInfo ? (
           <section className="session-info-dialog session-info-dialog-compact">
             <div className="session-info-grid">
+              <span>Nome: <strong>{sessionInfo.title}</strong></span>
               <span>Criada: <strong>{new Date(sessionInfo.createdAt).toLocaleString('pt-BR')}</strong></span>
               <span>Atualizada: <strong>{new Date(sessionInfo.updatedAt).toLocaleString('pt-BR')}</strong></span>
-              <span>Status: <strong>{sessionInfo.status.replace('_', ' ')}</strong></span>
               <span>Mensagens: <strong>{sessionInfo.messages.length}</strong></span>
+              <span>Tipo: <strong>{(sessionInfo.providerId ?? settings?.selectedProviderId) === 'local-ollama' ? 'Local' : 'Nuvem'}</strong></span>
               <span>Provider: <strong>{sessionInfo.providerId ?? settings?.selectedProviderId ?? 'não definido'}</strong></span>
               <span>Modelo: <strong>{sessionInfo.modelId ?? settings?.selectedModelId ?? 'não definido'}</strong></span>
-              <span>Perfil: <strong>{sessionInfo.agentProfileId ?? settings?.selectedAgentId ?? 'não definido'}</strong></span>
+              <span>Modo atual: <strong>{safeAgentProfileId(sessionInfo.agentProfileId ?? settings?.selectedAgentId)}</strong></span>
             </div>
-            <div className="session-info-actions">
-              <button
-                type="button"
-                className="btn-modern"
-                onClick={() => {
-                  setRenameSessionTarget(sessionInfo);
-                  setRenameSessionTitle(sessionInfo.title);
-                }}
-              >
-                Renomear
-              </button>
-              <button type="button" className="btn-modern" onClick={() => setExportSessionTarget(sessionInfo)}>
-                Exportar
-              </button>
-              <button type="button" className="btn-modern" onClick={() => void handleDuplicateSession(sessionInfo)}>
-                Duplicar
-              </button>
-              <button type="button" className="btn-modern btn-danger" onClick={() => setDeleteSessionTarget(sessionInfo)}>
-                Excluir
-              </button>
-            </div>
+            <details className="model-details session-info-details">
+              <summary>Detalhes técnicos</summary>
+              <p>ID: {sessionInfo.id}</p>
+              <p>Status: {sessionInfo.status.replace('_', ' ')}</p>
+              <p>Conta: {sessionInfo.accountProfileId ?? settings?.selectedProviderProfileId ?? 'não definida'}</p>
+            </details>
           </section>
         ) : null}
       </PremiumModal>

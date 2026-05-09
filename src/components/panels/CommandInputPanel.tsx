@@ -1,11 +1,15 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { transcribeAudio } from '../../lib/api';
 import type { PrivilegedActionSpec } from '../../types/domain';
+import type { ChatAttachment, SelectedFileAttachment } from '../../types/domain';
+import { UiIcon } from '../common/AppIcons';
+import { FileManagerModal, fileIconNameForKind, formatFileSize } from '../file/FileManagerModal';
 import { PopupMenu } from '../common/PremiumUI';
 
 interface CommandInputPanelProps {
   busy: boolean;
   privilegedActions: PrivilegedActionSpec[];
-  onSendOrder: (order: string) => Promise<void>;
+  onSendOrder: (order: string, mode: InputModeId, attachments: ChatAttachment[]) => Promise<void>;
   onExecuteCommand: (command: string) => Promise<void>;
   onRequestPrivilegedAction: (actionId: string, args: Record<string, unknown>, dryRun: boolean) => Promise<void>;
   actionJsonExamples: Record<string, string>;
@@ -18,93 +22,167 @@ interface CommandInputPanelProps {
   onOpenTerminal?: () => void;
 }
 
-type InputMode = 'Pensamento' | 'Rápido' | 'Código' | 'Terminal' | 'Agente';
+export type InputModeId = 'auto' | 'thinking' | 'fast' | 'code' | 'terminal';
 
-const INPUT_MODES: InputMode[] = ['Pensamento', 'Rápido', 'Código', 'Terminal', 'Agente'];
+interface InputModeOption {
+  id: InputModeId;
+  label: string;
+  icon: 'spark' | 'book' | 'send' | 'fileCode' | 'desktop';
+  description: string;
+}
+
+const INPUT_MODES: InputModeOption[] = [
+  {
+    id: 'auto',
+    label: 'Automático',
+    icon: 'spark',
+    description: 'O app escolhe o melhor comportamento.',
+  },
+  {
+    id: 'thinking',
+    label: 'Pensamento',
+    icon: 'book',
+    description: 'Mais análise antes de responder.',
+  },
+  {
+    id: 'fast',
+    label: 'Rápido',
+    icon: 'send',
+    description: 'Resposta curta e direta.',
+  },
+  {
+    id: 'code',
+    label: 'Código',
+    icon: 'fileCode',
+    description: 'Foco em código, comandos e implementação.',
+  },
+  {
+    id: 'terminal',
+    label: 'Terminal',
+    icon: 'desktop',
+    description: 'Planeja comandos com aprovação para risco.',
+  },
+];
+
+type SpeechRecognitionEventLike = Event & {
+  results: ArrayLike<ArrayLike<{ transcript: string }>>;
+};
+
+type SpeechRecognitionErrorEventLike = Event & {
+  error?: string;
+};
+
+interface SpeechRecognitionLike {
+  lang: string;
+  interimResults: boolean;
+  continuous: boolean;
+  onstart: (() => void) | null;
+  onresult: ((event: SpeechRecognitionEventLike) => void) | null;
+  onerror: ((event: SpeechRecognitionErrorEventLike) => void) | null;
+  onend: (() => void) | null;
+  start: () => void;
+  stop: () => void;
+  abort: () => void;
+}
+
+type SpeechRecognitionConstructor = new () => SpeechRecognitionLike;
+
+type SpeechWindow = Window & {
+  SpeechRecognition?: SpeechRecognitionConstructor;
+  webkitSpeechRecognition?: SpeechRecognitionConstructor;
+};
+
+type VoiceState =
+  | 'idle'
+  | 'recording'
+  | 'transcribing'
+  | 'done'
+  | 'error'
+  | 'missing-backend'
+  | 'permission-denied';
+
+function mimeTypeForAttachment(attachment: SelectedFileAttachment): string | undefined {
+  const extension = attachment.extension?.toLowerCase();
+  if (attachment.kind === 'text') return 'text/plain';
+  if (attachment.kind === 'json') return 'application/json';
+  if (attachment.kind === 'pdf') return 'application/pdf';
+  if (attachment.kind === 'zip') return 'application/zip';
+  if (attachment.kind === 'image') {
+    if (extension === 'svg') return 'image/svg+xml';
+    return extension ? `image/${extension === 'jpg' ? 'jpeg' : extension}` : 'image/*';
+  }
+  if (attachment.kind === 'audio') return extension ? `audio/${extension}` : 'audio/*';
+  if (attachment.kind === 'video') return extension ? `video/${extension}` : 'video/*';
+  if (attachment.kind === 'code') return 'text/plain';
+  return undefined;
+}
+
+function toChatAttachment(attachment: SelectedFileAttachment): ChatAttachment {
+  return {
+    path: attachment.path,
+    name: attachment.name,
+    mimeType: mimeTypeForAttachment(attachment),
+    size: attachment.size,
+    kind: attachment.kind,
+    previewAvailable: Boolean(attachment.preview),
+    previewTextLimited: attachment.preview,
+  };
+}
 
 export function CommandInputPanel({
   busy,
-  privilegedActions,
   onSendOrder,
   onExecuteCommand,
-  onRequestPrivilegedAction,
-  actionJsonExamples,
   orderDisabledReason,
-  onOpenModelSelector,
   onOpenTerminal,
 }: CommandInputPanelProps): JSX.Element {
-  const [mode, setMode] = useState<InputMode>('Pensamento');
+  const [mode, setMode] = useState<InputModeId>('auto');
   const [prompt, setPrompt] = useState('');
   const [command, setCommand] = useState('');
-  const [selectedActionId, setSelectedActionId] = useState(privilegedActions[0]?.id ?? '');
-  const [actionArgsText, setActionArgsText] = useState('{}');
-  const [actionDryRun, setActionDryRun] = useState(true);
   const [plusOpen, setPlusOpen] = useState(false);
   const [modeOpen, setModeOpen] = useState(false);
-  const [sendError, setSendError] = useState<string>();
-  const [copyState, setCopyState] = useState<'idle' | 'copied' | 'failed'>('idle');
+  const [fileManagerOpen, setFileManagerOpen] = useState(false);
+  const [attachments, setAttachments] = useState<SelectedFileAttachment[]>([]);
+  const [voiceState, setVoiceState] = useState<VoiceState>('idle');
+  const [voiceMessage, setVoiceMessage] = useState<string>();
+  const recognitionRef = useRef<SpeechRecognitionLike>();
+  const mediaRecorderRef = useRef<MediaRecorder>();
+  const recordingStreamRef = useRef<MediaStream>();
+  const recordedChunksRef = useRef<Blob[]>([]);
 
-  const activeActionId = selectedActionId || privilegedActions[0]?.id || '';
-  const displayedActionArgsText =
-    !selectedActionId && actionArgsText === '{}'
-      ? actionJsonExamples[activeActionId] || actionArgsText
-      : actionArgsText;
-
-  const selectedAction = useMemo(
-    () => privilegedActions.find((action) => action.id === activeActionId),
-    [activeActionId, privilegedActions],
-  );
-
-  const writingMode = mode !== 'Terminal' && mode !== 'Agente';
+  const selectedMode = INPUT_MODES.find((item) => item.id === mode) ?? INPUT_MODES[0];
+  const writingMode = mode !== 'terminal';
   const canSubmit =
     !busy &&
-    ((writingMode && prompt.trim().length > 0 && !orderDisabledReason) ||
-      (mode === 'Terminal' && command.trim().length > 0) ||
-      (mode === 'Agente' && activeActionId.length > 0));
+    ((writingMode && (prompt.trim().length > 0 || attachments.length > 0) && !orderDisabledReason) ||
+      (mode === 'terminal' && command.trim().length > 0));
+
+  function stopRecordingTracks(): void {
+    recordingStreamRef.current?.getTracks().forEach((track) => track.stop());
+    recordingStreamRef.current = undefined;
+  }
+
+  useEffect(() => () => {
+    recognitionRef.current?.abort();
+    const recorder = mediaRecorderRef.current;
+    if (recorder && recorder.state !== 'inactive') recorder.stop();
+    stopRecordingTracks();
+  }, []);
 
   async function handleSend(): Promise<void> {
-    setSendError(undefined);
     if (writingMode) {
-      await onSendOrder(prompt);
+      const payloadAttachments = attachments.map(toChatAttachment);
+      const visiblePrompt = prompt.trim() || (payloadAttachments.length > 0 ? 'Anexo enviado.' : '');
+      await onSendOrder(visiblePrompt, mode, payloadAttachments);
       setPrompt('');
+      setAttachments([]);
       return;
     }
 
-    if (mode === 'Terminal') {
+    if (mode === 'terminal') {
       await onExecuteCommand(command);
       setCommand('');
       return;
-    }
-
-    let args: Record<string, unknown>;
-    try {
-      if (!activeActionId) {
-        setSendError('Escolha uma ação antes de solicitar permissão.');
-        return;
-      }
-      const parsed: unknown = JSON.parse(displayedActionArgsText);
-      if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
-        setSendError('Os argumentos precisam ser um objeto JSON.');
-        return;
-      }
-      args = parsed as Record<string, unknown>;
-    } catch {
-      setSendError('JSON inválido. Ajuste o formato antes de enviar.');
-      return;
-    }
-    await onRequestPrivilegedAction(activeActionId, args, actionDryRun);
-  }
-
-  async function handleCopyJson(): Promise<void> {
-    setSendError(undefined);
-    setCopyState('idle');
-    try {
-      await navigator.clipboard.writeText(displayedActionArgsText);
-      setCopyState('copied');
-      window.setTimeout(() => setCopyState('idle'), 1400);
-    } catch {
-      setCopyState('failed');
-      setSendError('Não foi possível copiar o JSON.');
     }
   }
 
@@ -113,24 +191,229 @@ export function CommandInputPanel({
     target.style.height = `${Math.min(target.scrollHeight, 132)}px`;
   }
 
-  function chooseMode(nextMode: InputMode): void {
+  function chooseMode(nextMode: InputModeId): void {
     setMode(nextMode);
     setModeOpen(false);
-    if (nextMode === 'Terminal') onOpenTerminal?.();
+    if (nextMode === 'terminal') onOpenTerminal?.();
   }
 
-  const placeholder = mode === 'Código'
+  function openFileManager(): void {
+    setPlusOpen(false);
+    setFileManagerOpen(true);
+  }
+
+  function addAttachment(attachment: SelectedFileAttachment): void {
+    setAttachments((current) => [
+      attachment,
+      ...current.filter((item) => item.path !== attachment.path),
+    ].slice(0, 6));
+  }
+
+  function appendTranscript(transcript: string): void {
+    const cleaned = transcript.trim();
+    if (!cleaned) return;
+    setPrompt((current) => [current.trim(), cleaned].filter(Boolean).join(' '));
+  }
+
+  async function blobToBytes(blob: Blob): Promise<number[]> {
+    if (typeof blob.arrayBuffer === 'function') {
+      return Array.from(new Uint8Array(await blob.arrayBuffer()));
+    }
+    const buffer = await new Promise<ArrayBuffer>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onerror = () => reject(new Error('Não foi possível ler o áudio gravado.'));
+      reader.onload = () => {
+        if (reader.result instanceof ArrayBuffer) {
+          resolve(reader.result);
+          return;
+        }
+        reject(new Error('Formato de áudio gravado inválido.'));
+      };
+      reader.readAsArrayBuffer(blob);
+    });
+    return Array.from(new Uint8Array(buffer));
+  }
+
+  async function transcribeBlob(blob: Blob): Promise<void> {
+    if (blob.size === 0) {
+      setVoiceState('error');
+      setVoiceMessage('Nenhum áudio foi capturado. Verifique o microfone e tente novamente.');
+      return;
+    }
+
+    setVoiceState('transcribing');
+    setVoiceMessage('Transcrevendo localmente...');
+    try {
+      const result = await transcribeAudio(await blobToBytes(blob), blob.type || undefined);
+      if (result.status === 'done' && result.text?.trim()) {
+        appendTranscript(result.text);
+        setVoiceState('done');
+        setVoiceMessage('Transcrição adicionada.');
+        return;
+      }
+      if (result.status === 'missing_backend') {
+        setVoiceState('missing-backend');
+        setVoiceMessage(result.command ? `${result.message} Comando sugerido: ${result.command}` : result.message);
+        return;
+      }
+      setVoiceState('error');
+      setVoiceMessage(result.message || 'Não foi possível transcrever o áudio local.');
+    } catch (cause) {
+      setVoiceState('error');
+      setVoiceMessage(cause instanceof Error ? cause.message : 'Falha ao transcrever áudio local.');
+    }
+  }
+
+  async function startBackendRecording(): Promise<void> {
+    if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === 'undefined') {
+      setVoiceState('missing-backend');
+      setVoiceMessage('Captura de áudio indisponível nesta WebView. Instale um backend local de STT e use um build com MediaRecorder.');
+      return;
+    }
+
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const mimeType = [
+        'audio/webm;codecs=opus',
+        'audio/webm',
+        'audio/ogg;codecs=opus',
+        'audio/ogg',
+      ].find((candidate) => MediaRecorder.isTypeSupported(candidate));
+      const recorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
+      recordedChunksRef.current = [];
+      recordingStreamRef.current = stream;
+      mediaRecorderRef.current = recorder;
+
+      recorder.ondataavailable = (event) => {
+        if (event.data.size > 0) recordedChunksRef.current.push(event.data);
+      };
+      recorder.onerror = () => {
+        stopRecordingTracks();
+        setVoiceState('error');
+        setVoiceMessage('Falha durante a gravação do microfone.');
+      };
+      recorder.onstop = () => {
+        const chunks = recordedChunksRef.current;
+        recordedChunksRef.current = [];
+        mediaRecorderRef.current = undefined;
+        stopRecordingTracks();
+        const audio = new Blob(chunks, { type: recorder.mimeType || 'audio/webm' });
+        void transcribeBlob(audio);
+      };
+
+      recorder.start();
+      setVoiceState('recording');
+      setVoiceMessage('Gravando... clique novamente para transcrever.');
+    } catch (cause) {
+      stopRecordingTracks();
+      const name = cause instanceof DOMException ? cause.name : '';
+      if (name === 'NotAllowedError' || name === 'SecurityError') {
+        setVoiceState('permission-denied');
+        setVoiceMessage('Permissão de microfone negada. Libere o microfone para o app e tente novamente.');
+        return;
+      }
+      if (name === 'NotFoundError' || name === 'DevicesNotFoundError') {
+        setVoiceState('error');
+        setVoiceMessage('Nenhum microfone foi encontrado.');
+        return;
+      }
+      setVoiceState('error');
+      setVoiceMessage('Não foi possível iniciar a gravação local.');
+    }
+  }
+
+  function startVoiceInput(): void {
+    if (!writingMode) {
+      setVoiceState('error');
+      setVoiceMessage('Use o microfone nos modos de texto.');
+      return;
+    }
+    if (voiceState === 'recording') {
+      recognitionRef.current?.stop();
+      const recorder = mediaRecorderRef.current;
+      if (recorder && recorder.state !== 'inactive') recorder.stop();
+      setVoiceState('transcribing');
+      return;
+    }
+    if (voiceState === 'transcribing') return;
+
+    const SpeechRecognition = (window as SpeechWindow).SpeechRecognition ?? (window as SpeechWindow).webkitSpeechRecognition;
+    if (!SpeechRecognition) {
+      void startBackendRecording();
+      return;
+    }
+
+    const recognition = new SpeechRecognition();
+    let transcriptReceived = false;
+    recognition.lang = 'pt-BR';
+    recognition.interimResults = false;
+    recognition.continuous = false;
+    recognition.onstart = () => {
+      setVoiceState('recording');
+      setVoiceMessage('Ouvindo...');
+    };
+    recognition.onresult = (event) => {
+      transcriptReceived = true;
+      setVoiceState('transcribing');
+      const transcript = Array.from(event.results)
+        .map((result) => result[0]?.transcript ?? '')
+        .join(' ')
+        .trim();
+      appendTranscript(transcript);
+      setVoiceState('done');
+      setVoiceMessage(transcript ? 'Transcrição adicionada.' : 'Nenhuma fala reconhecida.');
+    };
+    recognition.onerror = (event) => {
+      if (event.error === 'not-allowed' || event.error === 'service-not-allowed') {
+        setVoiceState('permission-denied');
+        setVoiceMessage('Permissão de microfone negada.');
+        return;
+      }
+      setVoiceState('error');
+      setVoiceMessage('Não foi possível transcrever a voz.');
+    };
+    recognition.onend = () => {
+      setVoiceState((current) => {
+        if (current !== 'recording' && current !== 'transcribing') return current;
+        return transcriptReceived ? 'done' : 'idle';
+      });
+    };
+    recognitionRef.current = recognition;
+
+    try {
+      recognition.start();
+    } catch {
+      setVoiceState('error');
+      setVoiceMessage('Não foi possível iniciar o microfone.');
+    }
+  }
+
+  const placeholder = mode === 'code'
     ? 'Descreva o que quer construir, corrigir ou automatizar.'
+    : mode === 'terminal'
+      ? 'Descreva ou digite o comando que deverá ser avaliado com segurança.'
     : 'Como posso ajudá-lo hoje?';
 
   return (
-    <section className={`command-input-panel prompt-pill-panel mode-${mode.toLowerCase()}`}>
-      {sendError ? (
-        <div className="input-error-tip prompt-pill-error" role="alert">
-          {sendError}
+    <section className={`command-input-panel prompt-pill-panel mode-${mode}`}>
+      {attachments.length > 0 ? (
+        <div className="prompt-attachment-list" aria-label="Arquivos selecionados">
+          {attachments.map((attachment) => (
+            <span key={attachment.path} className="prompt-attachment-chip" title={attachment.path}>
+              <UiIcon name={fileIconNameForKind(attachment.kind)} className="prompt-attachment-icon" />
+              <span>{attachment.name}</span>
+              <small>{formatFileSize(attachment.size)}</small>
+              <button
+                type="button"
+                aria-label={`Remover ${attachment.name}`}
+                onClick={() => setAttachments((current) => current.filter((item) => item.path !== attachment.path))}
+              >
+                <UiIcon name="x" />
+              </button>
+            </span>
+          ))}
         </div>
       ) : null}
-
       <div className="prompt-pill">
         <div className="popup-anchor">
           <button
@@ -139,26 +422,12 @@ export function CommandInputPanel({
             aria-label="Mais ações"
             onClick={() => setPlusOpen((current) => !current)}
           >
-            +
+            <UiIcon name="plus" className="prompt-plus-icon" />
           </button>
           <PopupMenu open={plusOpen} onClose={() => setPlusOpen(false)} align="left">
-            <button type="button" onClick={() => { setPlusOpen(false); setSendError('Anexos ainda não estão habilitados nesta build.'); }}>
-              Anexar arquivo
-            </button>
-            <button type="button" onClick={() => { setPlusOpen(false); setSendError('Escolha o projeto pela sidebar ou pelo Controle.'); }}>
-              Abrir projeto
-            </button>
-            <button type="button" onClick={() => { setPlusOpen(false); chooseMode('Terminal'); }}>
-              Usar terminal
-            </button>
-            <button type="button" onClick={() => { setPlusOpen(false); setSendError('Cole o contexto diretamente no campo.'); }}>
-              Colar contexto
-            </button>
-            <button type="button" onClick={() => { setPlusOpen(false); chooseMode('Agente'); }}>
-              Comando rápido
-            </button>
-            <button type="button" onClick={() => { setPlusOpen(false); onOpenModelSelector?.(); }}>
-              Abrir Ambiente
+            <button type="button" className="menu-item" onClick={openFileManager}>
+              <UiIcon name="paperclip" className="menu-icon menu-item-icon" />
+              Selecionar arquivo
             </button>
           </PopupMenu>
         </div>
@@ -180,7 +449,7 @@ export function CommandInputPanel({
           />
         ) : null}
 
-        {mode === 'Terminal' ? (
+        {mode === 'terminal' ? (
           <textarea
             className="prompt-pill-input prompt-pill-terminal"
             placeholder="Comando de terminal"
@@ -206,25 +475,31 @@ export function CommandInputPanel({
             onClick={() => setModeOpen((current) => !current)}
             aria-label="Selecionar modo de resposta"
           >
-            {mode} <span aria-hidden="true">⌄</span>
+            {selectedMode.label} <UiIcon name="chevronDown" />
           </button>
-          <PopupMenu open={modeOpen} onClose={() => setModeOpen(false)}>
+          <PopupMenu open={modeOpen} onClose={() => setModeOpen(false)} placement="auto" align="right">
             {INPUT_MODES.map((item) => (
-              <button key={item} type="button" onClick={() => chooseMode(item)}>
-                {item}
+              <button key={item.id} type="button" className={mode === item.id ? 'active mode-menu-item menu-item' : 'mode-menu-item menu-item'} aria-current={mode === item.id ? 'true' : undefined} onClick={() => chooseMode(item.id)}>
+                <UiIcon name={item.icon} className="menu-icon menu-item-icon" />
+                <span className="mode-menu-copy">
+                  <strong>{item.label}</strong>
+                  <small>{item.description}</small>
+                </span>
               </button>
             ))}
           </PopupMenu>
         </div>
 
         <button
-          className="prompt-icon-button"
           type="button"
-          aria-label="Entrada por voz"
-          onClick={() => setSendError('Entrada por voz ainda não está habilitada nesta build.')}
+          className={`prompt-mic-button voice-${voiceState}`}
+          aria-label={voiceState === 'recording' ? 'Parar transcrição de voz' : 'Entrada por voz'}
+          title={voiceMessage}
+          onClick={startVoiceInput}
         >
-          ◦
+          <UiIcon name="mic" />
         </button>
+
         <button
           className="prompt-send-button"
           type="button"
@@ -233,48 +508,24 @@ export function CommandInputPanel({
           onClick={() => void handleSend()}
           aria-label="Enviar"
         >
-          ➤
+          <UiIcon name="send" />
         </button>
       </div>
-
-      {mode === 'Agente' ? (
-        <div className="prompt-advanced-panel">
-          <select
-            className="input-modern"
-            value={activeActionId}
-            onChange={(event) => {
-              setSelectedActionId(event.target.value);
-              setActionArgsText(actionJsonExamples[event.target.value] || '{}');
-            }}
-          >
-            {privilegedActions.map((action) => (
-              <option key={action.id} value={action.id}>
-                {action.title}
-              </option>
-            ))}
-          </select>
-          {selectedAction ? (
-            <div className="action-spec-card prompt-action-summary">
-              <strong>{selectedAction.category}</strong>
-              <span>{selectedAction.description}</span>
-            </div>
-          ) : null}
-          <textarea
-            className="input-modern args-input"
-            value={displayedActionArgsText}
-            onChange={(event) => setActionArgsText(event.target.value)}
-            rows={4}
-          />
-          <div className="prompt-advanced-actions">
-            <label className="checkbox-modern">
-              <input type="checkbox" checked={actionDryRun} onChange={(event) => setActionDryRun(event.target.checked)} />
-              Dry-run
-            </label>
-            <button className="btn-modern" type="button" onClick={() => void handleCopyJson()}>
-              {copyState === 'copied' ? 'JSON copiado' : copyState === 'failed' ? 'Falhou' : 'Copiar JSON'}
-            </button>
-          </div>
-        </div>
+      {voiceMessage ? (
+        <span
+          className={`voice-feedback voice-${voiceState}`}
+          role={voiceState === 'error' || voiceState === 'missing-backend' || voiceState === 'permission-denied' ? 'alert' : 'status'}
+        >
+          {voiceMessage}
+        </span>
+      ) : null}
+      {fileManagerOpen ? (
+        <FileManagerModal
+          open={fileManagerOpen}
+          initialPathMode={false}
+          onClose={() => setFileManagerOpen(false)}
+          onSelect={addAttachment}
+        />
       ) : null}
     </section>
   );

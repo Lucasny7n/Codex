@@ -72,12 +72,6 @@ impl ProviderRegistry {
                 mode: AgentMode::Profundo,
             },
             AgentProfile {
-                id: "agressivo".to_owned(),
-                label: "Agressivo".to_owned(),
-                description: "Avança rápido com maior tolerância a mudanças.".to_owned(),
-                mode: AgentMode::Agressivo,
-            },
-            AgentProfile {
                 id: "seguro".to_owned(),
                 label: "Seguro".to_owned(),
                 description: "Prioriza previsibilidade, backup e rollback.".to_owned(),

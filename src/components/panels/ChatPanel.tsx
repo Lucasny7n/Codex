@@ -1,8 +1,10 @@
-import { formatDateTime } from '../../lib/format';
-import type { AgentSession, ChatMessage, ChatRole } from '../../types/domain';
+import { useState } from 'react';
+import type { AgentSession, ChatMessage } from '../../types/domain';
+import { PopupMenu } from '../common/PremiumUI';
 
 interface ChatPanelProps {
   session?: AgentSession;
+  emptyTitle?: string;
   onOpenEnvironment?: () => void;
 }
 
@@ -13,13 +15,6 @@ interface ParsedProviderError {
   provider?: string;
   model?: string;
   technical?: string;
-}
-
-function roleLabel(role: ChatRole): string {
-  if (role === 'assistant') return 'Agente';
-  if (role === 'user') return 'Você';
-  if (role === 'tool') return 'Ferramenta';
-  return 'Sistema';
 }
 
 function firstMatch(content: string, pattern: RegExp): string | undefined {
@@ -43,7 +38,7 @@ function errorCopyForStatus(status?: string): Pick<ParsedProviderError, 'title' 
   if (status === '429') {
     return {
       title: 'Cota ou limite atingido',
-      message: 'Troque a conta, aguarde alguns minutos ou selecione outro modelo.',
+      message: 'Cota excedida nesta conta. Troque a conta, o provider ou aguarde o reset.',
     };
   }
   if (status && Number(status) >= 500) {
@@ -53,6 +48,15 @@ function errorCopyForStatus(status?: string): Pick<ParsedProviderError, 'title' 
     };
   }
   return undefined;
+}
+
+function cleanVisibleContent(content: string): string {
+  const visible = content
+    .split('\n')
+    .filter((line) => !/^\s*(JUSTIFICATIVA T[ÉE]CNICA|Resposta local conclu[ií]da(?: pela API HTTP)?|Payload|Stack trace)\b/i.test(line))
+    .join('\n')
+    .trim();
+  return visible || 'Concluído.';
 }
 
 function parseProviderError(message: ChatMessage): ParsedProviderError | undefined {
@@ -109,12 +113,33 @@ function ProviderErrorCard({ error, onOpenEnvironment }: { error: ParsedProvider
   );
 }
 
-export function ChatPanel({ session, onOpenEnvironment }: ChatPanelProps): JSX.Element {
+function formatAttachmentSize(size?: number): string {
+  if (typeof size !== 'number') return '';
+  if (size < 1024) return `${size} B`;
+  if (size < 1024 * 1024) return `${(size / 1024).toFixed(1)} KB`;
+  return `${(size / 1024 / 1024).toFixed(1)} MB`;
+}
+
+export function ChatPanel({ session, emptyTitle = 'Pronto para criar algo?', onOpenEnvironment }: ChatPanelProps): JSX.Element {
+  const [menuMessageId, setMenuMessageId] = useState<string>();
+  const [copiedMessageId, setCopiedMessageId] = useState<string>();
+
+  async function copyMessage(message: ChatMessage): Promise<void> {
+    const content = cleanVisibleContent(message.content);
+    try {
+      await navigator.clipboard.writeText(content);
+      setCopiedMessageId(message.id);
+      window.setTimeout(() => setCopiedMessageId((current) => current === message.id ? undefined : current), 1600);
+    } catch {
+      setCopiedMessageId(undefined);
+    }
+  }
+
   if (!session) {
     return (
       <section className="panel-chat-empty">
         <div className="home-hero">
-          <h1>Pronto para criar algo?</h1>
+          <h1>{emptyTitle}</h1>
         </div>
       </section>
     );
@@ -132,23 +157,75 @@ export function ChatPanel({ session, onOpenEnvironment }: ChatPanelProps): JSX.E
         {session.messages.map((message) => {
           const providerError = parseProviderError(message);
           return (
-            <article key={message.id} className={`message-bubble role-${message.role}`}>
-              <div className="message-meta">
-                <span className="message-sender">{roleLabel(message.role)}</span>
-                <span className="text-xs muted">{formatDateTime(message.createdAt)}</span>
-              </div>
-              {providerError ? (
-                <ProviderErrorCard error={providerError} onOpenEnvironment={onOpenEnvironment} />
-              ) : (
-                <div className="message-content">{message.content}</div>
-              )}
-              {message.reasoningSummary && !providerError ? (
-                <div className="reasoning-box">
-                  <header>Justificativa técnica</header>
-                  <div className="reasoning-content">{message.reasoningSummary}</div>
-                </div>
-              ) : null}
-            </article>
+            <div key={message.id} className={`message-row ${message.role}`}>
+              <article className={`message-bubble role-${message.role}`}>
+                {providerError ? (
+                  <ProviderErrorCard error={providerError} onOpenEnvironment={onOpenEnvironment} />
+                ) : (
+                  <div className="message-content">{cleanVisibleContent(message.content)}</div>
+                )}
+                {message.attachments?.length ? (
+                  <div className="message-attachment-list" aria-label="Anexos da mensagem">
+                    {message.attachments.map((attachment) => (
+                      <span key={`${message.id}-${attachment.path}`} className="message-attachment-chip" title={attachment.path}>
+                        <strong>{attachment.name}</strong>
+                        <small>{[attachment.kind, formatAttachmentSize(attachment.size)].filter(Boolean).join(' · ')}</small>
+                      </span>
+                    ))}
+                  </div>
+                ) : null}
+                {message.reasoningSummary && !providerError ? (
+                  <details className="reasoning-box">
+                    <summary>Pensamento concluído</summary>
+                    <div className="reasoning-content">{cleanVisibleContent(message.reasoningSummary)}</div>
+                  </details>
+                ) : null}
+                {message.role === 'assistant' ? (
+                  <div className="message-actions" aria-label="Ações da resposta">
+                    {copiedMessageId === message.id ? <span className="message-action-chip">Copiado</span> : null}
+                    <button type="button" className="message-action-button" aria-label="Copiar resposta" onClick={() => void copyMessage(message)}>
+                      ⧉
+                    </button>
+                    <button type="button" className="message-action-button" aria-label="Curtir resposta">
+                      ♡
+                    </button>
+                    <button type="button" className="message-action-button" aria-label="Não gostei da resposta">
+                      ♧
+                    </button>
+                    <button type="button" className="message-action-button" aria-label="Compartilhar resposta">
+                      ↗
+                    </button>
+                    <button type="button" className="message-action-button" aria-label="Refazer resposta">
+                      ↻
+                    </button>
+                    <div className="popup-anchor">
+                      <button
+                        type="button"
+                        className="message-action-button"
+                        aria-label="Mais ações da resposta"
+                        onClick={() => setMenuMessageId((current) => current === message.id ? undefined : message.id)}
+                      >
+                        ⋯
+                      </button>
+                      <PopupMenu open={menuMessageId === message.id} onClose={() => setMenuMessageId(undefined)} placement="auto">
+                        <button type="button" onClick={() => { setMenuMessageId(undefined); void copyMessage(message); }}>
+                          Copiar
+                        </button>
+                        <button type="button" disabled>
+                          Compartilhar
+                        </button>
+                        <button type="button" disabled>
+                          Refazer resposta
+                        </button>
+                        <button type="button" disabled>
+                          Mais opções
+                        </button>
+                      </PopupMenu>
+                    </div>
+                  </div>
+                ) : null}
+              </article>
+            </div>
           );
         })}
       </div>

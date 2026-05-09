@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import App from '../src/App';
 import * as api from '../src/lib/api';
@@ -14,11 +14,13 @@ vi.mock('../src/lib/api', () => ({
   exportSession: vi.fn(),
   getBasePrompt: vi.fn(),
   getAppHealthCheck: vi.fn(),
+  getFileAttachment: vi.fn(),
   getLocalRuntimeState: vi.fn(),
   installLocalModel: vi.fn(),
   installLocalRuntime: vi.fn(),
   listProviderProfiles: vi.fn(),
   listProviderCredentials: vi.fn(),
+  listFileDirectory: vi.fn(),
   listPrivilegedActions: vi.fn(),
   onCommandLog: vi.fn(),
   onFileChanged: vi.fn(),
@@ -44,6 +46,7 @@ vi.mock('../src/lib/api', () => ({
   sendOrderToAgent: vi.fn(),
   startLocalRuntime: vi.fn(),
   testProviderConnection: vi.fn(),
+  transcribeAudio: vi.fn(),
   updateBasePrompt: vi.fn(),
   updateSessionEnvironment: vi.fn(),
   applyEnvironmentToAllSessions: vi.fn(),
@@ -134,8 +137,26 @@ function payload(sessions: AgentSession[]): BootstrapPayload {
   };
 }
 
+function installLocalStorageMock(): void {
+  const values = new Map<string, string>();
+  Object.defineProperty(window, 'localStorage', {
+    configurable: true,
+    value: {
+      getItem: vi.fn((key: string) => values.get(key) ?? null),
+      setItem: vi.fn((key: string, value: string) => {
+        values.set(key, value);
+      }),
+      removeItem: vi.fn((key: string) => {
+        values.delete(key);
+      }),
+      clear: vi.fn(() => values.clear()),
+    },
+  });
+}
+
 describe('App layout visibility', () => {
   beforeEach(() => {
+    installLocalStorageMock();
     useAppStore.setState({
       booted: false,
       loading: true,
@@ -211,10 +232,11 @@ describe('App layout visibility', () => {
     render(<App />);
 
     await waitFor(() => {
-      expect(screen.getByText('Pronto para criar algo?')).toBeInTheDocument();
+      expect(screen.getByText('O que gostaria de explorar?')).toBeInTheDocument();
     });
 
-    expect(screen.getByText('Selecionar modelo')).toBeInTheDocument();
+    expect(screen.getByText('Nuvem')).toBeInTheDocument();
+    expect(screen.getByText('mock-development-model')).toBeInTheDocument();
     expect(screen.getByPlaceholderText('Como posso ajudá-lo hoje?')).toBeInTheDocument();
     expect(screen.queryByText('Auditar projeto')).not.toBeInTheDocument();
     expect(screen.queryByText('Validar build')).not.toBeInTheDocument();
@@ -226,5 +248,150 @@ describe('App layout visibility', () => {
     expect(screen.queryByText('Inspector')).not.toBeInTheDocument();
     expect(screen.queryByText('READY')).not.toBeInTheDocument();
     expect(screen.queryByText('requires_cli_auth')).not.toBeInTheDocument();
+  });
+
+  it('abre dropdown de modelos pela topbar sem mostrar menu Ambiente antigo', async () => {
+    vi.mocked(api.bootstrapState).mockResolvedValue(payload([baseSession()]));
+
+    render(<App />);
+
+    await waitFor(() => {
+      expect(screen.getByText('mock-development-model')).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByTitle(/mock-development-model/));
+
+    expect(screen.getByText('Modelos')).toBeInTheDocument();
+    expect(screen.getByLabelText('Buscar modelo ou provedor')).toBeInTheDocument();
+    expect(screen.getByText('Provedores')).toBeInTheDocument();
+    expect(screen.queryByText('Fabricantes / Provedores')).not.toBeInTheDocument();
+    expect(screen.getAllByText('Nuvem').length).toBeGreaterThan(1);
+    expect(screen.getByText('Local')).toBeInTheDocument();
+    expect(screen.getByText('Configurar modelos')).toBeInTheDocument();
+    expect(screen.queryByText('Ambiente')).not.toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText('Buscar modelo ou provedor'), { target: { value: 'OpenAI' } });
+    expect(screen.getByText('GPT-5.5')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByText('Configurar modelos'));
+    expect(screen.queryByRole('tab', { name: 'Prontos' })).not.toBeInTheDocument();
+  });
+
+  it('abre configuração específica de modelo cloud e local pelo botão de três pontos', async () => {
+    vi.mocked(api.bootstrapState).mockResolvedValue(payload([baseSession()]));
+
+    render(<App />);
+
+    await waitFor(() => {
+      expect(screen.getByText('mock-development-model')).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByTitle(/mock-development-model/));
+    fireEvent.change(screen.getByLabelText('Buscar modelo ou provedor'), { target: { value: 'GPT-5.5' } });
+    expect(screen.queryByLabelText('Configurar GPT-5.5')).not.toBeInTheDocument();
+    const gptRow = screen.getByTestId('model-row-gpt-5.5');
+    fireEvent.mouseEnter(gptRow);
+    expect(gptRow).toHaveClass('show-config');
+    fireEvent.click(screen.getByLabelText('Configurar GPT-5.5'));
+
+    expect(screen.getByRole('dialog', { name: 'GPT-5.5' })).toBeInTheDocument();
+    expect(screen.getByLabelText('API Key')).toBeInTheDocument();
+    expect(screen.getByText('Salvar API')).toBeInTheDocument();
+    expect(screen.getByText('Testar API')).toBeInTheDocument();
+    expect(screen.getByText(/Status: não testado/)).toBeInTheDocument();
+
+    vi.mocked(api.testProviderConnection).mockResolvedValue({
+      state: 'ready',
+      message: 'OpenAI respondeu.',
+      checkedAt: new Date().toISOString(),
+    });
+    fireEvent.click(screen.getByText('Testar API'));
+    await waitFor(() => {
+      expect(api.testProviderConnection).toHaveBeenCalledWith('openai-api');
+      expect(screen.getByText(/Status: funcionando/)).toBeInTheDocument();
+    });
+
+    fireEvent.keyDown(document, { key: 'Escape' });
+
+    await waitFor(() => {
+      expect(screen.queryByRole('dialog', { name: 'GPT-5.5' })).not.toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByTitle(/mock-development-model/));
+    fireEvent.click(screen.getAllByRole('tab', { name: 'Local' })[0]);
+    fireEvent.change(screen.getByLabelText('Buscar modelo ou provedor'), { target: { value: 'Qwen2.5 Coder 7B' } });
+    expect(screen.queryByLabelText('Configurar Qwen2.5 Coder 7B')).not.toBeInTheDocument();
+    fireEvent.mouseEnter(screen.getByTestId('model-row-qwen2.5-coder:7b'));
+    fireEvent.click(screen.getByLabelText('Configurar Qwen2.5 Coder 7B'));
+
+    expect(screen.getByRole('dialog', { name: 'Qwen2.5 Coder 7B' })).toBeInTheDocument();
+    expect(screen.getByText('Status: Não instalado')).toBeInTheDocument();
+    expect(screen.getByText('Download')).toBeInTheDocument();
+    expect(screen.getByText('Testar')).toBeInTheDocument();
+  });
+
+  it('não cria projeto Codex-Codex automaticamente a partir do workspace', async () => {
+    vi.mocked(api.bootstrapState).mockResolvedValue(payload([baseSession()]));
+
+    render(<App />);
+
+    await waitFor(() => {
+      expect(screen.getAllByText('Nova Conversa').length).toBeGreaterThan(0);
+    });
+
+    fireEvent.click(screen.getByText('Projetos'));
+
+    expect(screen.getByText('Novo Projeto')).toBeInTheDocument();
+    expect(screen.queryByText('Codex-Codex')).not.toBeInTheDocument();
+  });
+
+  it('permite excluir Codex-Codex quando ele veio de projeto salvo pelo app', async () => {
+    window.localStorage.setItem('codex-command-center-projects', JSON.stringify(['Codex-Codex']));
+    vi.mocked(api.bootstrapState).mockResolvedValue(payload([baseSession()]));
+
+    render(<App />);
+
+    await waitFor(() => {
+      expect(screen.getAllByText('Nova Conversa').length).toBeGreaterThan(0);
+    });
+
+    fireEvent.click(screen.getByText('Projetos'));
+    expect(screen.getByText('Codex-Codex')).toBeInTheDocument();
+    fireEvent.click(screen.getByLabelText('Ações do projeto Codex-Codex'));
+    fireEvent.click(screen.getByText('Excluir Projeto'));
+
+    await waitFor(() => {
+      expect(screen.queryByText('Codex-Codex')).not.toBeInTheDocument();
+    });
+    expect(window.localStorage.getItem('codex-command-center-projects')).toBe('[]');
+  });
+
+  it('ativa Bate-papo Temporário sem salvar conversa no histórico', async () => {
+    vi.mocked(api.bootstrapState).mockResolvedValue(payload([baseSession()]));
+
+    render(<App />);
+
+    await waitFor(() => {
+      expect(screen.getByText('O que gostaria de explorar?')).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByLabelText(/Iniciar Bate-papo Temporário/));
+    expect(screen.getByRole('heading', { name: 'Bate-papo Temporário' })).toBeInTheDocument();
+    expect(screen.getByText('Esta conversa não aparecerá no histórico e as suas mensagens não serão guardadas.')).toBeInTheDocument();
+
+    fireEvent.change(screen.getByPlaceholderText('Como posso ajudá-lo hoje?'), {
+      target: { value: 'mensagem sem histórico' },
+    });
+    fireEvent.click(screen.getByLabelText('Enviar'));
+
+    expect(vi.mocked(api.createSession)).not.toHaveBeenCalled();
+    expect(vi.mocked(api.sendOrderToAgent)).not.toHaveBeenCalled();
+    expect(await screen.findByText('mensagem sem histórico')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByLabelText('Sair do Bate-papo Temporário'));
+    await waitFor(() => {
+      expect(screen.getByText('O que gostaria de explorar?')).toBeInTheDocument();
+    });
+    expect(screen.queryByText('mensagem sem histórico')).not.toBeInTheDocument();
   });
 });

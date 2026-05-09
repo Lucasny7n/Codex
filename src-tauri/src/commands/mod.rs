@@ -1,5 +1,13 @@
-use std::{fs, path::Path, process::Command, sync::Arc};
+use std::{
+    env, fs,
+    io::Read,
+    path::{Path, PathBuf},
+    process::Command,
+    sync::Arc,
+};
 
+use serde::Serialize;
+use serde_json::Value;
 use tauri::{AppHandle, Emitter, State};
 use uuid::Uuid;
 
@@ -95,6 +103,900 @@ fn command_ok<const N: usize>(program: &str, args: [&str; N]) -> bool {
         .output()
         .ok()
         .is_some_and(|output| output.status.success())
+}
+
+const FILE_BROWSER_MAX_ENTRIES: usize = 500;
+const FILE_PREVIEW_LIMIT_BYTES: u64 = 100 * 1024;
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+enum FileEntryKind {
+    Directory,
+    Pdf,
+    Zip,
+    Text,
+    Json,
+    Image,
+    Code,
+    Audio,
+    Video,
+    Generic,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FileShortcut {
+    id: String,
+    label: String,
+    path: String,
+    exists: bool,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FileBrowserEntry {
+    name: String,
+    path: String,
+    kind: FileEntryKind,
+    extension: Option<String>,
+    is_directory: bool,
+    size: Option<u64>,
+    modified_at: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FileDirectoryListing {
+    path: String,
+    parent_path: Option<String>,
+    entries: Vec<FileBrowserEntry>,
+    shortcuts: Vec<FileShortcut>,
+    truncated: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+enum FilePreviewKind {
+    Text,
+    Pdf,
+    Zip,
+    Unavailable,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SelectedFileAttachment {
+    name: String,
+    path: String,
+    kind: FileEntryKind,
+    extension: Option<String>,
+    is_directory: bool,
+    size: Option<u64>,
+    modified_at: Option<String>,
+    preview: Option<String>,
+    preview_kind: Option<FilePreviewKind>,
+    preview_truncated: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum VoiceTranscriptionResultStatus {
+    Done,
+    MissingBackend,
+    Error,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct VoiceTranscriptionResult {
+    status: VoiceTranscriptionResultStatus,
+    text: Option<String>,
+    message: String,
+    backend: Option<String>,
+    command: Option<String>,
+    technical_details: Option<String>,
+}
+
+fn home_dir() -> Result<PathBuf, AppError> {
+    std::env::var_os("HOME")
+        .map(PathBuf::from)
+        .filter(|path| path.exists())
+        .or_else(|| std::env::current_dir().ok())
+        .ok_or_else(|| AppError::Message("Não foi possível resolver a pasta inicial.".to_owned()))
+}
+
+fn expand_user_path(raw: &str) -> Result<PathBuf, AppError> {
+    if raw.contains('\0') {
+        return Err(AppError::Message("Caminho inválido.".to_owned()));
+    }
+    if raw == "~" {
+        return home_dir();
+    }
+    if let Some(rest) = raw.strip_prefix("~/") {
+        return Ok(home_dir()?.join(rest));
+    }
+    Ok(PathBuf::from(raw))
+}
+
+fn resolve_existing_path(path: Option<&str>) -> Result<PathBuf, AppError> {
+    let candidate = match path.map(str::trim).filter(|value| !value.is_empty()) {
+        Some(raw) => expand_user_path(raw)?,
+        None => home_dir()?,
+    };
+    let absolute = if candidate.is_absolute() {
+        candidate
+    } else {
+        std::env::current_dir()?.join(candidate)
+    };
+    absolute
+        .canonicalize()
+        .map_err(|_| AppError::Message("Caminho não encontrado ou inacessível.".to_owned()))
+}
+
+fn modified_iso(metadata: &fs::Metadata) -> Option<String> {
+    metadata
+        .modified()
+        .ok()
+        .map(|time| chrono::DateTime::<chrono::Utc>::from(time).to_rfc3339())
+}
+
+fn path_extension(path: &Path) -> Option<String> {
+    path.extension()
+        .and_then(|extension| extension.to_str())
+        .map(str::to_lowercase)
+        .filter(|extension| !extension.is_empty())
+}
+
+fn detect_file_kind(path: &Path, is_directory: bool) -> FileEntryKind {
+    if is_directory {
+        return FileEntryKind::Directory;
+    }
+    match path_extension(path).as_deref() {
+        Some("pdf") => FileEntryKind::Pdf,
+        Some("zip") | Some("7z") | Some("tar") | Some("gz") | Some("tgz") | Some("rar") => {
+            FileEntryKind::Zip
+        }
+        Some("txt") | Some("md") | Some("markdown") | Some("log") | Some("csv") | Some("toml")
+        | Some("yaml") | Some("yml") | Some("ini") => FileEntryKind::Text,
+        Some("json") | Some("jsonl") => FileEntryKind::Json,
+        Some("png") | Some("jpg") | Some("jpeg") | Some("webp") | Some("gif") | Some("svg") => {
+            FileEntryKind::Image
+        }
+        Some("rs") | Some("ts") | Some("tsx") | Some("js") | Some("jsx") | Some("py")
+        | Some("go") | Some("java") | Some("c") | Some("h") | Some("cpp") | Some("hpp")
+        | Some("css") | Some("html") | Some("sh") | Some("fish") | Some("sql") => {
+            FileEntryKind::Code
+        }
+        Some("mp3") | Some("wav") | Some("flac") | Some("ogg") => FileEntryKind::Audio,
+        Some("mp4") | Some("mkv") | Some("mov") | Some("webm") => FileEntryKind::Video,
+        _ => FileEntryKind::Generic,
+    }
+}
+
+fn file_entry_from_path(path: &Path) -> Result<FileBrowserEntry, AppError> {
+    let metadata = fs::metadata(path)?;
+    let is_directory = metadata.is_dir();
+    let name = path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .map(str::to_owned)
+        .unwrap_or_else(|| path.to_string_lossy().to_string());
+    Ok(FileBrowserEntry {
+        name,
+        path: path.to_string_lossy().to_string(),
+        kind: detect_file_kind(path, is_directory),
+        extension: path_extension(path),
+        is_directory,
+        size: if is_directory {
+            None
+        } else {
+            Some(metadata.len())
+        },
+        modified_at: modified_iso(&metadata),
+    })
+}
+
+fn shortcut(id: &str, label: &str, path: PathBuf) -> FileShortcut {
+    let exists = path.is_dir();
+    FileShortcut {
+        id: id.to_owned(),
+        label: label.to_owned(),
+        path: path.to_string_lossy().to_string(),
+        exists,
+    }
+}
+
+fn file_shortcuts() -> Result<Vec<FileShortcut>, AppError> {
+    let home = home_dir()?;
+    let documents = {
+        let localized = home.join("Documentos");
+        if localized.is_dir() {
+            localized
+        } else {
+            home.join("Documents")
+        }
+    };
+    Ok(vec![
+        shortcut("home", "Home", home.clone()),
+        shortcut("downloads", "Downloads", home.join("Downloads")),
+        shortcut("documents", "Documentos", documents),
+        shortcut("images", "Imagens", home.join("Imagens")),
+        shortcut("videos", "Vídeos", home.join("Vídeos")),
+        shortcut("music", "Música", home.join("Música")),
+        shortcut("desktop", "Área de trabalho", home.join("Área de trabalho")),
+        shortcut(
+            "recent",
+            "Recentes",
+            home.join(".local/share/recently-used.xbel"),
+        ),
+    ])
+}
+
+fn limited_text(mut text: String, limit: usize) -> (String, bool) {
+    if text.len() <= limit {
+        return (text, false);
+    }
+    let mut end = limit;
+    while !text.is_char_boundary(end) {
+        end -= 1;
+    }
+    text.truncate(end);
+    (text, true)
+}
+
+fn read_text_preview(path: &Path, metadata: &fs::Metadata) -> Result<(String, bool), AppError> {
+    let mut file = fs::File::open(path)?;
+    let mut buffer = Vec::new();
+    file.by_ref()
+        .take(FILE_PREVIEW_LIMIT_BYTES + 1)
+        .read_to_end(&mut buffer)?;
+    let truncated =
+        metadata.len() > FILE_PREVIEW_LIMIT_BYTES || buffer.len() as u64 > FILE_PREVIEW_LIMIT_BYTES;
+    if buffer.len() as u64 > FILE_PREVIEW_LIMIT_BYTES {
+        buffer.truncate(FILE_PREVIEW_LIMIT_BYTES as usize);
+    }
+    Ok((String::from_utf8_lossy(&buffer).to_string(), truncated))
+}
+
+fn command_preview(program: &str, args: &[&str]) -> Option<String> {
+    let output = Command::new(program).args(args).output().ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    let text = String::from_utf8_lossy(&output.stdout).to_string();
+    Some(limited_text(text, FILE_PREVIEW_LIMIT_BYTES as usize).0)
+}
+
+fn pdf_preview(path: &Path) -> (Option<String>, FilePreviewKind, bool) {
+    let path_text = path.to_string_lossy();
+    match command_preview("pdftotext", &["-layout", "-f", "1", "-l", "3", &path_text, "-"]) {
+        Some(text) if !text.trim().is_empty() => {
+            let (limited, truncated) = limited_text(text, FILE_PREVIEW_LIMIT_BYTES as usize);
+            (Some(limited), FilePreviewKind::Pdf, truncated)
+        }
+        _ => (
+            Some("Preview PDF indisponível: pdftotext ausente, PDF protegido ou arquivo sem camada de texto.".to_owned()),
+            FilePreviewKind::Unavailable,
+            false,
+        ),
+    }
+}
+
+fn zip_preview(path: &Path) -> (Option<String>, FilePreviewKind, bool) {
+    let path_text = path.to_string_lossy();
+    let text = command_preview("unzip", &["-l", &path_text])
+        .or_else(|| command_preview("bsdtar", &["-tf", &path_text]));
+    match text {
+        Some(text) if !text.trim().is_empty() => {
+            let (limited, truncated) = limited_text(text, FILE_PREVIEW_LIMIT_BYTES as usize);
+            (Some(limited), FilePreviewKind::Zip, truncated)
+        }
+        _ => (
+            Some("Preview ZIP indisponível: não foi possível listar o conteúdo com as ferramentas locais.".to_owned()),
+            FilePreviewKind::Unavailable,
+            false,
+        ),
+    }
+}
+
+const STT_INSTALL_COMMAND: &str = "sudo pacman -S whisper.cpp ffmpeg";
+
+fn command_in_path(program: &str) -> Option<PathBuf> {
+    let path = Path::new(program);
+    if path.components().count() > 1 {
+        return path.exists().then(|| path.to_path_buf());
+    }
+    let paths = env::var_os("PATH")?;
+    env::split_paths(&paths)
+        .map(|directory| directory.join(program))
+        .find(|candidate| candidate.is_file())
+}
+
+fn audio_extension_from_mime(mime_type: Option<&str>) -> &'static str {
+    match mime_type
+        .unwrap_or_default()
+        .split(';')
+        .next()
+        .unwrap_or_default()
+    {
+        "audio/wav" | "audio/wave" | "audio/x-wav" => "wav",
+        "audio/ogg" => "ogg",
+        "audio/mp4" | "audio/aac" => "m4a",
+        "audio/mpeg" => "mp3",
+        _ => "webm",
+    }
+}
+
+fn voice_result(
+    status: VoiceTranscriptionResultStatus,
+    text: Option<String>,
+    message: &str,
+    backend: Option<&str>,
+    command: Option<&str>,
+    technical_details: Option<String>,
+) -> VoiceTranscriptionResult {
+    VoiceTranscriptionResult {
+        status,
+        text,
+        message: message.to_owned(),
+        backend: backend.map(str::to_owned),
+        command: command.map(str::to_owned),
+        technical_details,
+    }
+}
+
+fn missing_transcription_backend_result(detail: Option<String>) -> VoiceTranscriptionResult {
+    voice_result(
+        VoiceTranscriptionResultStatus::MissingBackend,
+        None,
+        "Nenhum backend local de transcrição foi encontrado ou ficou configurado. Instale whisper.cpp e ffmpeg, depois aponte WHISPER_CPP_MODEL para um modelo local em ~/.codex/models.",
+        None,
+        Some(STT_INSTALL_COMMAND),
+        detail,
+    )
+}
+
+fn ffmpeg_convert_to_wav(input: &Path, temp_dir: &Path) -> Result<PathBuf, String> {
+    let ffmpeg = command_in_path("ffmpeg").ok_or_else(|| "ffmpeg não está no PATH.".to_owned())?;
+    let output_path = temp_dir.join("audio.wav");
+    let output = Command::new(ffmpeg)
+        .arg("-y")
+        .arg("-i")
+        .arg(input)
+        .arg("-ar")
+        .arg("16000")
+        .arg("-ac")
+        .arg("1")
+        .arg(&output_path)
+        .output()
+        .map_err(|error| format!("falha ao executar ffmpeg: {error}"))?;
+    if output.status.success() && output_path.is_file() {
+        return Ok(output_path);
+    }
+    let stderr = String::from_utf8_lossy(&output.stderr).trim().to_owned();
+    Err(if stderr.is_empty() {
+        "ffmpeg não conseguiu converter o áudio.".to_owned()
+    } else {
+        stderr
+    })
+}
+
+fn whisper_cpp_model_path() -> Option<PathBuf> {
+    for key in ["WHISPER_CPP_MODEL", "WHISPER_MODEL"] {
+        if let Some(path) = env::var_os(key)
+            .map(PathBuf::from)
+            .filter(|path| path.is_file())
+        {
+            return Some(path);
+        }
+    }
+    let home = home_dir().ok()?;
+    [
+        home.join(".codex/models/ggml-small.bin"),
+        home.join(".codex/models/ggml-base.bin"),
+        home.join(".codex/models/ggml-tiny.bin"),
+        home.join(".local/share/whisper.cpp/ggml-small.bin"),
+        home.join(".local/share/whisper.cpp/ggml-base.bin"),
+        home.join(".local/share/whisper.cpp/ggml-tiny.bin"),
+    ]
+    .into_iter()
+    .find(|path| path.is_file())
+}
+
+fn clean_transcript_output(raw: &str) -> String {
+    let without_timestamps = regex::Regex::new(r"(?m)^\s*\[[^\]]+\]\s*")
+        .ok()
+        .map(|pattern| pattern.replace_all(raw, "").to_string())
+        .unwrap_or_else(|| raw.to_owned());
+    without_timestamps
+        .lines()
+        .map(str::trim)
+        .filter(|line| {
+            !line.is_empty()
+                && !line.starts_with("whisper_")
+                && !line.starts_with("system_info:")
+                && !line.starts_with("main:")
+        })
+        .collect::<Vec<_>>()
+        .join(" ")
+        .trim()
+        .to_owned()
+}
+
+fn read_first_txt_file(directory: &Path) -> Option<String> {
+    fs::read_dir(directory)
+        .ok()?
+        .flatten()
+        .map(|entry| entry.path())
+        .find(|path| path.extension().and_then(|ext| ext.to_str()) == Some("txt"))
+        .and_then(|path| fs::read_to_string(path).ok())
+        .map(|text| clean_transcript_output(&text))
+        .filter(|text| !text.is_empty())
+}
+
+fn openai_whisper_cached_model() -> Option<String> {
+    let cache_dir = home_dir().ok()?.join(".cache/whisper");
+    let preferred = ["turbo", "small", "base", "tiny"];
+    for name in preferred {
+        if cache_dir.join(format!("{name}.pt")).is_file() {
+            return Some(name.to_owned());
+        }
+    }
+    fs::read_dir(cache_dir)
+        .ok()?
+        .flatten()
+        .map(|entry| entry.path())
+        .find(|path| path.extension().and_then(|extension| extension.to_str()) == Some("pt"))
+        .and_then(|path| {
+            path.file_stem()
+                .and_then(|stem| stem.to_str())
+                .map(str::to_owned)
+        })
+}
+
+fn faster_whisper_local_model() -> Option<PathBuf> {
+    env::var_os("FASTER_WHISPER_MODEL")
+        .map(PathBuf::from)
+        .filter(|path| path.exists())
+}
+
+fn run_whisper_cpp(audio_path: &Path) -> Result<Option<String>, String> {
+    let Some(binary) = command_in_path("whisper-cli") else {
+        return Ok(None);
+    };
+    let Some(model) = whisper_cpp_model_path() else {
+        return Err("whisper-cli encontrado, mas nenhum modelo local foi encontrado. Defina WHISPER_CPP_MODEL ou coloque ggml-base.bin em ~/.codex/models.".to_owned());
+    };
+    let output = Command::new(binary)
+        .arg("-m")
+        .arg(model)
+        .arg("-f")
+        .arg(audio_path)
+        .arg("-l")
+        .arg("pt")
+        .arg("-nt")
+        .output()
+        .map_err(|error| format!("falha ao executar whisper-cli: {error}"))?;
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    let text = clean_transcript_output(if stdout.trim().is_empty() {
+        &stderr
+    } else {
+        &stdout
+    });
+    if output.status.success() && !text.is_empty() {
+        Ok(Some(text))
+    } else {
+        Err(format!(
+            "whisper-cli falhou: {}",
+            stderr.trim().lines().last().unwrap_or("sem detalhe")
+        ))
+    }
+}
+
+fn run_openai_whisper(audio_path: &Path, temp_dir: &Path) -> Result<Option<String>, String> {
+    let Some(binary) = command_in_path("whisper") else {
+        return Ok(None);
+    };
+    let Some(model_name) = openai_whisper_cached_model() else {
+        return Err("whisper encontrado, mas nenhum modelo local foi encontrado em ~/.cache/whisper; não baixei modelo automaticamente.".to_owned());
+    };
+    let output_dir = temp_dir.join("whisper-output");
+    fs::create_dir_all(&output_dir)
+        .map_err(|error| format!("falha ao criar saída whisper: {error}"))?;
+    let output = Command::new(binary)
+        .arg(audio_path)
+        .arg("--model")
+        .arg(model_name)
+        .arg("--language")
+        .arg("Portuguese")
+        .arg("--task")
+        .arg("transcribe")
+        .arg("--fp16")
+        .arg("False")
+        .arg("--output_format")
+        .arg("txt")
+        .arg("--output_dir")
+        .arg(&output_dir)
+        .output()
+        .map_err(|error| format!("falha ao executar whisper: {error}"))?;
+    if let Some(text) = read_first_txt_file(&output_dir) {
+        return Ok(Some(text));
+    }
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let text = clean_transcript_output(&stdout);
+    if output.status.success() && !text.is_empty() {
+        Ok(Some(text))
+    } else {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        Err(format!(
+            "whisper falhou: {}",
+            stderr.trim().lines().last().unwrap_or("sem detalhe")
+        ))
+    }
+}
+
+fn run_faster_whisper(audio_path: &Path, temp_dir: &Path) -> Result<Option<String>, String> {
+    let Some(binary) = command_in_path("faster-whisper") else {
+        return Ok(None);
+    };
+    let Some(model_path) = faster_whisper_local_model() else {
+        return Err("faster-whisper encontrado, mas FASTER_WHISPER_MODEL não aponta para um modelo local; não baixei modelo automaticamente.".to_owned());
+    };
+    let output_dir = temp_dir.join("faster-whisper-output");
+    fs::create_dir_all(&output_dir)
+        .map_err(|error| format!("falha ao criar saída faster-whisper: {error}"))?;
+    let output = Command::new(binary)
+        .arg(audio_path)
+        .arg("--model")
+        .arg(model_path)
+        .arg("--language")
+        .arg("pt")
+        .arg("--output_dir")
+        .arg(&output_dir)
+        .arg("--output_format")
+        .arg("txt")
+        .output()
+        .map_err(|error| format!("falha ao executar faster-whisper: {error}"))?;
+    if let Some(text) = read_first_txt_file(&output_dir) {
+        return Ok(Some(text));
+    }
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let text = clean_transcript_output(&stdout);
+    if output.status.success() && !text.is_empty() {
+        Ok(Some(text))
+    } else {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        Err(format!(
+            "faster-whisper falhou: {}",
+            stderr.trim().lines().last().unwrap_or("sem detalhe")
+        ))
+    }
+}
+
+fn run_vosk_transcriber(audio_path: &Path) -> Result<Option<String>, String> {
+    let Some(binary) = command_in_path("vosk-transcriber") else {
+        return Ok(None);
+    };
+    let output = Command::new(binary)
+        .arg("-i")
+        .arg(audio_path)
+        .output()
+        .map_err(|error| format!("falha ao executar vosk-transcriber: {error}"))?;
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let text = clean_transcript_output(&stdout);
+    if output.status.success() && !text.is_empty() {
+        Ok(Some(text))
+    } else {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        Err(format!(
+            "vosk-transcriber falhou: {}",
+            stderr.trim().lines().last().unwrap_or("sem detalhe")
+        ))
+    }
+}
+
+#[tauri::command]
+pub fn transcribe_audio(
+    audio_bytes: Vec<u8>,
+    mime_type: Option<String>,
+) -> Result<VoiceTranscriptionResult, ErrorPayload> {
+    if audio_bytes.is_empty() {
+        return Ok(voice_result(
+            VoiceTranscriptionResultStatus::Error,
+            None,
+            "Nenhum áudio foi recebido para transcrição.",
+            None,
+            None,
+            None,
+        ));
+    }
+
+    let temp_dir = env::temp_dir().join(format!("codex-voice-{}", Uuid::new_v4()));
+    if let Err(error) = fs::create_dir_all(&temp_dir) {
+        return Ok(voice_result(
+            VoiceTranscriptionResultStatus::Error,
+            None,
+            "Não foi possível preparar arquivo temporário de áudio.",
+            None,
+            None,
+            Some(error.to_string()),
+        ));
+    }
+
+    let input_path = temp_dir.join(format!(
+        "input.{}",
+        audio_extension_from_mime(mime_type.as_deref())
+    ));
+    if let Err(error) = fs::write(&input_path, &audio_bytes) {
+        let _ = fs::remove_dir_all(&temp_dir);
+        return Ok(voice_result(
+            VoiceTranscriptionResultStatus::Error,
+            None,
+            "Não foi possível salvar áudio temporário.",
+            None,
+            None,
+            Some(error.to_string()),
+        ));
+    }
+
+    let mut diagnostics = Vec::new();
+    let audio_path = match ffmpeg_convert_to_wav(&input_path, &temp_dir) {
+        Ok(path) => path,
+        Err(error) => {
+            diagnostics.push(error);
+            input_path.clone()
+        }
+    };
+
+    let attempts: [(&str, Result<Option<String>, String>); 1] =
+        [("whisper-cli", run_whisper_cpp(&audio_path))];
+    for (backend, attempt) in attempts {
+        match attempt {
+            Ok(Some(text)) => {
+                let _ = fs::remove_dir_all(&temp_dir);
+                return Ok(voice_result(
+                    VoiceTranscriptionResultStatus::Done,
+                    Some(text),
+                    "Transcrição concluída.",
+                    Some(backend),
+                    None,
+                    None,
+                ));
+            }
+            Ok(None) => {}
+            Err(error) => diagnostics.push(error),
+        }
+    }
+
+    let attempts: [(&str, Result<Option<String>, String>); 1] =
+        [("whisper", run_openai_whisper(&audio_path, &temp_dir))];
+    for (backend, attempt) in attempts {
+        match attempt {
+            Ok(Some(text)) => {
+                let _ = fs::remove_dir_all(&temp_dir);
+                return Ok(voice_result(
+                    VoiceTranscriptionResultStatus::Done,
+                    Some(text),
+                    "Transcrição concluída.",
+                    Some(backend),
+                    None,
+                    None,
+                ));
+            }
+            Ok(None) => {}
+            Err(error) => diagnostics.push(error),
+        }
+    }
+
+    let attempts: [(&str, Result<Option<String>, String>); 1] =
+        [("faster-whisper", run_faster_whisper(&audio_path, &temp_dir))];
+    for (backend, attempt) in attempts {
+        match attempt {
+            Ok(Some(text)) => {
+                let _ = fs::remove_dir_all(&temp_dir);
+                return Ok(voice_result(
+                    VoiceTranscriptionResultStatus::Done,
+                    Some(text),
+                    "Transcrição concluída.",
+                    Some(backend),
+                    None,
+                    None,
+                ));
+            }
+            Ok(None) => {}
+            Err(error) => diagnostics.push(error),
+        }
+    }
+
+    let attempts: [(&str, Result<Option<String>, String>); 1] =
+        [("vosk-transcriber", run_vosk_transcriber(&audio_path))];
+    for (backend, attempt) in attempts {
+        match attempt {
+            Ok(Some(text)) => {
+                let _ = fs::remove_dir_all(&temp_dir);
+                return Ok(voice_result(
+                    VoiceTranscriptionResultStatus::Done,
+                    Some(text),
+                    "Transcrição concluída.",
+                    Some(backend),
+                    None,
+                    None,
+                ));
+            }
+            Ok(None) => {}
+            Err(error) => diagnostics.push(error),
+        }
+    }
+
+    let detail = if diagnostics.is_empty() {
+        None
+    } else {
+        Some(diagnostics.join("\n"))
+    };
+    let _ = fs::remove_dir_all(&temp_dir);
+    Ok(missing_transcription_backend_result(detail))
+}
+
+#[tauri::command]
+pub fn list_file_directory(path: Option<String>) -> Result<FileDirectoryListing, ErrorPayload> {
+    let directory = resolve_existing_path(path.as_deref()).map_err(map_err)?;
+    let metadata = fs::metadata(&directory)
+        .map_err(AppError::from)
+        .map_err(map_err)?;
+    if !metadata.is_dir() {
+        return Err(map_err(AppError::Message(
+            "O caminho informado não é uma pasta.".to_owned(),
+        )));
+    }
+
+    let mut entries = Vec::new();
+    for entry in fs::read_dir(&directory)
+        .map_err(AppError::from)
+        .map_err(map_err)?
+        .flatten()
+    {
+        if let Ok(entry) = file_entry_from_path(&entry.path()) {
+            entries.push(entry);
+        }
+        if entries.len() > FILE_BROWSER_MAX_ENTRIES {
+            break;
+        }
+    }
+
+    let truncated = entries.len() > FILE_BROWSER_MAX_ENTRIES;
+    entries.truncate(FILE_BROWSER_MAX_ENTRIES);
+    entries.sort_by(|left, right| {
+        right
+            .is_directory
+            .cmp(&left.is_directory)
+            .then_with(|| left.name.to_lowercase().cmp(&right.name.to_lowercase()))
+    });
+
+    Ok(FileDirectoryListing {
+        path: directory.to_string_lossy().to_string(),
+        parent_path: directory
+            .parent()
+            .map(|parent| parent.to_string_lossy().to_string()),
+        entries,
+        shortcuts: file_shortcuts().map_err(map_err)?,
+        truncated,
+    })
+}
+
+#[tauri::command]
+pub fn get_file_attachment(path: String) -> Result<SelectedFileAttachment, ErrorPayload> {
+    let resolved = resolve_existing_path(Some(&path)).map_err(map_err)?;
+    let metadata = fs::metadata(&resolved)
+        .map_err(AppError::from)
+        .map_err(map_err)?;
+    let is_directory = metadata.is_dir();
+    let kind = detect_file_kind(&resolved, is_directory);
+    let (preview, preview_kind, preview_truncated) = if is_directory {
+        (None, None, false)
+    } else {
+        match kind {
+            FileEntryKind::Text | FileEntryKind::Json | FileEntryKind::Code => {
+                let (preview, truncated) =
+                    read_text_preview(&resolved, &metadata).map_err(map_err)?;
+                (Some(preview), Some(FilePreviewKind::Text), truncated)
+            }
+            FileEntryKind::Pdf => {
+                let (preview, preview_kind, truncated) = pdf_preview(&resolved);
+                (preview, Some(preview_kind), truncated)
+            }
+            FileEntryKind::Zip => {
+                let (preview, preview_kind, truncated) = zip_preview(&resolved);
+                (preview, Some(preview_kind), truncated)
+            }
+            _ => (None, Some(FilePreviewKind::Unavailable), false),
+        }
+    };
+
+    let name = resolved
+        .file_name()
+        .and_then(|name| name.to_str())
+        .map(str::to_owned)
+        .unwrap_or_else(|| resolved.to_string_lossy().to_string());
+
+    Ok(SelectedFileAttachment {
+        name,
+        path: resolved.to_string_lossy().to_string(),
+        kind,
+        extension: path_extension(&resolved),
+        is_directory,
+        size: if is_directory {
+            None
+        } else {
+            Some(metadata.len())
+        },
+        modified_at: modified_iso(&metadata),
+        preview,
+        preview_kind,
+        preview_truncated,
+    })
+}
+
+#[cfg(test)]
+mod file_browser_tests {
+    use super::*;
+
+    fn temp_file_browser_dir() -> PathBuf {
+        let dir = std::env::temp_dir().join(format!("codex-file-browser-test-{}", Uuid::new_v4()));
+        fs::create_dir_all(&dir).expect("deve criar diretório temporário");
+        dir
+    }
+
+    #[test]
+    fn list_file_directory_returns_entries_and_metadata() {
+        let dir = temp_file_browser_dir();
+        let nested = dir.join("nested");
+        fs::create_dir_all(&nested).expect("deve criar subpasta");
+        fs::write(dir.join("notes.md"), "conteúdo de teste").expect("deve criar arquivo");
+
+        let listing = list_file_directory(Some(dir.to_string_lossy().to_string()))
+            .expect("deve listar pasta");
+
+        assert_eq!(listing.path, dir.canonicalize().unwrap().to_string_lossy());
+        assert!(listing
+            .entries
+            .iter()
+            .any(|entry| entry.name == "nested" && entry.is_directory));
+        assert!(listing
+            .entries
+            .iter()
+            .any(|entry| entry.name == "notes.md" && !entry.is_directory));
+        assert!(listing
+            .shortcuts
+            .iter()
+            .any(|shortcut| shortcut.id == "home"));
+
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn get_file_attachment_reads_limited_text_preview() {
+        let dir = temp_file_browser_dir();
+        let file = dir.join("notes.md");
+        fs::write(&file, "linha 1\nlinha 2").expect("deve criar arquivo");
+
+        let attachment =
+            get_file_attachment(file.to_string_lossy().to_string()).expect("deve resolver anexo");
+
+        assert_eq!(attachment.name, "notes.md");
+        assert_eq!(attachment.kind, FileEntryKind::Text);
+        assert_eq!(attachment.preview_kind, Some(FilePreviewKind::Text));
+        assert!(attachment.preview.unwrap_or_default().contains("linha 1"));
+        assert!(!attachment.preview_truncated);
+
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn get_file_attachment_rejects_invalid_path() {
+        let result = get_file_attachment("/path/que/nao/existe/passada-06".to_owned());
+        assert!(result.is_err());
+    }
 }
 
 fn actionable_error(
@@ -578,7 +1480,10 @@ pub async fn send_order_to_agent(
     state: State<'_, AppState>,
     session_id: String,
     content: String,
+    mode: Option<String>,
+    attachments: Option<Vec<Value>>,
 ) -> Result<AgentSession, ErrorPayload> {
+    let _mode = mode;
     run_agent_order(
         Some(&app),
         state.session_manager.clone(),
@@ -586,9 +1491,76 @@ pub async fn send_order_to_agent(
         state.settings(),
         session_id,
         content,
+        attachments.unwrap_or_default(),
     )
     .await
     .map_err(map_err)
+}
+
+fn attachment_text(value: &Value, key: &str) -> Option<String> {
+    value
+        .get(key)
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|text| !text.is_empty())
+        .map(redact_secret_like)
+}
+
+fn attachment_context(attachments: &[Value]) -> String {
+    if attachments.is_empty() {
+        return String::new();
+    }
+
+    let mut blocks = Vec::new();
+    for attachment in attachments {
+        let name = attachment_text(attachment, "name").unwrap_or_else(|| "arquivo".to_owned());
+        let path = attachment_text(attachment, "path")
+            .unwrap_or_else(|| "caminho indisponível".to_owned());
+        let kind = attachment_text(attachment, "kind").unwrap_or_else(|| "generic".to_owned());
+        let mime = attachment_text(attachment, "mimeType");
+        let size = attachment.get("size").and_then(Value::as_u64);
+        let preview = attachment_text(attachment, "previewTextLimited");
+
+        let mut lines = vec![
+            format!("Nome: {name}"),
+            format!("Caminho: {path}"),
+            format!("Tipo: {kind}"),
+        ];
+        if let Some(mime) = mime {
+            lines.push(format!("MIME: {mime}"));
+        }
+        if let Some(size) = size {
+            lines.push(format!("Tamanho: {size} bytes"));
+        }
+        if let Some(preview) = preview {
+            lines.push("Preview limitado para contexto oculto:".to_owned());
+            lines.push(preview);
+        }
+        blocks.push(lines.join("\n"));
+    }
+
+    format!(
+        "Anexos brutos/metadados recebidos pelo app. Não renderizar como texto da conversa; use path/metadados e ferramentas locais se precisar abrir.\n\n{}",
+        blocks.join("\n\n")
+    )
+}
+
+fn prompt_with_attachments(prompt: &str, attachments: &[Value]) -> String {
+    let context = attachment_context(attachments);
+    if context.is_empty() {
+        prompt.to_owned()
+    } else {
+        format!("{prompt}\n\n[contexto oculto de anexos]\n{context}")
+    }
+}
+
+fn prompt_with_language_preference(prompt: &str, language: &str) -> String {
+    let label = match language {
+        "en" => "English",
+        "es" => "Español",
+        _ => "Português (Brasil)",
+    };
+    format!("{prompt}\n\n[preferência do usuário]\nResponda em: {label}.")
 }
 
 async fn run_agent_order(
@@ -598,11 +1570,21 @@ async fn run_agent_order(
     settings: AppSettings,
     session_id: String,
     content: String,
+    attachments: Vec<Value>,
 ) -> crate::error::AppResult<AgentSession> {
     let prompt = content.trim();
-    if prompt.is_empty() {
+    if prompt.is_empty() && attachments.is_empty() {
         return Err(AppError::Message("Ordem vazia.".to_owned()));
     }
+    let visible_prompt = if prompt.is_empty() {
+        "Anexo enviado."
+    } else {
+        prompt
+    };
+    let provider_prompt = prompt_with_language_preference(
+        &prompt_with_attachments(visible_prompt, &attachments),
+        &settings.ai_response_language,
+    );
 
     let session_environment = session_manager.get_session(&session_id).ok();
     let provider_id = session_environment
@@ -632,7 +1614,8 @@ async fn run_agent_order(
         .or_else(|| settings.selected_provider_profile_id.clone());
     let session = session_manager.append_user_message_with_context(
         &session_id,
-        prompt,
+        visible_prompt,
+        attachments.clone(),
         Some(provider_id.clone()),
         Some(model_id.clone()),
         Some(agent_profile_id),
@@ -676,7 +1659,8 @@ async fn run_agent_order(
     let request = ProviderGenerateRequest {
         provider_id: provider_id.clone(),
         model_id: model_id.clone(),
-        prompt: prompt.to_owned(),
+        prompt: provider_prompt,
+        attachments,
         workspace_root: settings.workspace_root,
         account_profile_id,
     };
@@ -875,6 +1859,12 @@ mod agent_order_tests {
             selected_local_model_id: None,
             model_selection_history: Vec::new(),
             local_models_root: "/tmp/.codex/models".to_owned(),
+            theme_preference: crate::models::ThemePreference::Dark,
+            ai_response_language: "pt-BR".to_owned(),
+            auto_generate_titles: true,
+            auto_copy_responses: false,
+            paste_large_text_as_file: true,
+            personalization: crate::models::AppPersonalizationSettings::default(),
         }
     }
 
@@ -894,6 +1884,7 @@ mod agent_order_tests {
             mock_settings(dir.to_string_lossy().to_string()),
             session.id,
             "crie um plano curto".to_owned(),
+            Vec::new(),
         )
         .await
         .expect("ordem mock deve responder");

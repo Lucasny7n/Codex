@@ -103,9 +103,11 @@ interface PopupMenuProps {
   onClose: () => void;
   children: ReactNode;
   align?: 'left' | 'right';
+  placement?: 'auto' | 'top' | 'bottom';
+  className?: string;
 }
 
-export function PopupMenu({ open, onClose, children, align = 'right' }: PopupMenuProps): JSX.Element | null {
+export function PopupMenu({ open, onClose, children, align = 'right', placement = 'auto', className }: PopupMenuProps): JSX.Element | null {
   const menuRef = useRef<HTMLDivElement>(null);
   const anchorRef = useRef<HTMLSpanElement>(null);
   const [position, setPosition] = useState({ top: 0, left: 0 });
@@ -118,8 +120,15 @@ export function PopupMenu({ open, onClose, children, align = 'right' }: PopupMen
       if (!anchor) return;
 
       const rect = anchor.getBoundingClientRect();
-      const width = 176;
-      const top = Math.min(rect.bottom + 6, window.innerHeight - 48);
+      const width = menuRef.current?.offsetWidth ?? 176;
+      const height = menuRef.current?.offsetHeight ?? 220;
+      const spaceBelow = window.innerHeight - rect.bottom;
+      const spaceAbove = rect.top;
+      const opensUp =
+        placement === 'top' ||
+        (placement === 'auto' && spaceBelow < height + 16 && spaceAbove > spaceBelow);
+      const preferredTop = opensUp ? rect.top - height - 6 : rect.bottom + 6;
+      const top = Math.max(8, Math.min(preferredTop, window.innerHeight - height - 8));
       const preferredLeft = align === 'right' ? rect.right - width : rect.left;
       const left = Math.max(8, Math.min(preferredLeft, window.innerWidth - width - 8));
       setPosition({ top, left });
@@ -132,7 +141,7 @@ export function PopupMenu({ open, onClose, children, align = 'right' }: PopupMen
       window.removeEventListener('resize', updatePosition);
       window.removeEventListener('scroll', updatePosition, true);
     };
-  }, [align, open]);
+  }, [align, open, placement]);
 
   useEffect(() => {
     if (!open) return;
@@ -143,7 +152,27 @@ export function PopupMenu({ open, onClose, children, align = 'right' }: PopupMen
       onClose();
     }
     function handleKeyDown(event: KeyboardEvent): void {
-      if (event.key === 'Escape') onClose();
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        onClose();
+        return;
+      }
+      if (!menuRef.current || (event.key !== 'ArrowDown' && event.key !== 'ArrowUp' && event.key !== 'Home' && event.key !== 'End')) return;
+      const items = focusableElements(menuRef.current).filter((item) => item.getAttribute('aria-disabled') !== 'true');
+      if (items.length === 0) return;
+      event.preventDefault();
+      const currentIndex = items.findIndex((item) => item === document.activeElement);
+      if (event.key === 'Home') {
+        items[0].focus();
+        return;
+      }
+      if (event.key === 'End') {
+        items[items.length - 1].focus();
+        return;
+      }
+      const direction = event.key === 'ArrowDown' ? 1 : -1;
+      const nextIndex = currentIndex === -1 ? (direction > 0 ? 0 : items.length - 1) : (currentIndex + direction + items.length) % items.length;
+      items[nextIndex].focus();
     }
     document.addEventListener('pointerdown', handlePointerDown);
     document.addEventListener('keydown', handleKeyDown);
@@ -162,7 +191,7 @@ export function PopupMenu({ open, onClose, children, align = 'right' }: PopupMen
       {createPortal(
         <div
           ref={menuRef}
-          className={`popup-menu popup-menu-${align}`}
+          className={`popup-menu menu-surface popup-menu-${align} ${className ?? ''}`}
           role="menu"
           style={{ top: position.top, left: position.left }}
         >

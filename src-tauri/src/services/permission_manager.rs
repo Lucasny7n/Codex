@@ -196,6 +196,12 @@ mod tests {
             selected_local_model_id: None,
             model_selection_history: Vec::new(),
             local_models_root: "/tmp/.codex/models".to_owned(),
+            theme_preference: crate::models::ThemePreference::Dark,
+            ai_response_language: "pt-BR".to_owned(),
+            auto_generate_titles: true,
+            auto_copy_responses: false,
+            paste_large_text_as_file: true,
+            personalization: crate::models::AppPersonalizationSettings::default(),
         }
     }
 

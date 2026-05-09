@@ -81,14 +81,14 @@ const ERROR_MAP: Record<string, Omit<ActionableError, 'technicalDetails'>> = {
   quota_exceeded: {
     code: 'quota_exceeded',
     severity: 'warning',
-    message: 'Cota excedida.',
+    message: 'Cota excedida nesta conta. Troque a conta, o provider ou aguarde o reset.',
     actionLabel: 'Trocar conta',
     actionTarget: 'model-selector',
   },
   rate_limited: {
     code: 'rate_limited',
     severity: 'warning',
-    message: 'Limite temporário.',
+    message: 'Cota excedida nesta conta. Troque a conta, o provider ou aguarde o reset.',
     actionLabel: 'Aguardar ou trocar modelo',
     actionTarget: 'settings:diagnostics',
   },

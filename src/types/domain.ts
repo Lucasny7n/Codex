@@ -6,6 +6,7 @@ export interface ChatMessage {
   content: string;
   createdAt: string;
   reasoningSummary?: string;
+  attachments?: ChatAttachment[];
 }
 
 export interface AgentSession {
@@ -97,6 +98,77 @@ export interface FileChangeEntry {
   path: string;
   event: 'create' | 'modify' | 'remove' | 'rename';
   at: string;
+}
+
+export type FileEntryKind =
+  | 'directory'
+  | 'pdf'
+  | 'zip'
+  | 'text'
+  | 'json'
+  | 'image'
+  | 'code'
+  | 'audio'
+  | 'video'
+  | 'generic';
+
+export interface FileShortcut {
+  id: string;
+  label: string;
+  path: string;
+  exists: boolean;
+}
+
+export interface FileBrowserEntry {
+  name: string;
+  path: string;
+  kind: FileEntryKind;
+  extension?: string;
+  isDirectory: boolean;
+  size?: number;
+  modifiedAt?: string;
+}
+
+export interface FileDirectoryListing {
+  path: string;
+  parentPath?: string;
+  entries: FileBrowserEntry[];
+  shortcuts: FileShortcut[];
+  truncated: boolean;
+}
+
+export interface SelectedFileAttachment {
+  name: string;
+  path: string;
+  kind: FileEntryKind;
+  extension?: string;
+  isDirectory: boolean;
+  size?: number;
+  modifiedAt?: string;
+  preview?: string;
+  previewKind?: 'text' | 'pdf' | 'zip' | 'unavailable';
+  previewTruncated: boolean;
+}
+
+export interface ChatAttachment {
+  path: string;
+  name: string;
+  mimeType?: string;
+  size?: number;
+  kind: FileEntryKind;
+  previewAvailable: boolean;
+  previewTextLimited?: string;
+}
+
+export type VoiceTranscriptionResultStatus = 'done' | 'missing_backend' | 'error';
+
+export interface VoiceTranscriptionResult {
+  status: VoiceTranscriptionResultStatus;
+  text?: string;
+  message: string;
+  backend?: string;
+  command?: string;
+  technicalDetails?: string;
 }
 
 export interface AgentProfile {
@@ -215,6 +287,22 @@ export interface WorkspaceMeta {
 }
 
 export type ExecutionMode = 'cloud' | 'local';
+export type ThemePreference = 'system' | 'light' | 'dark';
+export type AiResponseLanguage = 'pt-BR' | 'en' | 'es';
+
+export interface AppPersonalizationSettings {
+  memoriesStored: boolean;
+  referenceChatHistory: boolean;
+  webPageExtraction: boolean;
+  imageSearch: boolean;
+  webSearch: boolean;
+  imageGeneration: boolean;
+  codeInterpreter: boolean;
+  recoverHistoricalMemories: boolean;
+  imageEditing: boolean;
+  memoryUpdate: boolean;
+  localImageUpscaling: boolean;
+}
 
 export interface ModelSelectionHistoryEntry {
   mode: ExecutionMode;
@@ -236,6 +324,12 @@ export interface AppSettings {
   selectedLocalModelId?: string;
   modelSelectionHistory: ModelSelectionHistoryEntry[];
   localModelsRoot: string;
+  themePreference?: ThemePreference;
+  aiResponseLanguage?: AiResponseLanguage;
+  autoGenerateTitles?: boolean;
+  autoCopyResponses?: boolean;
+  pasteLargeTextAsFile?: boolean;
+  personalization?: AppPersonalizationSettings;
 }
 
 export interface MemorySnapshot {

@@ -1,6 +1,6 @@
 # Projeto: Codex Command Center
 
-Este projeto vive em /home/lucas/Codex.
+Este projeto vive em /home/lucas/Codex-Codex.
 
 Antes de alterar código:
 - Leia README.md.

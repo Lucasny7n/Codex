@@ -16,7 +16,7 @@ elif [[ -x "$HELPER_DEBUG" ]]; then
   HELPER_SOURCE="$HELPER_DEBUG"
 else
   echo "Helper não encontrado. Compile primeiro:"
-  echo "  cd /home/lucas/Codex/src-tauri && cargo build --release --bin codex-privileged-helper"
+  echo "  cd /home/lucas/Codex-Codex/src-tauri && cargo build --release --bin codex-privileged-helper"
   exit 1
 fi
 

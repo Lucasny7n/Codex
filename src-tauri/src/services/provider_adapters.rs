@@ -991,6 +991,7 @@ impl ProviderAdapter for GeminiCliAdapter {
                 provider_id: Self::ID.to_owned(),
                 model_id: Self::MODEL_ID.to_owned(),
                 prompt: "Responda apenas: ok".to_owned(),
+                attachments: Vec::new(),
                 workspace_root: env::current_dir()
                     .unwrap_or_else(|_| PathBuf::from("."))
                     .to_string_lossy()
@@ -1233,6 +1234,7 @@ impl ProviderAdapter for LocalOllamaAdapter {
                 provider_id: Self::ID.to_owned(),
                 model_id: fallback_local_model_id().to_owned(),
                 prompt: "Responda apenas: ok".to_owned(),
+                attachments: Vec::new(),
                 workspace_root: env::current_dir()
                     .unwrap_or_else(|_| PathBuf::from("."))
                     .to_string_lossy()
@@ -1315,7 +1317,7 @@ impl ProviderAdapter for LocalOllamaAdapter {
                 content: content.clone(),
                 status: provider_status(
                     ProviderStatusState::Ready,
-                    "Resposta local concluída pela API HTTP do Ollama.",
+                    "Ollama respondeu pela API HTTP.",
                     Some(command_preview.clone()),
                     self.command_path()
                         .as_deref()
@@ -1349,6 +1351,31 @@ impl ProviderAdapterRegistry {
             ),
             ("google/gemini-2.5-flash", "Gemini 2.5 Flash via OpenRouter"),
         ];
+        const MISTRAL_MODELS: &[(&str, &str)] = &[
+            ("mistral-large-latest", "Mistral Large"),
+            ("codestral-latest", "Codestral"),
+            ("mixtral-8x7b", "Mixtral"),
+        ];
+        const GROQ_MODELS: &[(&str, &str)] = &[
+            ("llama-3.1-70b-versatile", "Llama via Groq"),
+            ("qwen-qwq-32b", "Qwen via Groq"),
+            ("mixtral-8x7b-32768", "Mixtral via Groq"),
+        ];
+        const TOGETHER_MODELS: &[(&str, &str)] = &[(
+            "meta-llama/Llama-3.1-70B-Instruct-Turbo",
+            "Llama via Together AI",
+        )];
+        const FIREWORKS_MODELS: &[(&str, &str)] = &[(
+            "accounts/fireworks/models/llama-v3p1-70b-instruct",
+            "Llama via Fireworks AI",
+        )];
+        const DEEPSEEK_MODELS: &[(&str, &str)] = &[
+            ("deepseek-chat", "DeepSeek Chat"),
+            ("deepseek-coder", "DeepSeek Coder"),
+            ("deepseek-reasoner", "DeepSeek R1"),
+        ];
+        const XAI_MODELS: &[(&str, &str)] = &[("grok", "Grok")];
+        const PERPLEXITY_MODELS: &[(&str, &str)] = &[("sonar", "Sonar")];
 
         let mut adapters: Vec<Arc<dyn ProviderAdapter>> = vec![
             Arc::new(CodexCliAdapter),
@@ -1368,6 +1395,55 @@ impl ProviderAdapterRegistry {
                 "OpenRouter",
                 "https://openrouter.ai/api/v1",
                 OPENROUTER_MODELS,
+                credential_store.clone(),
+            )),
+            Arc::new(OpenAiCompatibleAdapter::new(
+                "mistral-api",
+                "Mistral",
+                "https://api.mistral.ai/v1",
+                MISTRAL_MODELS,
+                credential_store.clone(),
+            )),
+            Arc::new(OpenAiCompatibleAdapter::new(
+                "groq-api",
+                "Groq",
+                "https://api.groq.com/openai/v1",
+                GROQ_MODELS,
+                credential_store.clone(),
+            )),
+            Arc::new(OpenAiCompatibleAdapter::new(
+                "together-api",
+                "Together AI",
+                "https://api.together.xyz/v1",
+                TOGETHER_MODELS,
+                credential_store.clone(),
+            )),
+            Arc::new(OpenAiCompatibleAdapter::new(
+                "fireworks-api",
+                "Fireworks AI",
+                "https://api.fireworks.ai/inference/v1",
+                FIREWORKS_MODELS,
+                credential_store.clone(),
+            )),
+            Arc::new(OpenAiCompatibleAdapter::new(
+                "deepseek-api",
+                "DeepSeek",
+                "https://api.deepseek.com",
+                DEEPSEEK_MODELS,
+                credential_store.clone(),
+            )),
+            Arc::new(OpenAiCompatibleAdapter::new(
+                "xai-api",
+                "xAI",
+                "https://api.x.ai/v1",
+                XAI_MODELS,
+                credential_store.clone(),
+            )),
+            Arc::new(OpenAiCompatibleAdapter::new(
+                "perplexity-api",
+                "Perplexity",
+                "https://api.perplexity.ai",
+                PERPLEXITY_MODELS,
                 credential_store.clone(),
             )),
             Arc::new(AnthropicAdapter {
@@ -1663,6 +1739,7 @@ mod tests {
                 provider_id: "mock-development".to_owned(),
                 model_id: "mock-development-model".to_owned(),
                 prompt: "teste".to_owned(),
+                attachments: Vec::new(),
                 workspace_root: ".".to_owned(),
                 account_profile_id: None,
             })
@@ -1681,6 +1758,7 @@ mod tests {
                 provider_id: "local-ollama".to_owned(),
                 model_id: "qwen2.5-coder:7b".to_owned(),
                 prompt: "teste".to_owned(),
+                attachments: Vec::new(),
                 workspace_root: ".".to_owned(),
                 account_profile_id: None,
             })
@@ -1698,6 +1776,7 @@ mod tests {
                 provider_id: "codex-cli".to_owned(),
                 model_id: "codex-cli-default".to_owned(),
                 prompt: "teste".to_owned(),
+                attachments: Vec::new(),
                 workspace_root: ".".to_owned(),
                 account_profile_id: None,
             })

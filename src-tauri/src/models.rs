@@ -1,5 +1,6 @@
 use chrono::Utc;
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 use std::path::Path;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -10,6 +11,8 @@ pub struct ChatMessage {
     pub content: String,
     pub created_at: String,
     pub reasoning_summary: Option<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub attachments: Vec<Value>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -335,6 +338,62 @@ impl Default for ExecutionMode {
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum ThemePreference {
+    System,
+    Light,
+    Dark,
+}
+
+impl Default for ThemePreference {
+    fn default() -> Self {
+        Self::Dark
+    }
+}
+
+fn default_ai_response_language() -> String {
+    "pt-BR".to_owned()
+}
+
+fn default_true() -> bool {
+    true
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AppPersonalizationSettings {
+    pub memories_stored: bool,
+    pub reference_chat_history: bool,
+    pub web_page_extraction: bool,
+    pub image_search: bool,
+    pub web_search: bool,
+    pub image_generation: bool,
+    pub code_interpreter: bool,
+    pub recover_historical_memories: bool,
+    pub image_editing: bool,
+    pub memory_update: bool,
+    pub local_image_upscaling: bool,
+}
+
+impl Default for AppPersonalizationSettings {
+    fn default() -> Self {
+        Self {
+            memories_stored: true,
+            reference_chat_history: true,
+            web_page_extraction: false,
+            image_search: false,
+            web_search: true,
+            image_generation: false,
+            code_interpreter: true,
+            recover_historical_memories: true,
+            image_editing: false,
+            memory_update: true,
+            local_image_upscaling: false,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ModelSelectionHistoryEntry {
@@ -364,6 +423,18 @@ pub struct AppSettings {
     pub model_selection_history: Vec<ModelSelectionHistoryEntry>,
     #[serde(default = "default_local_models_root")]
     pub local_models_root: String,
+    #[serde(default)]
+    pub theme_preference: ThemePreference,
+    #[serde(default = "default_ai_response_language")]
+    pub ai_response_language: String,
+    #[serde(default = "default_true")]
+    pub auto_generate_titles: bool,
+    #[serde(default)]
+    pub auto_copy_responses: bool,
+    #[serde(default = "default_true")]
+    pub paste_large_text_as_file: bool,
+    #[serde(default)]
+    pub personalization: AppPersonalizationSettings,
 }
 
 impl AppSettings {
@@ -381,6 +452,12 @@ impl AppSettings {
             selected_local_model_id: None,
             model_selection_history: Vec::new(),
             local_models_root: format!("{home}/.codex/models"),
+            theme_preference: ThemePreference::Dark,
+            ai_response_language: default_ai_response_language(),
+            auto_generate_titles: true,
+            auto_copy_responses: false,
+            paste_large_text_as_file: true,
+            personalization: AppPersonalizationSettings::default(),
         }
     }
 }
@@ -512,6 +589,8 @@ pub struct ProviderGenerateRequest {
     pub provider_id: String,
     pub model_id: String,
     pub prompt: String,
+    #[serde(default)]
+    pub attachments: Vec<Value>,
     pub workspace_root: String,
     #[serde(default)]
     pub account_profile_id: Option<String>,
