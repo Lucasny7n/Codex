@@ -7817,6 +7817,15 @@ body,
   color: var(--text-secondary);
 }
 
+:root[data-theme='light'] .prompt-mic-button {
+  color: rgba(15, 23, 42, 0.58);
+}
+
+:root[data-theme='light'] .prompt-send-button:disabled {
+  background: rgba(15, 23, 42, 0.075);
+  color: rgba(15, 23, 42, 0.52);
+}
+
 :root[data-theme='light'] .prompt-icon-button:hover,
 :root[data-theme='light'] .prompt-mode-button:hover,
 :root[data-theme='light'] .prompt-mic-button:hover,

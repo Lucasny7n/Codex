@@ -241,7 +241,7 @@
   --ccc-accent: #2768c9;
   --ccc-focus: rgba(39, 104, 201, 0.22);
   --ccc-hover: rgba(15, 23, 42, 0.055);
-  --ccc-disabled: rgba(15, 23, 42, 0.34);
+  --ccc-disabled: rgba(15, 23, 42, 0.50);
   --ccc-scrollbar-thumb: rgba(15, 23, 42, 0.20);
   --ccc-scrollbar-track: transparent;
   --surface-main: #f4f7fb;
