@@ -180,19 +180,19 @@ export function ChatPanel({ session, emptyTitle = 'Pronto para criar algo?', onO
                   <div className="message-actions" aria-label="Ações da resposta">
                     {copiedMessageId === message.id ? <span className="message-action-chip">Copiado</span> : null}
                     <button type="button" className="message-action-button" aria-label="Copiar resposta" onClick={() => void copyMessage(message)}>
-                      ⧉
+                      <UiIcon name="copy" />
                     </button>
                     <button type="button" className="message-action-button" aria-label="Curtir resposta">
-                      ♡
+                      <UiIcon name="heart" />
                     </button>
                     <button type="button" className="message-action-button" aria-label="Não gostei da resposta">
-                      ♧
+                      <UiIcon name="x" />
                     </button>
                     <button type="button" className="message-action-button" aria-label="Compartilhar resposta">
-                      ↗
+                      <UiIcon name="send" />
                     </button>
                     <button type="button" className="message-action-button" aria-label="Refazer resposta">
-                      ↻
+                      <UiIcon name="refresh" />
                     </button>
                     <div className="popup-anchor">
                       <button
@@ -201,7 +201,7 @@ export function ChatPanel({ session, emptyTitle = 'Pronto para criar algo?', onO
                         aria-label="Mais ações da resposta"
                         onClick={() => setMenuMessageId((current) => current === message.id ? undefined : message.id)}
                       >
-                        ⋯
+                        <UiIcon name="more" />
                       </button>
                       <PopupMenu open={menuMessageId === message.id} onClose={() => setMenuMessageId(undefined)} placement="auto">
                         <button type="button" onClick={() => { setMenuMessageId(undefined); void copyMessage(message); }}>

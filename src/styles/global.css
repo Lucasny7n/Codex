@@ -69,20 +69,23 @@ pre,
 /* Scrollbars */
 .scroll-y {
   overflow-y: auto;
+  scrollbar-gutter: stable;
   scrollbar-width: thin;
-  scrollbar-color: var(--border-main) transparent;
+  scrollbar-color: var(--ccc-scrollbar-thumb, var(--border-main)) var(--ccc-scrollbar-track, transparent);
 }
 
 .scroll-y::-webkit-scrollbar {
-  width: 6px;
+  width: 8px;
 }
 
 .scroll-y::-webkit-scrollbar-track {
-  background: transparent;
+  background: var(--ccc-scrollbar-track, transparent);
 }
 
 .scroll-y::-webkit-scrollbar-thumb {
-  background-color: var(--border-main);
+  background-color: var(--ccc-scrollbar-thumb, var(--border-main));
+  border: 2px solid transparent;
+  background-clip: padding-box;
   border-radius: 10px;
 }
 

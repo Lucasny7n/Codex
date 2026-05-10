@@ -555,6 +555,7 @@ fn env_credential(provider_id: &str) -> Option<String> {
         "groq-api" => &["GROQ_API_KEY"],
         "together-api" => &["TOGETHER_API_KEY"],
         "fireworks-api" => &["FIREWORKS_API_KEY"],
+        "cerebras-api" => &["CEREBRAS_API_KEY"],
         "cohere-api" => &["COHERE_API_KEY"],
         "deepseek-api" => &["DEEPSEEK_API_KEY"],
         "xai-api" => &["XAI_API_KEY"],

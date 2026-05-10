@@ -33,6 +33,7 @@ import {
   restoreSession,
   saveProviderProfileCredential,
   sendOrderToAgent,
+  sendTemporaryOrderToAgent,
   startLocalRuntime,
   testProviderConnection,
   updateSettings,
@@ -593,6 +594,15 @@ export default function App(): JSX.Element {
           status,
           statusLabel: statusLabelFromState(status, 'cloud'),
           available: canSelectModel(status),
+          searchTerms: [
+            model.providerId,
+            model.provider,
+            model.mode,
+            ...model.modalities,
+            ...model.tags,
+            ...model.bestFor,
+            ...model.strengths,
+          ],
         };
       });
   }, [localRuntime, providers]);
@@ -617,6 +627,20 @@ export default function App(): JSX.Element {
           available: canSelectModel(status),
           installed,
           heavy: localCompatibility(model) === 'heavy' || localCompatibility(model) === 'not_recommended',
+          searchTerms: [
+            model.providerId,
+            model.runtime,
+            model.mode,
+            model.family,
+            ...model.modalities,
+            model.size,
+            model.ramRequirement,
+            model.vramRequirement,
+            model.diskRequirement,
+            ...model.tags,
+            ...model.bestFor,
+            ...model.strengths,
+          ],
         };
       });
   }, [installationProgress, localRuntime, selectedProviderStatus]);
@@ -958,16 +982,32 @@ export default function App(): JSX.Element {
     const visibleContent = cleaned || 'Anexo enviado.';
 
     if (temporaryChatActive) {
-      setTemporaryMessages((current) => [
-        ...current,
-        {
-          id: `temporary-${Date.now()}-${current.length}`,
-          role: 'user',
-          content: visibleContent,
+      const userMessage: ChatMessage = {
+        id: `temporary-user-${Date.now()}-${temporaryMessages.length}`,
+        role: 'user',
+        content: visibleContent,
+        createdAt: new Date().toISOString(),
+        attachments,
+      };
+      const previousMessages = temporaryMessages;
+      setTemporaryMessages([...previousMessages, userMessage]);
+      setBusy(true);
+      try {
+        const session = await sendTemporaryOrderToAgent(previousMessages, visibleContent, mode, attachments);
+        setTemporaryMessages(session.messages);
+      } catch (cause) {
+        const message = cause instanceof Error ? cause.message : 'Falha ao executar Bate-papo Temporário.';
+        const assistantError: ChatMessage = {
+          id: `temporary-error-${Date.now()}`,
+          role: 'assistant',
+          content: `Erro no Bate-papo Temporário\n${message}`,
           createdAt: new Date().toISOString(),
-          attachments,
-        },
-      ]);
+          reasoningSummary: 'Falha controlada do provider; nenhuma resposta simulada foi usada.',
+        };
+        setTemporaryMessages([...previousMessages, userMessage, assistantError]);
+      } finally {
+        setBusy(false);
+      }
       return;
     }
 

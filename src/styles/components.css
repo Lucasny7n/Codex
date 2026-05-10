@@ -26,7 +26,7 @@
 .btn:disabled,
 .btn-modern:disabled {
   opacity: 0.45;
-  cursor: not-allowed;
+  cursor: default;
 }
 
 .btn-primary,
@@ -3687,7 +3687,8 @@
 .chat-messages {
   width: min(860px, calc(100% - 44px));
   margin: 0 auto;
-  padding: 18px 0 22px;
+  padding: 18px 14px 22px 0;
+  scrollbar-gutter: stable;
 }
 
 .message-content {
@@ -3910,8 +3911,10 @@
 }
 
 .prompt-send-button:disabled {
-  opacity: 0.42;
-  cursor: not-allowed;
+  opacity: 1;
+  cursor: default;
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--ccc-disabled);
   box-shadow: none;
 }
 
@@ -4111,6 +4114,8 @@
 .message-content {
   width: fit-content;
   max-width: 100%;
+  overflow-wrap: anywhere;
+  word-break: break-word;
   border-radius: 18px;
   line-height: 1.55;
 }
@@ -4139,6 +4144,13 @@
   min-height: 58px;
   border-color: rgba(255, 255, 255, 0.065);
   background: rgba(43, 43, 48, 0.72);
+}
+
+.prompt-pill:focus-within {
+  border-color: color-mix(in srgb, var(--ccc-focus) 74%, var(--border-subtle));
+  box-shadow:
+    inset 0 0 0 1px color-mix(in srgb, var(--ccc-focus) 68%, transparent),
+    0 18px 42px rgba(0, 0, 0, 0.24);
 }
 
 .prompt-send-button {
@@ -4724,8 +4736,8 @@
 
 .model-picker-option-row {
   grid-template-columns: minmax(0, 1fr) 34px;
-  gap: 5px;
-  padding: 2px 6px 2px 0;
+  gap: 4px;
+  padding: 2px 10px 2px 0;
   border-radius: 11px;
 }
 
@@ -4765,7 +4777,7 @@
 }
 
 .model-picker-row-config {
-  margin-inline: auto 1px;
+  margin-inline: 0 4px;
   color: var(--text-muted);
 }
 
@@ -5414,6 +5426,16 @@
   place-items: center;
 }
 
+.message-action-button svg {
+  width: 14px;
+  height: 14px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.9;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
 .message-action-button:hover,
 .message-action-button:focus-visible {
   color: var(--text-primary);
@@ -5433,7 +5455,7 @@
 
 .popup-menu button:disabled {
   opacity: 0.38;
-  cursor: not-allowed;
+  cursor: default;
 }
 
 .popup-menu button:disabled:hover {
@@ -6414,7 +6436,7 @@
 
 .file-manager-shortcuts button:disabled {
   opacity: 0.36;
-  cursor: not-allowed;
+  cursor: default;
 }
 
 .file-manager-nav-icon,
@@ -6467,7 +6489,7 @@
 
 .file-manager-icon-button:disabled {
   opacity: 0.35;
-  cursor: not-allowed;
+  cursor: default;
 }
 
 .file-manager-path-bar,
@@ -7044,7 +7066,8 @@ body,
 
 .prompt-send-button:disabled {
   background: rgba(255, 255, 255, 0.08);
-  color: rgba(245, 245, 247, 0.38);
+  color: var(--ccc-disabled);
+  cursor: default;
 }
 
 .temporary-chat-pill {
@@ -7394,11 +7417,27 @@ body,
 .model-picker-scroll {
   max-height: min(460px, calc(100vh - 210px));
   overflow-y: auto;
-  padding-right: 3px;
+  padding-right: 10px;
   display: grid;
   gap: 10px;
+  scrollbar-gutter: stable;
   scrollbar-width: thin;
-  scrollbar-color: var(--border-main) transparent;
+  scrollbar-color: var(--ccc-scrollbar-thumb, var(--border-main)) var(--ccc-scrollbar-track, transparent);
+}
+
+.model-picker-scroll::-webkit-scrollbar {
+  width: 8px;
+}
+
+.model-picker-scroll::-webkit-scrollbar-track {
+  background: var(--ccc-scrollbar-track, transparent);
+}
+
+.model-picker-scroll::-webkit-scrollbar-thumb {
+  background: var(--ccc-scrollbar-thumb, var(--border-main));
+  border: 2px solid transparent;
+  background-clip: padding-box;
+  border-radius: 999px;
 }
 
 .model-picker-group {
@@ -7682,7 +7721,7 @@ body,
 
 .stt-candidate-list button:disabled {
   opacity: 0.45;
-  cursor: not-allowed;
+  cursor: default;
 }
 
 .stt-candidate-list span,

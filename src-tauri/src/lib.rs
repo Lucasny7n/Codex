@@ -33,6 +33,7 @@ pub fn run() {
             commands::apply_environment_to_all_sessions,
             commands::append_user_message,
             commands::send_order_to_agent,
+            commands::send_temporary_order_to_agent,
             commands::list_file_directory,
             commands::get_file_attachment,
             commands::get_stt_config_state,

@@ -1,56 +1,67 @@
 # Arquitetura
 
-## Stack
+## Visão Geral
 
-- Desktop: Tauri v2
-- Backend: Rust assíncrono (`tokio`)
-- Frontend: React + TypeScript + Vite
-- Estado UI: Zustand
+Codex Command Center é um app desktop Tauri com frontend React e backend Rust. A UI controla sessões, composer, anexos, modelos, settings e drawers. O backend concentra estado persistido, providers, runtimes locais, permissões e execução.
 
 ## Camadas
 
-1. UI (`src/components`)
-- Layout: `AppShell` (grade de 3 colunas), `TopBar`.
-- Painéis: sessões, conversa (`ChatPanel`), tarefas, status, permissões, logs, arquivos alterados, configurações.
-- Design System: `tokens.css`, `layout.css`, `components.css` (modular e baseado em variáveis CSS).
-- Onboarding/ajuda: painel `Primeiros Passos` com ações rápidas para docs, logs, VS Code e check de ambiente.
+### Frontend
 
-2. Session Engine (`src-tauri/src/services/session_manager.rs`)
-- Criação de sessão
-- Histórico de mensagens
-- Estado operacional da sessão
+- `src/App.tsx`: orquestra bootstrap, sessão ativa, Bate-papo Temporário, TopBar, Settings e drawers.
+- `src/components/panels/CommandInputPanel.tsx`: composer, modos, anexos e STT.
+- `src/components/panels/ChatPanel.tsx`: transcript, mensagens, anexos e erros de provider.
+- `src/components/layout/TopBar.tsx`: seletor `Nuvem | Local`, busca e configuração por modelo/provider.
+- `src/components/panels/SettingsPanel.tsx`: cinco abas permitidas e configuração limpa de preferências.
+- `src/lib/modelRegistry.ts`: catálogo estruturado de modelos cloud/local.
+- `src/lib/providerStatus.ts`: regra de seleção e ações por status.
+- `src/styles/*.css`: tokens, layout e componentes.
 
-3. Permission Manager (`src-tauri/src/services/permission_manager.rs`)
-- Classificação de comando por risco/categoria
-- Fila de aprovações pendentes
-- Resolução `allow_once/deny_once`
+### Backend
 
-4. Command Execution (`src-tauri/src/services/command_executor.rs`)
-- Spawn de comandos via shell configurável
-- Streaming de `stdout/stderr` para frontend
-- Eventos de status e update de sessão
-- Política de privilégio: sem prompt de senha no app; `sudo` apenas com `-n`
+- `src-tauri/src/commands/mod.rs`: comandos Tauri, file picker, STT, chat persistente e chat temporário.
+- `src-tauri/src/services/session_manager.rs`: sessões persistidas, export/import, arquivar/excluir.
+- `src-tauri/src/services/provider_adapters.rs`: adapters reais de providers cloud e local Ollama.
+- `src-tauri/src/services/provider_registry.rs`: catálogo runtime dos adapters.
+- `src-tauri/src/services/credential_store.rs`: credenciais mascaradas, profiles e estado testado.
+- `src-tauri/src/services/local_runtime.rs`: diagnóstico, instalação e teste de Ollama/modelos.
+- `src-tauri/src/services/command_executor.rs`: execução controlada de comandos.
+- `src-tauri/src/services/permission_manager.rs`: risco, aprovação e bloqueio de ações perigosas.
 
-5. Memory Manager (`src-tauri/src/services/memory_manager.rs`)
-- Snapshot operacional a partir de `~/.codex`
-- Organização em arquivos limpos dentro de `~/.codex/codex-ui/memory`
+## Fluxo de Chat Persistente
 
-6. VS Code Bridge (`src-tauri/src/services/vscode_bridge.rs`)
-- Abrir projeto/arquivo/diff usando `code`
+1. UI chama `create_session` apenas quando necessário.
+2. UI chama `send_order_to_agent`.
+3. Backend adiciona mensagem do usuário em `SessionManager`.
+4. Backend monta prompt com anexos, modo e idioma.
+5. `ProviderRegistry` chama adapter real.
+6. Resposta ou erro controlado é persistido na sessão.
 
-7. File Watcher (`src-tauri/src/services/file_watcher.rs`)
-- Observa workspace e emite eventos de alteração em tempo real
+## Fluxo de Bate-papo Temporário
 
-8. Provider Adapter Layer (`src-tauri/src/services/provider_adapters.rs`)
-- Trait `ProviderAdapter` para permitir novos backends sem hardcode na UI
-- Adapters iniciais: OpenAI, Anthropic e Local Ollama
-- Registro de providers por capacidade/configuração
+1. UI ativa estado temporário em memória.
+2. UI chama `send_temporary_order_to_agent`.
+3. Backend usa o mesmo `ProviderRegistry`, mas não chama `SessionManager.persist_session`.
+4. Resposta volta como `AgentSession` efêmera com id `temporary-chat`.
+5. Ao sair do modo temporário, o frontend descarta as mensagens.
 
-## Fluxo principal
+## Providers
 
-1. Frontend chama `bootstrap_state`
-2. Backend carrega settings/sessões/memórias/providers
-3. Usuário envia ordem ou comando
-4. Permission Manager decide autoexecução ou aprovação
-5. Command Executor roda e transmite logs/eventos
-6. Session Manager persiste evolução e estado
+Status possíveis incluem `ready`, `testing`, `requires_api_key`, `requires_login`, `requires_cli_auth`, `model_missing`, `service_offline`, `api_unreachable`, `experimental` e `unavailable`.
+
+Regra: somente `ready` é selecionável. Credencial salva sem teste não vira `ready`.
+
+## Anexos
+
+O composer exibe chips com nome, tipo e tamanho. Prévia textual limitada pode ir no payload oculto para o provider, mas não é despejada no textarea.
+
+## STT
+
+O frontend grava via Web APIs quando disponíveis. O backend converte com `ffmpeg` e tenta backends locais em ordem: `whisper-cli`/`whisper.cpp`, `whisper`, `faster-whisper`, Vosk.
+
+## Persistência
+
+- Sessões: arquivos JSON sob o diretório gerenciado pelo app.
+- Exportações: `~/Downloads/Sessoes`.
+- Preferências: settings do backend e algumas preferências locais da UI.
+- Segredos: `CredentialStore`; chaves completas não devem ir para logs, screenshots ou commit.

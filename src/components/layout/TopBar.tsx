@@ -22,6 +22,7 @@ export interface TopBarModelOption {
   available: boolean;
   installed?: boolean;
   heavy?: boolean;
+  searchTerms?: string[];
 }
 
 interface TopBarProps {
@@ -130,6 +131,7 @@ function providerGroupLabel(option: TopBarModelOption, mode: ExecutionMode): str
   if (label.includes('groq')) return 'Groq';
   if (label.includes('together')) return 'Together AI';
   if (label.includes('fireworks')) return 'Fireworks AI';
+  if (label.includes('cerebras')) return 'Cerebras';
   if (label.includes('cohere')) return 'Cohere';
   if (label.includes('deepseek')) return 'DeepSeek';
   if (label.includes('xai') || label.includes('grok')) return 'xAI';
@@ -141,7 +143,7 @@ function providerGroupLabel(option: TopBarModelOption, mode: ExecutionMode): str
 
 function groupModelOptions(options: TopBarModelOption[], mode: ExecutionMode): Array<{ label: string; options: TopBarModelOption[] }> {
   const order = mode === 'cloud'
-    ? ['OpenAI', 'Google / Gemini', 'Anthropic', 'OpenRouter', 'Mistral', 'Groq', 'Together AI', 'Fireworks AI', 'Cohere', 'DeepSeek', 'xAI', 'Perplexity', 'OpenCode', 'Codex CLI', 'Outros provedores']
+    ? ['OpenAI', 'Google / Gemini', 'Anthropic', 'OpenRouter', 'Mistral', 'Groq', 'Together AI', 'Fireworks AI', 'Cerebras', 'Cohere', 'DeepSeek', 'xAI', 'Perplexity', 'OpenCode', 'Codex CLI', 'Outros provedores']
     : ['Ollama', 'Qwen', 'Llama', 'DeepSeek', 'Mistral', 'Phi', 'Gemma', 'CodeLlama', 'StarCoder', 'Yi', 'Outros locais'];
   const groups = new Map<string, TopBarModelOption[]>();
   for (const option of options) {
@@ -167,6 +169,7 @@ function modelOptionMatches(option: TopBarModelOption, query: string): boolean {
     option.providerLabel,
     option.family,
     option.statusLabel,
+    ...(option.searchTerms ?? []),
     option.available ? 'configurado instalado pronto ready' : 'configurar testar nao instalado indisponivel',
   ]
     .filter(Boolean)
@@ -199,6 +202,7 @@ function providerSpecificError(providerId: string | undefined, message: string):
   if (providerId === 'gemini-api') return `Gemini: ${message}`;
   if (providerId === 'openai-api') return `OpenAI: ${message}`;
   if (providerId === 'anthropic-api') return `Anthropic: ${message}`;
+  if (providerId === 'cerebras-api') return `Cerebras: ${message}`;
   return message;
 }
 

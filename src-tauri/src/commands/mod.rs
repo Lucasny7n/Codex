@@ -14,13 +14,13 @@ use uuid::Uuid;
 use crate::error::{AppError, AppResult, ErrorPayload};
 use crate::models::{
     ActionableError, ActionableErrorSeverity, AgentSession, AppHealthAction, AppHealthCheck,
-    AppHealthOverallStatus, AppHealthProvider, AppSettings, BootstrapPayload, CommandLogChunk,
-    ConversationImportResult, ExecutionRequestInput, ExecutionResponse, LocalModelInstallProgress,
-    LocalRuntimeSnapshot, LogStream, PendingIntentKind, PermissionDecision, PermissionOutcome,
-    PermissionOutcomeStatus, PermissionRequest, PrivilegedActionRequestInput, PrivilegedActionSpec,
-    ProviderAccountProfile, ProviderCredentialStatus, ProviderGenerateRequest,
-    ProviderRuntimeStatus, ProviderStatusState, SessionExportFormat, SessionExportResult,
-    SessionStatus, StatusKind, TaskStatus, WorkspaceMeta,
+    AppHealthOverallStatus, AppHealthProvider, AppSettings, BootstrapPayload, ChatMessage,
+    ChatRole, CommandLogChunk, ConversationImportResult, ExecutionRequestInput, ExecutionResponse,
+    LocalModelInstallProgress, LocalRuntimeSnapshot, LogStream, PendingIntentKind,
+    PermissionDecision, PermissionOutcome, PermissionOutcomeStatus, PermissionRequest,
+    PrivilegedActionRequestInput, PrivilegedActionSpec, ProviderAccountProfile,
+    ProviderCredentialStatus, ProviderGenerateRequest, ProviderRuntimeStatus, ProviderStatusState,
+    SessionExportFormat, SessionExportResult, SessionStatus, StatusKind, TaskStatus, WorkspaceMeta,
 };
 use crate::services::privileged_actions;
 use crate::services::privileged_helper_client::HelperRequest;
@@ -434,7 +434,7 @@ fn zip_preview(path: &Path) -> (Option<String>, FilePreviewKind, bool) {
     }
 }
 
-const STT_INSTALL_COMMAND: &str = "sudo pacman -S ffmpeg whisper.cpp";
+const STT_INSTALL_COMMAND: &str = "sudo pacman -S --needed ffmpeg whisper.cpp";
 
 fn command_in_path(program: &str) -> Option<PathBuf> {
     let path = Path::new(program);
@@ -1877,7 +1877,6 @@ pub async fn send_order_to_agent(
     mode: Option<String>,
     attachments: Option<Vec<Value>>,
 ) -> Result<AgentSession, ErrorPayload> {
-    let _mode = mode;
     run_agent_order(
         Some(&app),
         state.session_manager.clone(),
@@ -1885,6 +1884,27 @@ pub async fn send_order_to_agent(
         state.settings(),
         session_id,
         content,
+        mode,
+        attachments.unwrap_or_default(),
+    )
+    .await
+    .map_err(map_err)
+}
+
+#[tauri::command]
+pub async fn send_temporary_order_to_agent(
+    state: State<'_, AppState>,
+    messages: Option<Vec<ChatMessage>>,
+    content: String,
+    mode: Option<String>,
+    attachments: Option<Vec<Value>>,
+) -> Result<AgentSession, ErrorPayload> {
+    run_temporary_agent_order(
+        state.provider_registry.clone(),
+        state.settings(),
+        messages.unwrap_or_default(),
+        content,
+        mode,
         attachments.unwrap_or_default(),
     )
     .await
@@ -1957,6 +1977,58 @@ fn prompt_with_language_preference(prompt: &str, language: &str) -> String {
     format!("{prompt}\n\n[preferência do usuário]\nResponda em: {label}.")
 }
 
+fn prompt_with_mode_preference(prompt: &str, mode: Option<&str>) -> String {
+    let Some(mode) = mode else {
+        return prompt.to_owned();
+    };
+    let instruction = match mode {
+        "thinking" => {
+            "Use análise mais cuidadosa antes de responder, mantendo a resposta final limpa."
+        }
+        "fast" => "Priorize uma resposta curta, direta e de baixa latência.",
+        "code" => "Priorize implementação, código, comandos e validação técnica.",
+        "terminal" => {
+            "Trate como fluxo de terminal: planeje comandos, riscos e confirmação antes de execução."
+        }
+        _ => "Escolha automaticamente o melhor comportamento para a solicitação.",
+    };
+    format!("{prompt}\n\n[modo selecionado]\n{instruction}")
+}
+
+fn prompt_with_temporary_history(messages: &[ChatMessage], prompt: &str) -> String {
+    let history = messages
+        .iter()
+        .rev()
+        .take(8)
+        .collect::<Vec<_>>()
+        .into_iter()
+        .rev()
+        .filter_map(|message| {
+            let role = match &message.role {
+                ChatRole::User => "Usuário",
+                ChatRole::Assistant => "Assistente",
+                ChatRole::System => "Sistema",
+                ChatRole::Tool => "Ferramenta",
+            };
+            let content = message.content.trim();
+            if content.is_empty() {
+                None
+            } else {
+                Some(format!("{role}: {}", redact_secret_like(content)))
+            }
+        })
+        .collect::<Vec<_>>();
+
+    if history.is_empty() {
+        prompt.to_owned()
+    } else {
+        format!(
+            "[histórico temporário em memória, não persistido]\n{}\n\n[solicitação atual]\n{prompt}",
+            history.join("\n")
+        )
+    }
+}
+
 async fn run_agent_order(
     app: Option<&AppHandle>,
     session_manager: Arc<SessionManager>,
@@ -1964,6 +2036,7 @@ async fn run_agent_order(
     settings: AppSettings,
     session_id: String,
     content: String,
+    mode: Option<String>,
     attachments: Vec<Value>,
 ) -> crate::error::AppResult<AgentSession> {
     let prompt = content.trim();
@@ -1976,7 +2049,10 @@ async fn run_agent_order(
         prompt
     };
     let provider_prompt = prompt_with_language_preference(
-        &prompt_with_attachments(visible_prompt, &attachments),
+        &prompt_with_mode_preference(
+            &prompt_with_attachments(visible_prompt, &attachments),
+            mode.as_deref(),
+        ),
         &settings.ai_response_language,
     );
 
@@ -2117,6 +2193,145 @@ async fn run_agent_order(
     }
 }
 
+async fn run_temporary_agent_order(
+    provider_registry: Arc<ProviderRegistry>,
+    settings: AppSettings,
+    mut messages: Vec<ChatMessage>,
+    content: String,
+    mode: Option<String>,
+    attachments: Vec<Value>,
+) -> crate::error::AppResult<AgentSession> {
+    let prompt = content.trim();
+    if prompt.is_empty() && attachments.is_empty() {
+        return Err(AppError::Message("Ordem vazia.".to_owned()));
+    }
+    let visible_prompt = if prompt.is_empty() {
+        "Anexo enviado."
+    } else {
+        prompt
+    };
+
+    let created_at = messages
+        .first()
+        .map(|message| message.created_at.clone())
+        .unwrap_or_else(crate::models::now_iso);
+    messages.push(ChatMessage {
+        id: Uuid::new_v4().to_string(),
+        role: ChatRole::User,
+        content: visible_prompt.to_owned(),
+        created_at: crate::models::now_iso(),
+        reasoning_summary: None,
+        attachments: attachments.clone(),
+    });
+
+    let provider_id = settings.selected_provider_id.clone();
+    let model_id = if settings.execution_mode == crate::models::ExecutionMode::Local {
+        settings
+            .selected_local_model_id
+            .clone()
+            .unwrap_or_else(|| settings.selected_model_id.clone())
+    } else {
+        settings.selected_model_id.clone()
+    };
+    let provider_label = provider_registry
+        .providers()
+        .into_iter()
+        .find(|provider| provider.id == provider_id)
+        .map(|provider| provider.label)
+        .unwrap_or_else(|| provider_id.clone());
+    let provider_prompt = prompt_with_language_preference(
+        &prompt_with_mode_preference(
+            &prompt_with_attachments(
+                &prompt_with_temporary_history(
+                    &messages[..messages.len().saturating_sub(1)],
+                    visible_prompt,
+                ),
+                &attachments,
+            ),
+            mode.as_deref(),
+        ),
+        &settings.ai_response_language,
+    );
+
+    let request = ProviderGenerateRequest {
+        provider_id: provider_id.clone(),
+        model_id: model_id.clone(),
+        prompt: provider_prompt,
+        attachments,
+        workspace_root: settings.workspace_root,
+        account_profile_id: settings.selected_provider_profile_id.clone(),
+    };
+
+    match provider_registry.generate_response(request).await {
+        Ok(result) => {
+            messages.push(ChatMessage {
+                id: Uuid::new_v4().to_string(),
+                role: ChatRole::Assistant,
+                content: result.content,
+                created_at: crate::models::now_iso(),
+                reasoning_summary: Some(result.status.message),
+                attachments: Vec::new(),
+            });
+            Ok(temporary_session(
+                messages,
+                created_at,
+                SessionStatus::Idle,
+                provider_id,
+                model_id,
+                settings.selected_agent_id,
+                settings.selected_provider_profile_id,
+            ))
+        }
+        Err(cause) => {
+            let detail = cause.to_string();
+            messages.push(ChatMessage {
+                id: Uuid::new_v4().to_string(),
+                role: ChatRole::Assistant,
+                content: provider_chat_error_message(&provider_label, &model_id, &detail),
+                created_at: crate::models::now_iso(),
+                reasoning_summary: Some(
+                    "Falha controlada do provider; nenhuma resposta simulada foi usada.".to_owned(),
+                ),
+                attachments: Vec::new(),
+            });
+            Ok(temporary_session(
+                messages,
+                created_at,
+                SessionStatus::Error,
+                provider_id,
+                model_id,
+                settings.selected_agent_id,
+                settings.selected_provider_profile_id,
+            ))
+        }
+    }
+}
+
+fn temporary_session(
+    messages: Vec<ChatMessage>,
+    created_at: String,
+    status: SessionStatus,
+    provider_id: String,
+    model_id: String,
+    agent_profile_id: String,
+    account_profile_id: Option<String>,
+) -> AgentSession {
+    AgentSession {
+        id: "temporary-chat".to_owned(),
+        title: "Bate-papo Temporário".to_owned(),
+        created_at,
+        updated_at: crate::models::now_iso(),
+        status,
+        messages,
+        tasks: Vec::new(),
+        archived: false,
+        provider_id: Some(provider_id),
+        model_id: Some(model_id),
+        agent_profile_id: Some(agent_profile_id),
+        account_profile_id,
+    }
+}
+
 fn provider_chat_error_message(provider_label: &str, model_id: &str, detail: &str) -> String {
     let mut lines = detail
         .lines()
@@ -2128,7 +2343,7 @@ fn provider_chat_error_message(provider_label: &str, model_id: &str, detail: &st
 
     if lines.is_empty() {
         lines.push("Erro de provider".to_owned());
-        lines.push("Revise a conta ou modelo no Ambiente.".to_owned());
+        lines.push("Revise a conta ou modelo em Configurações > Modelos.".to_owned());
     }
 
     if !lines.iter().any(|line| line.starts_with("Provider:")) {
@@ -2278,6 +2493,7 @@ mod agent_order_tests {
             mock_settings(dir.to_string_lossy().to_string()),
             session.id,
             "crie um plano curto".to_owned(),
+            None,
             Vec::new(),
         )
         .await

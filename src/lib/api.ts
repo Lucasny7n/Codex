@@ -142,6 +142,15 @@ export async function sendOrderToAgent(
   return invoke('send_order_to_agent', { sessionId, content, mode, attachments });
 }
 
+export async function sendTemporaryOrderToAgent(
+  messages: AgentSession['messages'],
+  content: string,
+  mode?: string,
+  attachments: ChatAttachment[] = [],
+): Promise<AgentSession> {
+  return invoke('send_temporary_order_to_agent', { messages, content, mode, attachments });
+}
+
 export async function requestExecution(input: ExecutionRequestInput): Promise<ExecutionResponse> {
   return invoke('request_execution', { input });
 }

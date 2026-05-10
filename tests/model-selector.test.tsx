@@ -17,6 +17,7 @@ describe('modelRegistry', () => {
   it('mantém catálogo amplo de nuvem pesquisável por modelo e provedor', () => {
     expect(modelRegistry.search('cloud', 'OpenAI').some((model) => model.displayName === 'GPT-5.5')).toBe(true);
     expect(modelRegistry.search('cloud', 'Groq').some((model) => model.displayName === 'Llama via Groq')).toBe(true);
+    expect(modelRegistry.search('cloud', 'Cerebras').some((model) => model.displayName === 'Llama via Cerebras')).toBe(true);
     expect(modelRegistry.search('cloud', 'Perplexity').some((model) => model.displayName === 'Sonar')).toBe(true);
   });
 
@@ -34,6 +35,7 @@ describe('modelRegistry', () => {
       expect(model.baseStatus).toBeTruthy();
       expect(model.setupRequirement).toBeTruthy();
       expect(model.actionLabel).toBeTruthy();
+      expect(model.modalities.length).toBeGreaterThan(0);
     }
   });
 });

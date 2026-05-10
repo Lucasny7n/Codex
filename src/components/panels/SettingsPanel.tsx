@@ -95,8 +95,14 @@ function modelTypeLabel(model: ModelProfile): string {
 }
 
 function modelModality(model: ModelProfile): string {
-  const supportsCode = model.tags.some((tag) => tag.includes('codigo') || tag.includes('coder') || tag.includes('code'));
-  return supportsCode ? 'Texto e código' : 'Texto';
+  const labels: Record<string, string> = {
+    text: 'Texto',
+    code: 'Código',
+    vision: 'Visão',
+    image_generation: 'Imagem',
+    audio_transcription: 'Transcrição',
+  };
+  return model.modalities.map((item) => labels[item] ?? item).join(' · ');
 }
 
 function modelStatusLabel(model: ModelProfile, providers: ProviderDescriptor[], localRuntime?: LocalRuntimeSnapshot): string {

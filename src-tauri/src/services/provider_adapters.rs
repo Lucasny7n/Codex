@@ -129,7 +129,7 @@ impl OpenAiCompatibleAdapter {
     ) -> AppResult<ProviderRunResult> {
         let Some(key) = self.credential_for(request.account_profile_id.as_deref()) else {
             return Err(AppError::Message(format!(
-                "{} requer API key. Adicione ou teste a credencial em Ambiente > Contas.",
+                "{} requer API key. Adicione ou teste a credencial em Configurações > Modelos.",
                 self.label
             )));
         };
@@ -313,7 +313,7 @@ impl AnthropicAdapter {
     async fn generate(&self, request: ProviderGenerateRequest) -> AppResult<ProviderRunResult> {
         let Some(key) = self.credential_for(request.account_profile_id.as_deref()) else {
             return Err(AppError::Message(
-                "Anthropic API requer API key em Ambiente > Contas.".to_owned(),
+                "Anthropic API requer API key em Configurações > Modelos.".to_owned(),
             ));
         };
 
@@ -506,7 +506,7 @@ impl GeminiApiAdapter {
     async fn generate(&self, request: ProviderGenerateRequest) -> AppResult<ProviderRunResult> {
         let Some(key) = self.credential_for(request.account_profile_id.as_deref()) else {
             return Err(AppError::Message(
-                "Gemini API requer API key em Ambiente > Contas.".to_owned(),
+                "Gemini API requer API key em Configurações > Modelos.".to_owned(),
             ));
         };
         let url = format!(
@@ -1417,6 +1417,7 @@ impl ProviderAdapterRegistry {
             "accounts/fireworks/models/llama-v3p1-70b-instruct",
             "Llama via Fireworks AI",
         )];
+        const CEREBRAS_MODELS: &[(&str, &str)] = &[("llama3.1-8b", "Llama via Cerebras")];
         const DEEPSEEK_MODELS: &[(&str, &str)] = &[
             ("deepseek-chat", "DeepSeek Chat"),
             ("deepseek-coder", "DeepSeek Coder"),
@@ -1471,6 +1472,13 @@ impl ProviderAdapterRegistry {
                 "Fireworks AI",
                 "https://api.fireworks.ai/inference/v1",
                 FIREWORKS_MODELS,
+                credential_store.clone(),
+            )),
+            Arc::new(OpenAiCompatibleAdapter::new(
+                "cerebras-api",
+                "Cerebras",
+                "https://api.cerebras.ai/v1",
+                CEREBRAS_MODELS,
                 credential_store.clone(),
             )),
             Arc::new(OpenAiCompatibleAdapter::new(

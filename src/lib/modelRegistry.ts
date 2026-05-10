@@ -6,6 +6,12 @@ export type LatencyLevel = 'low' | 'medium' | 'high';
 export type RuntimeHealth = ProviderStatusState;
 export type HardwareRecommendation = 'cpu' | 'gpu' | 'either';
 export type LocalCompatibility = 'recommended' | 'compatible' | 'heavy' | 'not_recommended' | 'unknown';
+export type ModelModality =
+  | 'text'
+  | 'code'
+  | 'vision'
+  | 'image_generation'
+  | 'audio_transcription';
 
 export interface CapabilityScores {
   speed: 1 | 2 | 3 | 4 | 5;
@@ -38,6 +44,7 @@ interface BaseModelProfile {
   weaknesses: string[];
   bestFor: string[];
   recommendedUse: string;
+  modalities: ModelModality[];
   latency: LatencyLevel;
   capabilities: CapabilityScores;
   codeQuality: 1 | 2 | 3 | 4 | 5;
@@ -161,6 +168,13 @@ export const providerRegistry: ProviderProfile[] = [
     requiresApiKey: true,
   },
   {
+    id: 'cerebras-api',
+    label: 'Cerebras',
+    mode: 'cloud',
+    description: 'Provider Cerebras OpenAI-compatible via API key.',
+    requiresApiKey: true,
+  },
+  {
     id: 'cohere-api',
     label: 'Cohere',
     mode: 'cloud',
@@ -221,6 +235,7 @@ function cloudModel(input: {
   freeTierAvailable?: boolean;
   costHint?: string;
   caveats?: string[];
+  modalities?: ModelModality[];
   privacy?: string;
   limits?: string;
   latency?: LatencyLevel;
@@ -246,6 +261,7 @@ function cloudModel(input: {
     weaknesses: input.weaknesses,
     bestFor: input.bestFor,
     recommendedUse: input.bestFor[0] ?? 'Uso geral',
+    modalities: input.modalities ?? (input.tags.some((tag) => tag.includes('codigo') || tag.includes('code')) ? ['text', 'code'] : ['text']),
     latency: input.latency ?? 'medium',
     capabilities: input.capabilities,
     codeQuality: input.capabilities.coding,
@@ -261,7 +277,7 @@ function cloudModel(input: {
     actionLabel: input.actionLabel,
     unavailableReason: input.status === 'ready' ? undefined : input.setupRequirement,
     installable: false,
-    requiresApiKey: ['openai-api', 'openrouter-api', 'anthropic-api', 'gemini-api', 'gemini-cli', 'mistral-api', 'groq-api', 'together-api', 'fireworks-api', 'cohere-api', 'deepseek-api', 'xai-api', 'perplexity-api'].includes(input.providerId),
+    requiresApiKey: ['openai-api', 'openrouter-api', 'anthropic-api', 'gemini-api', 'gemini-cli', 'mistral-api', 'groq-api', 'together-api', 'fireworks-api', 'cerebras-api', 'cohere-api', 'deepseek-api', 'xai-api', 'perplexity-api'].includes(input.providerId),
     recommended: input.recommended ?? false,
     costHint: input.costHint ?? 'Custo depende de tokens/plano.',
     costEstimate: input.costHint ?? 'Custo depende de tokens/plano.',
@@ -286,6 +302,7 @@ function localModel(input: {
   capabilities: CapabilityScores;
   recommended?: boolean;
   heavy?: boolean;
+  modalities?: ModelModality[];
 }): LocalModelProfile {
   return {
     id: input.id,
@@ -307,6 +324,7 @@ function localModel(input: {
     weaknesses: input.weaknesses,
     bestFor: input.bestFor,
     recommendedUse: input.bestFor[0] ?? 'Uso local',
+    modalities: input.modalities ?? (input.tags.some((tag) => tag.includes('codigo') || tag.includes('code')) ? ['text', 'code'] : ['text']),
     latency: input.capabilities.speed >= 4 ? 'low' : input.capabilities.speed >= 3 ? 'medium' : 'high',
     capabilities: input.capabilities,
     codeQuality: input.capabilities.coding,
@@ -797,6 +815,20 @@ export const cloudModelRegistry: CloudModelProfile[] = [
     bestFor: ['Fallback', 'Texto', 'Codigo geral'],
     tags: ['cloud', 'requer-config'],
     capabilities: { speed: 4, reasoning: 4, coding: 4, text: 4, longContext: 4 },
+  }),
+  cloudModel({
+    id: 'llama3.1-8b',
+    name: 'Llama via Cerebras',
+    providerId: 'cerebras-api',
+    providerLabel: 'Cerebras',
+    status: 'requires_api_key',
+    setupRequirement: 'Requer CEREBRAS_API_KEY ou key salva.',
+    actionLabel: 'Adicionar API key',
+    strengths: ['Inferência muito rápida', 'API OpenAI-compatible', 'Boa para iteração curta'],
+    weaknesses: ['Catálogo e limites dependem da conta Cerebras'],
+    bestFor: ['Resposta rápida', 'Triagem', 'Fallback cloud'],
+    tags: ['rapido', 'cloud', 'requer-config'],
+    capabilities: { speed: 5, reasoning: 3, coding: 3, text: 4, longContext: 3 },
   }),
   cloudModel({
     id: 'command-r',

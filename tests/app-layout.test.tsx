@@ -52,6 +52,7 @@ vi.mock('../src/lib/api', () => ({
   saveProviderCredential: vi.fn(),
   setDefaultProviderProfile: vi.fn(),
   sendOrderToAgent: vi.fn(),
+  sendTemporaryOrderToAgent: vi.fn(),
   startLocalRuntime: vi.fn(),
   testProviderConnection: vi.fn(),
   transcribeAudio: vi.fn(),
@@ -106,8 +107,8 @@ function payload(sessions: AgentSession[]): BootstrapPayload {
         configurable: false,
         enabled: true,
         status: {
-          state: 'mock',
-          message: 'Mock explícito.',
+          state: 'ready',
+          message: 'Provider de teste pronto.',
           checkedAt: new Date().toISOString()
         },
         models: [
@@ -543,6 +544,32 @@ describe('App layout visibility', () => {
   it('ativa Bate-papo Temporário sem salvar conversa no histórico', async () => {
     vi.mocked(api.bootstrapState).mockResolvedValue(payload([baseSession()]));
     vi.mocked(api.exportAllConversations).mockResolvedValue({ path: '/tmp/conversas.json', format: 'json', bytes: 10 });
+    vi.mocked(api.sendTemporaryOrderToAgent).mockImplementation(async (messages, content) => {
+      const now = new Date().toISOString();
+      return {
+        id: 'temporary-chat',
+        title: 'Bate-papo Temporário',
+        createdAt: now,
+        updatedAt: now,
+        status: 'idle',
+        tasks: [],
+        messages: [
+          ...messages,
+          {
+            id: 'temporary-user',
+            role: 'user',
+            content,
+            createdAt: now,
+          },
+          {
+            id: 'temporary-assistant',
+            role: 'assistant',
+            content: 'Resposta temporária real do provider.',
+            createdAt: now,
+          },
+        ],
+      };
+    });
 
     render(<App />);
 
@@ -561,7 +588,16 @@ describe('App layout visibility', () => {
 
     expect(vi.mocked(api.createSession)).not.toHaveBeenCalled();
     expect(vi.mocked(api.sendOrderToAgent)).not.toHaveBeenCalled();
+    await waitFor(() => {
+      expect(vi.mocked(api.sendTemporaryOrderToAgent)).toHaveBeenCalledWith(
+        [],
+        'mensagem sem histórico',
+        'auto',
+        [],
+      );
+    });
     expect(await screen.findByText('mensagem sem histórico')).toBeInTheDocument();
+    expect(await screen.findByText('Resposta temporária real do provider.')).toBeInTheDocument();
 
     fireEvent.click(screen.getByLabelText('Menu do usuário'));
     fireEvent.click(screen.getByText('Configurações'));
@@ -572,6 +608,7 @@ describe('App layout visibility', () => {
     });
     expect(vi.mocked(api.createSession)).not.toHaveBeenCalled();
     expect(vi.mocked(api.sendOrderToAgent)).not.toHaveBeenCalled();
+    expect(vi.mocked(api.sendTemporaryOrderToAgent)).toHaveBeenCalledTimes(1);
 
     fireEvent.keyDown(document, { key: 'Escape' });
     fireEvent.click(screen.getByLabelText('Sair do Bate-papo Temporário'));
@@ -579,5 +616,30 @@ describe('App layout visibility', () => {
       expect(screen.getByText('O que gostaria de explorar?')).toBeInTheDocument();
     });
     expect(screen.queryByText('mensagem sem histórico')).not.toBeInTheDocument();
+    expect(screen.queryByText('Resposta temporária real do provider.')).not.toBeInTheDocument();
+  });
+
+  it('mostra erro inline do provider no Bate-papo Temporário sem criar sessão', async () => {
+    vi.mocked(api.bootstrapState).mockResolvedValue(payload([baseSession()]));
+    vi.mocked(api.sendTemporaryOrderToAgent).mockRejectedValue(new Error('Provider falhou no teste.'));
+
+    render(<App />);
+
+    await waitFor(() => {
+      expect(screen.getByText('O que gostaria de explorar?')).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByLabelText(/Iniciar Bate-papo Temporário/));
+    fireEvent.change(screen.getByPlaceholderText('Como posso ajudá-lo hoje?'), {
+      target: { value: 'forçar erro' },
+    });
+    fireEvent.click(screen.getByLabelText('Enviar'));
+
+    expect(vi.mocked(api.createSession)).not.toHaveBeenCalled();
+    expect(vi.mocked(api.sendOrderToAgent)).not.toHaveBeenCalled();
+    await waitFor(() => {
+      expect(screen.getByText('Erro no Bate-papo Temporário')).toBeInTheDocument();
+      expect(screen.getByText('Provider falhou no teste.')).toBeInTheDocument();
+    });
   });
 });
