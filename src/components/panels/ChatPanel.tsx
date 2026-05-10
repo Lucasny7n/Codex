@@ -8,6 +8,7 @@ interface ChatPanelProps {
   session?: AgentSession;
   emptyTitle?: string;
   onOpenEnvironment?: () => void;
+  isResponding?: boolean;
 }
 
 interface ParsedProviderError {
@@ -115,7 +116,21 @@ function ProviderErrorCard({ error, onOpenEnvironment }: { error: ParsedProvider
   );
 }
 
-export function ChatPanel({ session, emptyTitle = 'Pronto para criar algo?', onOpenEnvironment }: ChatPanelProps): JSX.Element {
+function AssistantTypingIndicator(): JSX.Element {
+  return (
+    <div className="message-row assistant typing-row" aria-label="Assistente respondendo">
+      <article className="message-bubble role-assistant typing-bubble">
+        <div className="typing-dots" role="status" aria-live="polite">
+          <span />
+          <span />
+          <span />
+        </div>
+      </article>
+    </div>
+  );
+}
+
+export function ChatPanel({ session, emptyTitle = 'Pronto para criar algo?', onOpenEnvironment, isResponding = false }: ChatPanelProps): JSX.Element {
   const [menuMessageId, setMenuMessageId] = useState<string>();
   const [copiedMessageId, setCopiedMessageId] = useState<string>();
 
@@ -170,12 +185,6 @@ export function ChatPanel({ session, emptyTitle = 'Pronto para criar algo?', onO
                     ))}
                   </div>
                 ) : null}
-                {message.reasoningSummary && !providerError ? (
-                  <details className="reasoning-box">
-                    <summary>Pensamento concluído</summary>
-                    <div className="reasoning-content">{cleanVisibleContent(message.reasoningSummary)}</div>
-                  </details>
-                ) : null}
                 {message.role === 'assistant' ? (
                   <div className="message-actions" aria-label="Ações da resposta">
                     {copiedMessageId === message.id ? <span className="message-action-chip">Copiado</span> : null}
@@ -224,6 +233,7 @@ export function ChatPanel({ session, emptyTitle = 'Pronto para criar algo?', onO
             </div>
           );
         })}
+        {isResponding ? <AssistantTypingIndicator /> : null}
       </div>
     </section>
   );

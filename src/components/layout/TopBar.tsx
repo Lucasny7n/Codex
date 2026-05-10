@@ -47,6 +47,8 @@ interface TopBarProps {
     key: string,
     makeDefault: boolean,
   ) => Promise<ProviderAccountProfile>;
+  onSetDefaultProviderProfile?: (providerId: string, profileId: string) => Promise<void>;
+  onRemoveProviderProfile?: (profileId: string) => Promise<void>;
   onTestProvider?: (providerId: string) => Promise<ProviderRuntimeStatus>;
   onInstallLocalModel?: (modelId: string) => Promise<void>;
   onTestLocalModel?: (modelId: string) => Promise<boolean>;
@@ -222,6 +224,8 @@ export function TopBar({
   onSelectModel,
   onConfigureModels,
   onSaveProviderProfileCredential,
+  onSetDefaultProviderProfile,
+  onRemoveProviderProfile,
   onTestProvider,
   onInstallLocalModel,
   onTestLocalModel,
@@ -233,6 +237,9 @@ export function TopBar({
   const [query, setQuery] = useState('');
   const [configTarget, setConfigTarget] = useState<{ mode: ExecutionMode; option: TopBarModelOption }>();
   const [apiKey, setApiKey] = useState('');
+  const [apiKeyName, setApiKeyName] = useState('Principal');
+  const [selectedConfigProfileId, setSelectedConfigProfileId] = useState<string>();
+  const [profileActionBusyId, setProfileActionBusyId] = useState<string>();
   const [configStatus, setConfigStatus] = useState<'idle' | 'testing' | 'ready' | 'error'>('idle');
   const [configError, setConfigError] = useState<string>();
   const [hoveredOptionId, setHoveredOptionId] = useState<string>();
@@ -246,12 +253,23 @@ export function TopBar({
   const pickerGroups = groupModelOptions(pickerOptions, pickerMode);
   const currentPickerOption = (pickerMode === 'cloud' ? cloudModels : localModels).find((option) => selectedModelId === option.id || selectedModelId === option.modelId || selectedModelLabel === option.label);
   const configCredential = credentialFor(configTarget?.option.providerId, credentials);
-  const configProfile = profileFor(configTarget?.option.providerId, providerProfiles);
+  const configProfiles = configTarget?.option.providerId
+    ? providerProfiles.filter((profile) => profile.providerId === configTarget.option.providerId)
+    : [];
+  const creatingNewProfile = selectedConfigProfileId === '__new__';
+  const selectedConfigProfile = creatingNewProfile ? undefined :
+    configProfiles.find((profile) => profile.id === selectedConfigProfileId) ??
+    configProfiles.find((profile) => profile.isDefault) ??
+    configProfiles[0];
+  const configProfile = creatingNewProfile ? undefined : selectedConfigProfile ?? profileFor(configTarget?.option.providerId, providerProfiles);
   const localProgress = configTarget ? installationProgress[configTarget.option.id] ?? installationProgress[configTarget.option.modelId ?? ''] : undefined;
 
   function openConfig(mode: ExecutionMode, option: TopBarModelOption): void {
     setModelMenuOpen(false);
     setConfigTarget({ mode, option });
+    const profile = profileFor(option.providerId, providerProfiles);
+    setSelectedConfigProfileId(profile?.source === 'environment' ? undefined : profile?.id);
+    setApiKeyName(profile?.name ?? 'Principal');
     setApiKey('');
     setConfigStatus(option.status === 'ready' ? 'ready' : option.status === 'invalid_api_key' || option.status === 'forbidden' ? 'error' : 'idle');
     setConfigError(option.status === 'invalid_api_key' || option.status === 'forbidden' ? option.statusLabel : undefined);
@@ -267,7 +285,10 @@ export function TopBar({
     }
     setConfigError(undefined);
     try {
-      await onSaveProviderProfileCredential(providerId, configProfile?.id, configProfile?.name ?? 'Principal', apiKey, true);
+      const editableProfileId = configProfile?.source === 'config_file' ? configProfile.id : undefined;
+      const saved = await onSaveProviderProfileCredential(providerId, editableProfileId, apiKeyName.trim() || 'Principal', apiKey, true);
+      setSelectedConfigProfileId(saved.id);
+      setApiKeyName(saved.name);
       setApiKey('');
       setConfigStatus('idle');
       setConfigTarget((current) => current ? {
@@ -297,8 +318,14 @@ export function TopBar({
           setConfigError(providerSpecificError(providerId, 'API key curta ou vazia.'));
           return;
         }
-        await onSaveProviderProfileCredential(providerId, configProfile?.id, configProfile?.name ?? 'Principal', apiKey, true);
+        const editableProfileId = configProfile?.source === 'config_file' ? configProfile.id : undefined;
+        const saved = await onSaveProviderProfileCredential(providerId, editableProfileId, apiKeyName.trim() || 'Principal', apiKey, true);
+        setSelectedConfigProfileId(saved.id);
+        setApiKeyName(saved.name);
         setApiKey('');
+      }
+      if (selectedConfigProfileId && configProfile?.source === 'config_file' && !configProfile.isDefault && onSetDefaultProviderProfile) {
+        await onSetDefaultProviderProfile(providerId, selectedConfigProfileId);
       }
       const status = await onTestProvider(providerId);
       if (status.state === 'ready') {
@@ -329,6 +356,43 @@ export function TopBar({
     } catch (cause) {
       setConfigStatus('error');
       setConfigError(providerSpecificError(providerId, cause instanceof Error ? cause.message : 'Falha ao testar API.'));
+    }
+  }
+
+  async function activateProfile(profile: ProviderAccountProfile): Promise<void> {
+    const providerId = configTarget?.option.providerId;
+    if (!providerId || !onSetDefaultProviderProfile || profile.source !== 'config_file') {
+      setSelectedConfigProfileId(profile.id);
+      setApiKeyName(profile.name);
+      return;
+    }
+    setProfileActionBusyId(profile.id);
+    setConfigError(undefined);
+    try {
+      await onSetDefaultProviderProfile(providerId, profile.id);
+      setSelectedConfigProfileId(profile.id);
+      setApiKeyName(profile.name);
+    } catch (cause) {
+      setConfigError(cause instanceof Error ? cause.message : 'Falha ao selecionar API key ativa.');
+    } finally {
+      setProfileActionBusyId(undefined);
+    }
+  }
+
+  async function removeProfile(profile: ProviderAccountProfile): Promise<void> {
+    if (!onRemoveProviderProfile || profile.source !== 'config_file') return;
+    setProfileActionBusyId(profile.id);
+    setConfigError(undefined);
+    try {
+      await onRemoveProviderProfile(profile.id);
+      if (selectedConfigProfileId === profile.id) {
+        setSelectedConfigProfileId(undefined);
+        setApiKeyName('Principal');
+      }
+    } catch (cause) {
+      setConfigError(cause instanceof Error ? cause.message : 'Falha ao excluir API key.');
+    } finally {
+      setProfileActionBusyId(undefined);
     }
   }
 
@@ -485,7 +549,84 @@ export function TopBar({
               <strong>Modelo</strong>
               {configTarget.option.modelId ?? configTarget.option.id}
             </span>
+            <span>
+              <strong>Status da API</strong>
+              {configStatus === 'ready' ? 'funcionando' : configStatus === 'error' ? 'falhou' : configStatus === 'testing' ? 'testando' : 'não testado'}
+            </span>
           </div>
+          <div className="model-config-key-list" aria-label="API keys salvas">
+            <div className="model-config-key-header">
+              <span>API keys</span>
+              <button
+                type="button"
+                className="settings-pill-button"
+                onClick={() => {
+                  setSelectedConfigProfileId('__new__');
+                  setApiKeyName(`Key ${configProfiles.filter((profile) => profile.source === 'config_file').length + 1}`);
+                  setApiKey('');
+                }}
+              >
+                Adicionar key
+              </button>
+            </div>
+            {configProfiles.length > 0 ? configProfiles.map((profile) => (
+              <div key={profile.id} className={`model-config-key-row ${profile.id === selectedConfigProfileId || (!selectedConfigProfileId && profile.isDefault) ? 'active' : ''}`}>
+                <button
+                  type="button"
+                  className="model-config-key-main"
+                  onClick={() => void activateProfile(profile)}
+                  disabled={profileActionBusyId === profile.id}
+                >
+                  <StatusDot tone={statusTone(profile.status as ProviderStatus)} />
+                  <span>
+                    <strong>{profile.name}{profile.isDefault ? ' · ativa' : ''}</strong>
+                    <small>{profile.maskedCredential ?? 'sem key salva'} · {profile.status.replace(/_/g, ' ')}</small>
+                  </span>
+                </button>
+                <div className="model-config-key-actions">
+                  <button
+                    type="button"
+                    aria-label={`Substituir key ${profile.name}`}
+                    onClick={() => {
+                      setSelectedConfigProfileId(profile.id);
+                      setApiKeyName(profile.name);
+                      setApiKey('');
+                    }}
+                  >
+                    Editar
+                  </button>
+                  <button
+                    type="button"
+                    aria-label={`Testar key ${profile.name}`}
+                    disabled={profileActionBusyId === profile.id}
+                    onClick={() => void activateProfile(profile).then(() => testApiKey())}
+                  >
+                    Testar
+                  </button>
+                  <button
+                    type="button"
+                    className="danger"
+                    aria-label={`Excluir key ${profile.name}`}
+                    disabled={profile.source !== 'config_file' || profileActionBusyId === profile.id}
+                    onClick={() => void removeProfile(profile)}
+                  >
+                    Excluir
+                  </button>
+                </div>
+              </div>
+            )) : (
+              <span className="model-config-empty-key">Nenhuma API key salva para este provedor.</span>
+            )}
+          </div>
+          <label>
+            Nome da key
+            <input
+              className="input-modern"
+              value={apiKeyName}
+              placeholder="Principal"
+              onChange={(event) => setApiKeyName(event.target.value)}
+            />
+          </label>
           <label>
             API Key
             <CredentialInput

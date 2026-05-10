@@ -224,9 +224,11 @@ export function CredentialInput({ value, placeholder, onChange, onBlur, invalid 
         onChange={(event) => onChange(event.target.value)}
         onBlur={onBlur}
       />
-      <button type="button" className="icon-button" onClick={() => setVisible((current) => !current)} aria-label={visible ? 'Ocultar chave' : 'Mostrar chave'}>
-        {visible ? 'Ocultar' : 'Mostrar'}
-      </button>
+      {value.trim() ? (
+        <button type="button" className="icon-button" onClick={() => setVisible((current) => !current)} aria-label={visible ? 'Ocultar chave' : 'Mostrar chave'}>
+          {visible ? 'Ocultar' : 'Mostrar'}
+        </button>
+      ) : null}
     </div>
   );
 }

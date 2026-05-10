@@ -31,9 +31,11 @@ import {
   requestPrivilegedAction,
   renameSession,
   restoreSession,
+  removeProviderProfile,
   saveProviderProfileCredential,
   sendOrderToAgent,
   sendTemporaryOrderToAgent,
+  setDefaultProviderProfile,
   startLocalRuntime,
   testProviderConnection,
   updateSettings,
@@ -1119,6 +1121,16 @@ export default function App(): JSX.Element {
     return profile;
   }
 
+  async function handleSetDefaultProviderProfile(providerId: string, profileId: string): Promise<void> {
+    await setDefaultProviderProfile(providerId, profileId);
+    await refreshProviderCredentials();
+  }
+
+  async function handleRemoveProviderProfile(profileId: string): Promise<void> {
+    await removeProviderProfile(profileId);
+    await refreshProviderCredentials();
+  }
+
   async function handleRunCheckEnvironment(): Promise<void> {
     const scriptPath = workspacePath('scripts/check-environment.sh');
     if (!settings?.workspaceRoot || !scriptPath) {
@@ -1473,6 +1485,7 @@ export default function App(): JSX.Element {
   if (error && !booted) return <div className="centered error" style={{ height: '100vh' }}>{error}</div>;
 
   const activeChatSession = temporarySession ?? selectedSession;
+  const activeChatResponding = busy && Boolean(activeChatSession?.messages.at(-1)?.role === 'user');
   const projectWorkspaceOpen = Boolean(activeProject && !selectedSession && !temporaryChatActive);
   const selectedProjectMemoryOption = PROJECT_MEMORY_OPTIONS.find((option) => option.id === projectMemoryScope) ?? PROJECT_MEMORY_OPTIONS[0];
   const commandInput = (
@@ -1544,6 +1557,8 @@ export default function App(): JSX.Element {
               onSelectModel={handleTopbarSelectModel}
               onConfigureModels={() => openEnvironmentTab('ready')}
               onSaveProviderProfileCredential={handleSaveProviderProfileCredential}
+              onSetDefaultProviderProfile={handleSetDefaultProviderProfile}
+              onRemoveProviderProfile={handleRemoveProviderProfile}
               onTestProvider={handleTestProvider}
               onInstallLocalModel={handleInstallLocalModelById}
               onTestLocalModel={handleTestLocalModelById}
@@ -1566,7 +1581,7 @@ export default function App(): JSX.Element {
                     <p>Esta conversa não aparecerá no histórico e as suas mensagens não serão guardadas.</p>
                   </section>
                 ) : (
-                  <ChatPanel session={temporarySession} emptyTitle="Bate-papo Temporário" onOpenEnvironment={() => openEnvironmentTab('ready')} />
+                  <ChatPanel session={temporarySession} emptyTitle="Bate-papo Temporário" onOpenEnvironment={() => openEnvironmentTab('ready')} isResponding={activeChatResponding} />
                 )}
                 {commandInput}
               </>
@@ -1650,7 +1665,7 @@ export default function App(): JSX.Element {
               </section>
             ) : (
               <>
-                <ChatPanel session={selectedSession} emptyTitle="O que gostaria de explorar?" onOpenEnvironment={() => openEnvironmentTab('accounts')} />
+                <ChatPanel session={selectedSession} emptyTitle="O que gostaria de explorar?" onOpenEnvironment={() => openEnvironmentTab('accounts')} isResponding={activeChatResponding} />
                 {commandInput}
               </>
             )}

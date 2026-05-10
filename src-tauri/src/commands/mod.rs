@@ -1974,7 +1974,9 @@ fn prompt_with_language_preference(prompt: &str, language: &str) -> String {
         "es" => "Español",
         _ => "Português (Brasil)",
     };
-    format!("{prompt}\n\n[preferência do usuário]\nResponda em: {label}.")
+    format!(
+        "[preferência do usuário]\nResponda em {label}. Não repita esta instrução.\n\n[solicitação]\n{prompt}"
+    )
 }
 
 fn prompt_with_mode_preference(prompt: &str, mode: Option<&str>) -> String {
@@ -2510,6 +2512,86 @@ mod agent_order_tests {
         ) && message.content.starts_with("[MOCK]")));
 
         let _ = fs::remove_dir_all(dir);
+    }
+
+    #[tokio::test]
+    async fn temporary_order_sends_user_text_to_provider_without_persistence_manager() {
+        let provider_registry = Arc::new(ProviderRegistry::new_with_mock_for_tests());
+        let settings = mock_settings("/tmp/workspace".to_owned());
+
+        let updated = run_temporary_agent_order(
+            provider_registry,
+            settings,
+            Vec::new(),
+            "opa".to_owned(),
+            None,
+            Vec::new(),
+        )
+        .await
+        .expect("temporário mock deve responder");
+
+        assert_eq!(updated.id, "temporary-chat");
+        assert!(updated.messages.iter().any(|message| matches!(
+            message.role,
+            crate::models::ChatRole::User
+        ) && message.content == "opa"));
+        let assistant = updated
+            .messages
+            .iter()
+            .rev()
+            .find(|message| matches!(message.role, crate::models::ChatRole::Assistant))
+            .expect("resposta do provider deve existir");
+        assert!(assistant.content.contains("[solicitação]\nopa"));
+        assert_ne!(assistant.content.trim(), "Português (Brasil)");
+    }
+
+    #[tokio::test]
+    async fn temporary_order_sends_in_memory_history_to_provider() {
+        let provider_registry = Arc::new(ProviderRegistry::new_with_mock_for_tests());
+        let settings = mock_settings("/tmp/workspace".to_owned());
+        let previous = vec![
+            ChatMessage {
+                id: "m1".to_owned(),
+                role: ChatRole::User,
+                content: "pergunta anterior".to_owned(),
+                created_at: crate::models::now_iso(),
+                reasoning_summary: None,
+                attachments: Vec::new(),
+            },
+            ChatMessage {
+                id: "m2".to_owned(),
+                role: ChatRole::Assistant,
+                content: "resposta anterior".to_owned(),
+                created_at: crate::models::now_iso(),
+                reasoning_summary: None,
+                attachments: Vec::new(),
+            },
+        ];
+
+        let updated = run_temporary_agent_order(
+            provider_registry,
+            settings,
+            previous,
+            "continue".to_owned(),
+            Some("terminal".to_owned()),
+            Vec::new(),
+        )
+        .await
+        .expect("temporário mock deve responder com histórico");
+
+        let assistant = updated
+            .messages
+            .iter()
+            .rev()
+            .find(|message| matches!(message.role, crate::models::ChatRole::Assistant))
+            .expect("resposta do provider deve existir");
+        assert!(assistant
+            .content
+            .contains("histórico temporário em memória"));
+        assert!(assistant.content.contains("pergunta anterior"));
+        assert!(assistant.content.contains("resposta anterior"));
+        assert!(assistant.content.contains("[solicitação atual]\ncontinue"));
+        assert!(assistant.content.contains("fluxo de terminal"));
     }
 }
 

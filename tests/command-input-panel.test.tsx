@@ -130,15 +130,16 @@ describe('CommandInputPanel', () => {
     expect(screen.getByLabelText('Enviar')).toHaveAttribute('title', 'Provider indisponível');
   });
 
-  it('mantem terminal fora da home ate ação explicita no menu de modos', () => {
+  it('mantem terminal como conversa sem abrir logs automaticamente', async () => {
     const onOpenTerminal = vi.fn();
+    const onSendOrder = vi.fn().mockResolvedValue(undefined);
 
     render(
       <CommandInputPanel
         busy={false}
         privilegedActions={[]}
         actionJsonExamples={{}}
-        onSendOrder={vi.fn()}
+        onSendOrder={onSendOrder}
         onExecuteCommand={vi.fn()}
         onRequestPrivilegedAction={vi.fn()}
         onOpenTerminal={onOpenTerminal}
@@ -147,8 +148,15 @@ describe('CommandInputPanel', () => {
 
     fireEvent.click(screen.getByLabelText('Selecionar modo de resposta'));
     fireEvent.click(screen.getByText('Terminal'));
-    expect(onOpenTerminal).toHaveBeenCalledTimes(1);
-    expect(screen.getByPlaceholderText('Comando de terminal')).toBeInTheDocument();
+    expect(onOpenTerminal).not.toHaveBeenCalled();
+    fireEvent.change(screen.getByPlaceholderText('Descreva a ação de terminal para a IA planejar com segurança.'), {
+      target: { value: 'liste arquivos com risco baixo' },
+    });
+    fireEvent.click(screen.getByLabelText('Enviar'));
+
+    await waitFor(() => {
+      expect(onSendOrder).toHaveBeenCalledWith('liste arquivos com risco baixo', 'terminal', []);
+    });
   });
 
   it('menu do + mostra somente Selecionar arquivo', () => {
@@ -203,6 +211,32 @@ describe('CommandInputPanel', () => {
     await waitFor(() => {
       expect(onSendOrder).toHaveBeenCalledWith('implemente teste', 'code', []);
     });
+  });
+
+  it('limpa o composer imediatamente ao enviar', async () => {
+    let resolveSend: (() => void) | undefined;
+    const onSendOrder = vi.fn(() => new Promise<void>((resolve) => {
+      resolveSend = resolve;
+    }));
+
+    render(
+      <CommandInputPanel
+        busy={false}
+        privilegedActions={[]}
+        actionJsonExamples={{}}
+        onSendOrder={onSendOrder}
+        onExecuteCommand={vi.fn()}
+        onRequestPrivilegedAction={vi.fn()}
+      />,
+    );
+
+    const input = screen.getByPlaceholderText('Como posso ajudá-lo hoje?');
+    fireEvent.change(input, { target: { value: 'mensagem imediata' } });
+    fireEvent.click(screen.getByLabelText('Enviar'));
+
+    expect(input).toHaveValue('');
+    expect(onSendOrder).toHaveBeenCalledWith('mensagem imediata', 'auto', []);
+    resolveSend?.();
   });
 
   it('transcreve voz quando SpeechRecognition existe', async () => {
@@ -318,6 +352,34 @@ describe('CommandInputPanel', () => {
     expect(api.getSttConfigState).toHaveBeenCalled();
     expect(screen.getByText('Comando Arch sugerido')).toBeInTheDocument();
     expect(screen.getByText('sudo pacman -S ffmpeg whisper.cpp')).toBeInTheDocument();
+  });
+
+  it('orienta configuração quando a permissão do microfone é negada', async () => {
+    Object.defineProperty(window.navigator, 'mediaDevices', {
+      configurable: true,
+      value: {
+        getUserMedia: vi.fn().mockRejectedValue(new DOMException('denied', 'NotAllowedError')),
+      },
+    });
+    vi.stubGlobal('MediaRecorder', MockMediaRecorder);
+
+    render(
+      <CommandInputPanel
+        busy={false}
+        privilegedActions={[]}
+        actionJsonExamples={{}}
+        onSendOrder={vi.fn()}
+        onExecuteCommand={vi.fn()}
+        onRequestPrivilegedAction={vi.fn()}
+      />,
+    );
+
+    fireEvent.click(screen.getByLabelText('Entrada por voz'));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('Permissão negada');
+    fireEvent.click(screen.getByText('Configurar microfone'));
+    expect(await screen.findByRole('dialog', { name: 'Configurar transcrição local' })).toBeInTheDocument();
+    expect(screen.getByText('Permissão no Linux/Hyprland')).toBeInTheDocument();
   });
 
   it('abre seletor interno, adiciona chip de arquivo e remove o chip', async () => {

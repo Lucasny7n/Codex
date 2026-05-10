@@ -168,13 +168,10 @@ function toChatAttachment(attachment: SelectedFileAttachment): ChatAttachment {
 export function CommandInputPanel({
   busy,
   onSendOrder,
-  onExecuteCommand,
   orderDisabledReason,
-  onOpenTerminal,
 }: CommandInputPanelProps): JSX.Element {
   const [mode, setMode] = useState<InputModeId>('auto');
   const [prompt, setPrompt] = useState('');
-  const [command, setCommand] = useState('');
   const [plusOpen, setPlusOpen] = useState(false);
   const [modeOpen, setModeOpen] = useState(false);
   const [fileManagerOpen, setFileManagerOpen] = useState(false);
@@ -194,11 +191,10 @@ export function CommandInputPanel({
   const recordedChunksRef = useRef<Blob[]>([]);
 
   const selectedMode = INPUT_MODES.find((item) => item.id === mode) ?? INPUT_MODES[0];
-  const writingMode = mode !== 'terminal';
   const canSubmit =
     !busy &&
-    ((writingMode && (prompt.trim().length > 0 || attachments.length > 0) && !orderDisabledReason) ||
-      (mode === 'terminal' && command.trim().length > 0));
+    (prompt.trim().length > 0 || attachments.length > 0) &&
+    !orderDisabledReason;
 
   function stopRecordingTracks(): void {
     recordingStreamRef.current?.getTracks().forEach((track) => track.stop());
@@ -297,20 +293,12 @@ export function CommandInputPanel({
   }
 
   async function handleSend(): Promise<void> {
-    if (writingMode) {
-      const payloadAttachments = attachments.map(toChatAttachment);
-      const visiblePrompt = prompt.trim() || (payloadAttachments.length > 0 ? 'Anexo enviado.' : '');
-      await onSendOrder(visiblePrompt, mode, payloadAttachments);
-      setPrompt('');
-      setAttachments([]);
-      return;
-    }
-
-    if (mode === 'terminal') {
-      await onExecuteCommand(command);
-      setCommand('');
-      return;
-    }
+    const payloadAttachments = attachments.map(toChatAttachment);
+    const visiblePrompt = prompt.trim() || (payloadAttachments.length > 0 ? 'Anexo enviado.' : '');
+    if (!visiblePrompt && payloadAttachments.length === 0) return;
+    setPrompt('');
+    setAttachments([]);
+    await onSendOrder(visiblePrompt, mode, payloadAttachments);
   }
 
   function resizeTextArea(target: HTMLTextAreaElement): void {
@@ -321,7 +309,6 @@ export function CommandInputPanel({
   function chooseMode(nextMode: InputModeId): void {
     setMode(nextMode);
     setModeOpen(false);
-    if (nextMode === 'terminal') onOpenTerminal?.();
   }
 
   function openFileManager(): void {
@@ -440,7 +427,7 @@ export function CommandInputPanel({
       const name = cause instanceof DOMException ? cause.name : '';
       if (name === 'NotAllowedError' || name === 'SecurityError') {
         setVoiceState('permission-denied');
-        setVoiceMessage('Permissão negada. Libere o microfone para continuar.');
+        setVoiceMessage('Permissão negada. Revise a permissão do WebView e confirme PipeWire/WirePlumber antes de tentar novamente.');
         return;
       }
       if (name === 'NotFoundError' || name === 'DevicesNotFoundError') {
@@ -454,11 +441,6 @@ export function CommandInputPanel({
   }
 
   function startVoiceInput(): void {
-    if (!writingMode) {
-      setVoiceState('error');
-      setVoiceMessage('Use o microfone nos modos de texto.');
-      return;
-    }
     if (voiceState === 'recording') {
       recognitionRef.current?.stop();
       const recorder = mediaRecorderRef.current;
@@ -497,7 +479,7 @@ export function CommandInputPanel({
     recognition.onerror = (event) => {
       if (event.error === 'not-allowed' || event.error === 'service-not-allowed') {
         setVoiceState('permission-denied');
-        setVoiceMessage('Permissão negada.');
+        setVoiceMessage('Permissão negada. Revise a permissão do WebView e confirme PipeWire/WirePlumber.');
         return;
       }
       setVoiceState('error');
@@ -522,7 +504,7 @@ export function CommandInputPanel({
   const placeholder = mode === 'code'
     ? 'Descreva o que quer construir, corrigir ou automatizar.'
     : mode === 'terminal'
-      ? 'Descreva ou digite o comando que deverá ser avaliado com segurança.'
+      ? 'Descreva a ação de terminal para a IA planejar com segurança.'
     : 'Como posso ajudá-lo hoje?';
 
   return (
@@ -563,39 +545,20 @@ export function CommandInputPanel({
           </PopupMenu>
         </div>
 
-        {writingMode ? (
-          <textarea
-            className="prompt-pill-input"
-            placeholder={placeholder}
-            value={prompt}
-            rows={1}
-            onInput={(event) => resizeTextArea(event.currentTarget)}
-            onChange={(event) => setPrompt(event.target.value)}
-            onKeyDown={(event) => {
-              if (event.key === 'Enter' && !event.shiftKey) {
-                event.preventDefault();
-                if (canSubmit) void handleSend();
-              }
-            }}
-          />
-        ) : null}
-
-        {mode === 'terminal' ? (
-          <textarea
-            className="prompt-pill-input prompt-pill-terminal"
-            placeholder="Comando de terminal"
-            value={command}
-            rows={1}
-            onInput={(event) => resizeTextArea(event.currentTarget)}
-            onChange={(event) => setCommand(event.target.value)}
-            onKeyDown={(event) => {
-              if (event.key === 'Enter' && !event.shiftKey) {
-                event.preventDefault();
-                if (canSubmit) void handleSend();
-              }
-            }}
-          />
-        ) : null}
+        <textarea
+          className={`prompt-pill-input ${mode === 'terminal' ? 'prompt-pill-terminal' : ''}`}
+          placeholder={placeholder}
+          value={prompt}
+          rows={1}
+          onInput={(event) => resizeTextArea(event.currentTarget)}
+          onChange={(event) => setPrompt(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key === 'Enter' && !event.shiftKey) {
+              event.preventDefault();
+              if (canSubmit) void handleSend();
+            }
+          }}
+        />
 
         <div className="prompt-pill-spacer" />
 
@@ -635,7 +598,7 @@ export function CommandInputPanel({
           className="prompt-send-button"
           type="button"
           disabled={!canSubmit}
-          title={writingMode ? orderDisabledReason : undefined}
+          title={orderDisabledReason}
           onClick={() => void handleSend()}
           aria-label="Enviar"
         >
@@ -648,9 +611,9 @@ export function CommandInputPanel({
           role={voiceState === 'error' || voiceState === 'missing-backend' || voiceState === 'permission-denied' ? 'alert' : 'status'}
         >
           <span>{voiceMessage}</span>
-          {voiceState === 'missing-backend' || voiceState === 'error' ? (
+          {voiceState === 'missing-backend' || voiceState === 'error' || voiceState === 'permission-denied' ? (
             <button type="button" className="voice-config-button" onClick={openSttSetup}>
-              Configurar transcrição local
+              {voiceState === 'permission-denied' ? 'Configurar microfone' : 'Configurar transcrição local'}
             </button>
           ) : null}
         </div>
@@ -682,6 +645,11 @@ export function CommandInputPanel({
               <code>{sttSnapshot.installCommand}</code>
             </div>
           ) : null}
+          <div className="stt-command-box stt-mic-help" role="note">
+            <strong>Permissão no Linux/Hyprland</strong>
+            <span>Se a permissão foi negada, feche e abra o app depois de validar PipeWire e portal desktop.</span>
+            <code>systemctl --user status pipewire wireplumber xdg-desktop-portal</code>
+          </div>
 
           <div className="stt-tool-grid" aria-label="Backends de transcrição">
             <div className="stt-tool-row">

@@ -43,7 +43,13 @@ describe('ChatPanel', () => {
     expect(screen.queryByText(/Resposta local concluída/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/JUSTIFICATIVA TÉCNICA/i)).not.toBeInTheDocument();
     expect(screen.getByText('Tudo certo.')).toBeInTheDocument();
-    expect(screen.getByText('Pensamento concluído')).toBeInTheDocument();
+    expect(screen.queryByText('Pensamento concluído')).not.toBeInTheDocument();
+  });
+
+  it('mostra indicador discreto enquanto aguarda resposta', () => {
+    render(<ChatPanel session={chat('Resposta anterior')} isResponding />);
+
+    expect(screen.getByLabelText('Assistente respondendo')).toBeInTheDocument();
   });
 
   it('traduz 429 como cota sem JSON cru', () => {

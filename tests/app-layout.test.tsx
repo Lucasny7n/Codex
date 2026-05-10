@@ -505,6 +505,72 @@ describe('App layout visibility', () => {
     expect(screen.getByText('Testar')).toBeInTheDocument();
   });
 
+  it('gerencia múltiplas API keys no modal cloud sem revelar key salva', async () => {
+    vi.mocked(api.bootstrapState).mockResolvedValue(payload([baseSession()]));
+    vi.mocked(api.listProviderProfiles).mockResolvedValue([
+      {
+        id: 'openai-api:principal',
+        providerId: 'openai-api',
+        providerLabel: 'OpenAI API',
+        name: 'Principal',
+        authType: 'api_key',
+        status: 'testing',
+        maskedCredential: 'sk-t****1111',
+        source: 'config_file',
+        isDefault: true,
+        message: 'Teste pendente.',
+      },
+      {
+        id: 'openai-api:backup',
+        providerId: 'openai-api',
+        providerLabel: 'OpenAI API',
+        name: 'Backup',
+        authType: 'api_key',
+        status: 'ready',
+        maskedCredential: 'sk-t****2222',
+        source: 'config_file',
+        isDefault: false,
+        message: 'Pronta.',
+      },
+    ]);
+
+    render(<App />);
+
+    await waitFor(() => {
+      expect(screen.getByText('mock-development-model')).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByTitle(/mock-development-model/));
+    fireEvent.change(screen.getByLabelText('Buscar modelo ou provedor'), { target: { value: 'GPT-5.5' } });
+    fireEvent.mouseEnter(screen.getByTestId('model-row-gpt-5.5'));
+    fireEvent.click(screen.getByLabelText('Configurar GPT-5.5'));
+
+    expect(screen.getByText('API keys')).toBeInTheDocument();
+    expect(screen.getByText(/sk-t\*\*\*\*1111/)).toBeInTheDocument();
+    expect(screen.getByText(/sk-t\*\*\*\*2222/)).toBeInTheDocument();
+    expect(screen.queryByText('Mostrar')).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByText(/Backup/));
+    await waitFor(() => {
+      expect(api.setDefaultProviderProfile).toHaveBeenCalledWith('openai-api', 'openai-api:backup');
+    });
+
+    fireEvent.click(screen.getByLabelText('Excluir key Principal'));
+    await waitFor(() => {
+      expect(api.removeProviderProfile).toHaveBeenCalledWith('openai-api:principal');
+    });
+
+    fireEvent.click(screen.getByText('Adicionar key'));
+    fireEvent.change(screen.getByLabelText('Nome da key'), { target: { value: 'Nova key' } });
+    fireEvent.change(screen.getByLabelText('API Key'), { target: { value: 'sk-test-valid-abcdef123456' } });
+    expect(screen.getByText('Mostrar')).toBeInTheDocument();
+    fireEvent.click(screen.getByText('Salvar API'));
+
+    await waitFor(() => {
+      expect(api.saveProviderProfileCredential).toHaveBeenCalledWith('openai-api', undefined, 'Nova key', 'sk-test-valid-abcdef123456', true);
+    });
+  });
+
   it('não cria projeto Codex-Codex automaticamente a partir do workspace', async () => {
     vi.mocked(api.bootstrapState).mockResolvedValue(payload([baseSession()]));
 
