@@ -361,6 +361,16 @@ function safeAgentProfileId(value: string | undefined): string {
   return value && value !== 'agressivo' ? value : 'equilibrado';
 }
 
+function createOptimisticUserMessage(content: string, attachments: ChatAttachment[]): ChatMessage {
+  return {
+    id: `optimistic-user-${Date.now()}`,
+    role: 'user',
+    content,
+    createdAt: new Date().toISOString(),
+    attachments,
+  };
+}
+
 export default function App(): JSX.Element {
   const [busy, setBusy] = useState(false);
   const [privilegedActions, setPrivilegedActions] = useState<PrivilegedActionSpec[]>([]);
@@ -1013,14 +1023,47 @@ export default function App(): JSX.Element {
       return;
     }
 
+    let sessionId: string | undefined;
+    const optimisticUserMessage = createOptimisticUserMessage(visibleContent, attachments);
     setBusy(true);
     try {
-      const sessionId = await ensureSession(visibleContent);
+      sessionId = await ensureSession(visibleContent);
+      const session = useAppStore.getState().sessions.find((item) => item.id === sessionId);
+      if (session && !session.messages.some((message) => message.id === optimisticUserMessage.id)) {
+        upsertSession({
+          ...session,
+          status: 'executing',
+          updatedAt: optimisticUserMessage.createdAt,
+          messages: [...session.messages, optimisticUserMessage],
+        });
+      }
       if (activeProject) {
         rememberProjectSession(activeProject, sessionId);
       }
       const updated = await sendOrderToAgent(sessionId, visibleContent, mode, attachments);
       upsertSession(updated);
+    } catch (cause) {
+      const message = cause instanceof Error ? cause.message : 'Falha ao enviar mensagem ao provider.';
+      if (sessionId) {
+        const session = useAppStore.getState().sessions.find((item) => item.id === sessionId);
+        if (session) {
+          const assistantError: ChatMessage = {
+            id: `provider-error-${Date.now()}`,
+            role: 'assistant',
+            content: `Erro do provider\n${message}`,
+            createdAt: new Date().toISOString(),
+            reasoningSummary: 'Falha controlada do provider; nenhuma resposta simulada foi usada.',
+          };
+          upsertSession({
+            ...session,
+            status: 'error',
+            updatedAt: assistantError.createdAt,
+            messages: [...session.messages, assistantError],
+          });
+        }
+      } else {
+        setError(message);
+      }
     } finally {
       setBusy(false);
     }
@@ -1155,40 +1198,6 @@ export default function App(): JSX.Element {
     }
   }
 
-  async function handleActivateLocal(model: LocalModelProfile): Promise<void> {
-    if (!settings) return;
-
-    const status = resolveModelStatus(model, selectedProviderStatus, localRuntime);
-    if (!canSelectModel(status)) {
-      const translated = translateError(status, localRuntime?.message);
-      setError(translated.message);
-      openEnvironmentTab('local');
-      return;
-    }
-
-    setModelActionBusyId(model.id);
-    try {
-      const next = pushHistory(
-        {
-          ...settings,
-          executionMode: 'local',
-          selectedProviderId: 'local-ollama',
-          selectedModelId: model.modelId,
-          selectedLocalModelId: model.modelId,
-        },
-        'local',
-        'local-ollama',
-        model.modelId,
-      );
-
-      await applySettings(next);
-      setExecutionMode('local');
-      selectModel(model.id);
-    } finally {
-      setModelActionBusyId(undefined);
-    }
-  }
-
   function cloudEnvironmentInput(model: CloudModelProfile): EnvironmentSelectionInput | undefined {
     if (!settings) return undefined;
     const provider = providers.find((item) => item.id === model.providerId);
@@ -1293,11 +1302,26 @@ export default function App(): JSX.Element {
   }
 
   async function handleInstallLocalModel(model: LocalModelProfile): Promise<void> {
+    if (!settings) return;
     setModelActionBusyId(model.id);
     try {
       const snapshot = await installLocalModel(model.modelId);
       setLocalRuntime(snapshot);
-      await handleActivateLocal(model);
+      const next = pushHistory(
+        {
+          ...settings,
+          executionMode: 'local',
+          selectedProviderId: 'local-ollama',
+          selectedModelId: model.modelId,
+          selectedLocalModelId: model.modelId,
+        },
+        'local',
+        'local-ollama',
+        model.modelId,
+      );
+      await applySettings(next);
+      setExecutionMode('local');
+      selectModel(model.id);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'Falha ao instalar modelo local.');
       await refreshLocalRuntime();

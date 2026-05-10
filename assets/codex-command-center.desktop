@@ -2,7 +2,7 @@
 Type=Application
 Name=Codex Command Center
 Comment=Central de comando para agentes tipo Codex
-Exec=/home/lucas/Codex-Codex/scripts/run-codex-command-center.sh
+Exec=codex_command_center
 Icon=codex-command-center
 Terminal=false
 Categories=Development;Utility;

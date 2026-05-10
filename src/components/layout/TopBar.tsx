@@ -208,6 +208,13 @@ function providerSpecificError(providerId: string | undefined, message: string):
   return message;
 }
 
+function localProgressDetails(progress: LocalModelInstallProgress | undefined): string {
+  if (!progress) return '';
+  return [progress.downloaded && progress.total ? `${progress.downloaded} / ${progress.total}` : undefined, progress.speed]
+    .filter(Boolean)
+    .join(' · ');
+}
+
 export function TopBar({
   providerStatus,
   executionMode,
@@ -240,6 +247,7 @@ export function TopBar({
   const [apiKeyName, setApiKeyName] = useState('Principal');
   const [selectedConfigProfileId, setSelectedConfigProfileId] = useState<string>();
   const [profileActionBusyId, setProfileActionBusyId] = useState<string>();
+  const [profileMenuId, setProfileMenuId] = useState<string>();
   const [configStatus, setConfigStatus] = useState<'idle' | 'testing' | 'ready' | 'error'>('idle');
   const [configError, setConfigError] = useState<string>();
   const [hoveredOptionId, setHoveredOptionId] = useState<string>();
@@ -271,8 +279,38 @@ export function TopBar({
     setSelectedConfigProfileId(profile?.source === 'environment' ? undefined : profile?.id);
     setApiKeyName(profile?.name ?? 'Principal');
     setApiKey('');
+    setProfileMenuId(undefined);
     setConfigStatus(option.status === 'ready' ? 'ready' : option.status === 'invalid_api_key' || option.status === 'forbidden' ? 'error' : 'idle');
     setConfigError(option.status === 'invalid_api_key' || option.status === 'forbidden' ? option.statusLabel : undefined);
+  }
+
+  function applyProviderTestStatus(providerId: string, status: ProviderRuntimeStatus): void {
+    if (status.state === 'ready') {
+      setConfigStatus('ready');
+      setConfigTarget((current) => current ? {
+        ...current,
+        option: {
+          ...current.option,
+          available: true,
+          status: 'ready',
+          statusLabel: 'Configurado',
+        },
+      } : current);
+      return;
+    }
+
+    setConfigStatus('error');
+    setConfigError(providerSpecificError(providerId, status.message));
+    const normalizedStatus = normalizeProviderStatus(status.state);
+    setConfigTarget((current) => current ? {
+      ...current,
+      option: {
+        ...current.option,
+        available: false,
+        status: normalizedStatus,
+        statusLabel: status.state === 'invalid_api_key' ? 'API key inválida' : 'Corrigir provider',
+      },
+    } : current);
   }
 
   async function saveApiKey(): Promise<void> {
@@ -327,32 +365,7 @@ export function TopBar({
       if (selectedConfigProfileId && configProfile?.source === 'config_file' && !configProfile.isDefault && onSetDefaultProviderProfile) {
         await onSetDefaultProviderProfile(providerId, selectedConfigProfileId);
       }
-      const status = await onTestProvider(providerId);
-      if (status.state === 'ready') {
-        setConfigStatus('ready');
-        setConfigTarget((current) => current ? {
-          ...current,
-          option: {
-            ...current.option,
-            available: true,
-            status: 'ready',
-            statusLabel: 'Configurado',
-          },
-        } : current);
-      } else {
-        setConfigStatus('error');
-        setConfigError(providerSpecificError(providerId, status.message));
-        const normalizedStatus = normalizeProviderStatus(status.state);
-        setConfigTarget((current) => current ? {
-          ...current,
-          option: {
-            ...current.option,
-            available: false,
-            status: normalizedStatus,
-            statusLabel: status.state === 'invalid_api_key' ? 'API key inválida' : 'Corrigir provider',
-          },
-        } : current);
-      }
+      applyProviderTestStatus(providerId, await onTestProvider(providerId));
     } catch (cause) {
       setConfigStatus('error');
       setConfigError(providerSpecificError(providerId, cause instanceof Error ? cause.message : 'Falha ao testar API.'));
@@ -379,9 +392,32 @@ export function TopBar({
     }
   }
 
+  async function testProfile(profile: ProviderAccountProfile): Promise<void> {
+    const providerId = configTarget?.option.providerId;
+    if (!providerId || !onTestProvider) return;
+    setProfileActionBusyId(profile.id);
+    setProfileMenuId(undefined);
+    setConfigStatus('testing');
+    setConfigError(undefined);
+    try {
+      if (profile.source === 'config_file' && !profile.isDefault && onSetDefaultProviderProfile) {
+        await onSetDefaultProviderProfile(providerId, profile.id);
+      }
+      setSelectedConfigProfileId(profile.id);
+      setApiKeyName(profile.name);
+      applyProviderTestStatus(providerId, await onTestProvider(providerId));
+    } catch (cause) {
+      setConfigStatus('error');
+      setConfigError(providerSpecificError(providerId, cause instanceof Error ? cause.message : 'Falha ao testar API key.'));
+    } finally {
+      setProfileActionBusyId(undefined);
+    }
+  }
+
   async function removeProfile(profile: ProviderAccountProfile): Promise<void> {
     if (!onRemoveProviderProfile || profile.source !== 'config_file') return;
     setProfileActionBusyId(profile.id);
+    setProfileMenuId(undefined);
     setConfigError(undefined);
     try {
       await onRemoveProviderProfile(profile.id);
@@ -583,35 +619,47 @@ export function TopBar({
                     <small>{profile.maskedCredential ?? 'sem key salva'} · {profile.status.replace(/_/g, ' ')}</small>
                   </span>
                 </button>
-                <div className="model-config-key-actions">
+                <div className="popup-anchor model-config-key-actions">
                   <button
                     type="button"
-                    aria-label={`Substituir key ${profile.name}`}
-                    onClick={() => {
-                      setSelectedConfigProfileId(profile.id);
-                      setApiKeyName(profile.name);
-                      setApiKey('');
+                    className="model-config-key-menu-button"
+                    aria-label={`Ações da key ${profile.name}`}
+                    onMouseDown={(event) => event.stopPropagation()}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      setProfileMenuId((current) => current === profile.id ? undefined : profile.id);
                     }}
                   >
-                    Editar
+                    ⋯
                   </button>
-                  <button
-                    type="button"
-                    aria-label={`Testar key ${profile.name}`}
-                    disabled={profileActionBusyId === profile.id}
-                    onClick={() => void activateProfile(profile).then(() => testApiKey())}
-                  >
-                    Testar
-                  </button>
-                  <button
-                    type="button"
-                    className="danger"
-                    aria-label={`Excluir key ${profile.name}`}
-                    disabled={profile.source !== 'config_file' || profileActionBusyId === profile.id}
-                    onClick={() => void removeProfile(profile)}
-                  >
-                    Excluir
-                  </button>
+                  <PopupMenu open={profileMenuId === profile.id} onClose={() => setProfileMenuId(undefined)} placement="auto" align="right">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setProfileMenuId(undefined);
+                        setSelectedConfigProfileId(profile.id);
+                        setApiKeyName(profile.name);
+                        setApiKey('');
+                      }}
+                    >
+                      Editar/Substituir key
+                    </button>
+                    <button
+                      type="button"
+                      disabled={profileActionBusyId === profile.id}
+                      onClick={() => void testProfile(profile)}
+                    >
+                      Testar key
+                    </button>
+                    <button
+                      type="button"
+                      className="danger"
+                      disabled={profile.source !== 'config_file' || profileActionBusyId === profile.id}
+                      onClick={() => void removeProfile(profile)}
+                    >
+                      Excluir key
+                    </button>
+                  </PopupMenu>
                 </div>
               </div>
             )) : (
@@ -672,7 +720,20 @@ export function TopBar({
             <span>Status: {configTarget.option.installed ? 'Instalado' : 'Não instalado'}</span>
           </div>
           {configTarget.option.heavy ? <span className="model-config-hint">Pesado · pode demorar</span> : null}
-          {localProgress ? <span className="model-config-hint">{localProgress.message}{typeof localProgress.progressPercent === 'number' ? ` · ${localProgress.progressPercent}%` : ''}</span> : null}
+          {localProgress ? (
+            <div className="model-config-progress" role="status">
+              <span>
+                {localProgress.message}
+                {typeof localProgress.progressPercent === 'number' ? ` · ${localProgress.progressPercent}%` : ''}
+              </span>
+              {typeof localProgress.progressPercent === 'number' ? (
+                <div className="model-config-progress-track" aria-hidden="true">
+                  <span style={{ width: `${Math.max(0, Math.min(100, localProgress.progressPercent))}%` }} />
+                </div>
+              ) : null}
+              {localProgressDetails(localProgress) ? <small>{localProgressDetails(localProgress)}</small> : null}
+            </div>
+          ) : null}
           {configError ? <div className="input-error-tip" role="alert">{configError}</div> : null}
           <div className="dialog-actions">
             {!configTarget.option.installed ? (

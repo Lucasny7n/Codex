@@ -184,6 +184,7 @@ function installLocalStorageMock(): void {
 
 describe('App layout visibility', () => {
   beforeEach(() => {
+    vi.resetAllMocks();
     installLocalStorageMock();
     useAppStore.setState({
       booted: false,
@@ -209,6 +210,11 @@ describe('App layout visibility', () => {
     });
 
     const mockedApi = vi.mocked(api);
+    mockedApi.createSession.mockImplementation(async (title) => ({
+      ...baseSession(),
+      id: 'created-session',
+      title,
+    }));
     mockedApi.getBasePrompt.mockResolvedValue('prompt base');
     mockedApi.updateSettings.mockImplementation(async (next) => next);
     mockedApi.listPrivilegedActions.mockResolvedValue([]);
@@ -555,7 +561,9 @@ describe('App layout visibility', () => {
       expect(api.setDefaultProviderProfile).toHaveBeenCalledWith('openai-api', 'openai-api:backup');
     });
 
-    fireEvent.click(screen.getByLabelText('Excluir key Principal'));
+    fireEvent.mouseEnter(screen.getByText(/Principal/).closest('.model-config-key-row') as HTMLElement);
+    fireEvent.click(screen.getByLabelText('Ações da key Principal'));
+    fireEvent.click(screen.getByText('Excluir key'));
     await waitFor(() => {
       expect(api.removeProviderProfile).toHaveBeenCalledWith('openai-api:principal');
     });
@@ -568,6 +576,51 @@ describe('App layout visibility', () => {
 
     await waitFor(() => {
       expect(api.saveProviderProfileCredential).toHaveBeenCalledWith('openai-api', undefined, 'Nova key', 'sk-test-valid-abcdef123456', true);
+    });
+  });
+
+  it('chat normal limpa o composer, mostra mensagem otimista e loading enquanto o provider responde', async () => {
+    vi.mocked(api.bootstrapState).mockResolvedValue(payload([]));
+    let resolveOrder: (session: AgentSession) => void = () => undefined;
+    vi.mocked(api.sendOrderToAgent).mockImplementation(
+      () => new Promise<AgentSession>((resolve) => {
+        resolveOrder = resolve;
+      }),
+    );
+
+    render(<App />);
+
+    await waitFor(() => {
+      expect(screen.getByText('O que gostaria de explorar?')).toBeInTheDocument();
+    });
+
+    const input = screen.getByPlaceholderText('Como posso ajudá-lo hoje?');
+    fireEvent.change(input, { target: { value: 'opa' } });
+    fireEvent.click(screen.getByLabelText('Enviar'));
+
+    expect(input).toHaveValue('');
+    expect(await screen.findByText('opa')).toBeInTheDocument();
+    expect(screen.getByLabelText('Assistente respondendo')).toBeInTheDocument();
+    expect(api.createSession).toHaveBeenCalledTimes(1);
+    expect(api.sendOrderToAgent).toHaveBeenCalledWith('created-session', 'opa', 'auto', []);
+
+    const now = new Date().toISOString();
+    resolveOrder({
+      id: 'created-session',
+      title: 'opa',
+      createdAt: now,
+      updatedAt: now,
+      status: 'idle',
+      tasks: [],
+      messages: [
+        { id: 'u1', role: 'user', content: 'opa', createdAt: now },
+        { id: 'a1', role: 'assistant', content: 'Resposta real do provider mockado.', createdAt: now },
+      ],
+    });
+
+    expect(await screen.findByText('Resposta real do provider mockado.')).toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.queryByLabelText('Assistente respondendo')).not.toBeInTheDocument();
     });
   });
 

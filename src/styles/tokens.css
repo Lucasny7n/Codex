@@ -12,8 +12,8 @@
   --ccc-text-primary: rgba(250, 250, 252, 0.94);
   --ccc-text-secondary: rgba(250, 250, 252, 0.66);
   --ccc-border-subtle: rgba(255, 255, 255, 0.055);
-  --ccc-accent: #6366f1;
-  --ccc-focus: rgba(99, 102, 241, 0.28);
+  --ccc-accent: #2d95ec;
+  --ccc-focus: rgba(45, 149, 236, 0.22);
   --ccc-hover: rgba(255, 255, 255, 0.055);
   --ccc-disabled: rgba(250, 250, 252, 0.34);
   --ccc-scrollbar-thumb: rgba(250, 250, 252, 0.18);
@@ -52,13 +52,13 @@
   --border-subtle: rgba(255, 255, 255, 0.055);
   --border-medium: rgba(255, 255, 255, 0.095);
   --border-strong: rgba(255, 255, 255, 0.14);
-  --border-focus: rgba(99, 102, 241, 0.50);
+  --border-focus: rgba(45, 149, 236, 0.34);
 
-  --accent-primary: #6366f1;
-  --accent-hover: #818cf8;
-  --accent-soft: rgba(99, 102, 241, 0.14);
-  --accent-border: rgba(99, 102, 241, 0.24);
-  --accent-glow: rgba(99, 102, 241, 0.20);
+  --accent-primary: #2d95ec;
+  --accent-hover: #5cbcff;
+  --accent-soft: rgba(45, 149, 236, 0.12);
+  --accent-border: rgba(45, 149, 236, 0.22);
+  --accent-glow: rgba(45, 149, 236, 0.18);
 
   --danger-soft: rgba(239, 68, 68, 0.12);
   --danger-border: rgba(239, 68, 68, 0.22);

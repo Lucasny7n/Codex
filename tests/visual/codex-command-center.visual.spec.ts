@@ -16,17 +16,17 @@ declare global {
 }
 
 function nowIso(): string {
-  return new Date('2026-05-09T12:00:00.000Z').toISOString();
+  return new Date('2026-05-10T12:00:00.000Z').toISOString();
 }
 
 async function installTauriMock(page: Page): Promise<void> {
   await page.addInitScript(() => {
-    const now = '2026-05-09T12:00:00.000Z';
+    const now = '2026-05-10T12:00:00.000Z';
     window.localStorage.setItem('codex-sidebar-conversations-open', 'true');
     Object.defineProperty(window.navigator, 'mediaDevices', {
       configurable: true,
       value: {
-        getUserMedia: () => Promise.reject(new DOMException('Nenhum microfone no mock visual.', 'NotFoundError')),
+        getUserMedia: () => Promise.reject(new DOMException('Microfone bloqueado no mock visual.', 'NotAllowedError')),
       },
     });
     Object.defineProperty(window, 'MediaRecorder', {
@@ -67,7 +67,7 @@ async function installTauriMock(page: Page): Promise<void> {
           role: 'assistant',
           content: '### Resultado\n\n- Markdown limpo\n- Ações discretas\n- Scrollbar fora da bolha\n\n`const status = "ok"`\n\n' + 'Mensagem longa '.repeat(90),
           createdAt: now,
-          reasoningSummary: 'Pensamento concluído com validação visual.',
+          reasoningSummary: 'Resumo interno de validação visual.',
         },
       ],
       tasks: [],
@@ -149,10 +149,21 @@ async function installTauriMock(page: Page): Promise<void> {
       at: now,
     };
 
+    const tauriCallbacks = new Map<number, unknown>();
+    const tauriEventHandlers = new Map<string, number[]>();
+    const emitTauriEvent = (event: string, payload: unknown) => {
+      for (const handlerId of tauriEventHandlers.get(event) ?? []) {
+        const callback = tauriCallbacks.get(handlerId);
+        if (typeof callback === 'function') {
+          callback({ event, id: handlerId, payload });
+        }
+      }
+    };
+
     window.__TAURI_INTERNALS__ = {
       transformCallback: (callback: unknown) => {
         const id = Math.floor(Math.random() * 1_000_000);
-        (window as unknown as Record<string, unknown>)[`_${id}`] = callback;
+        tauriCallbacks.set(id, callback);
         return id;
       },
       unregisterCallback: () => undefined,
@@ -209,8 +220,36 @@ async function installTauriMock(page: Page): Promise<void> {
             ],
           };
         }
-        if (cmd === 'plugin:event|listen') return 1;
-        if (cmd === 'plugin:event|unlisten') return undefined;
+        if (cmd === 'install_local_model') {
+          const modelId = String(args?.modelId ?? 'qwen3:8b');
+          emitTauriEvent('local-model-progress', {
+            modelId,
+            state: 'running',
+            progressPercent: 42,
+            downloaded: '1.2 GB',
+            total: '4.7 GB',
+            speed: '22.5 MB/s',
+            message: 'Baixando camadas do Ollama',
+            at: now,
+          });
+          await new Promise((resolve) => window.setTimeout(resolve, 120));
+          return {
+            ...localRuntime,
+            installedModels: [...localRuntime.installedModels, { id: modelId }],
+          };
+        }
+        if (cmd === 'plugin:event|listen') {
+          const event = String(args?.event ?? '');
+          const handler = Number(args?.handler);
+          tauriEventHandlers.set(event, [...(tauriEventHandlers.get(event) ?? []), handler]);
+          return handler;
+        }
+        if (cmd === 'plugin:event|unlisten') {
+          const event = String(args?.event ?? '');
+          const id = Number(args?.id);
+          tauriEventHandlers.set(event, (tauriEventHandlers.get(event) ?? []).filter((handlerId) => handlerId !== id));
+          return undefined;
+        }
         if (cmd === 'update_settings') return args?.settings;
         if (cmd === 'export_all_conversations') return { path: '/tmp/codex-conversas.json', format: 'json', bytes: 100 };
         if (cmd === 'archive_all_sessions') return [];
@@ -268,39 +307,49 @@ async function screenshot(page: Page, name: string): Promise<void> {
 test('captura home, composer, chat temporário, seletor e modais em tema escuro', async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   await openApp(page, 'dark');
-  await screenshot(page, 'pass-14-home-dark');
-  await screenshot(page, 'pass-14-app-icon');
+  await screenshot(page, 'pass-15-home-dark');
+  await screenshot(page, 'pass-15-composer-empty');
+  await screenshot(page, 'pass-15-send-disabled-neutral');
+  await screenshot(page, 'pass-15-app-icon');
 
   const input = page.getByPlaceholder('Como posso ajudá-lo hoje?');
   await input.focus();
-  await screenshot(page, 'pass-14-home-focus');
+  await screenshot(page, 'pass-15-home-focus');
+  await screenshot(page, 'pass-15-composer-focused-no-purple-box');
   await input.fill('Validar envio ativo');
-  await screenshot(page, 'pass-14-home-ready-send');
+  await screenshot(page, 'pass-15-home-ready-send');
+  await screenshot(page, 'pass-15-composer-ready-send');
+  await screenshot(page, 'pass-15-send-active-accent');
 
   await page.getByLabel('Selecionar modo de resposta').click();
-  await screenshot(page, 'pass-14-mode-selector');
+  await screenshot(page, 'pass-15-mode-selector');
+  await page.getByRole('button', { name: /Terminal/ }).click();
+  await screenshot(page, 'pass-15-mode-terminal-clean');
   await page.keyboard.press('Escape');
 
   await page.getByTitle(/mock-development-model/).click();
   await expect(page.locator('.model-picker-title')).toHaveText('Modelos');
-  await screenshot(page, 'pass-14-model-selector-cloud');
+  await screenshot(page, 'pass-15-model-selector-cloud');
   await page.getByLabel('Buscar modelo ou provedor').fill('GPT-5.5');
   await page.getByTestId('model-row-gpt-5.5').hover();
-  await screenshot(page, 'pass-14-model-selector-cloud-hover');
+  await screenshot(page, 'pass-15-model-selector-cloud-hover');
+  await screenshot(page, 'pass-15-model-selector-hover-full-row');
+  await screenshot(page, 'pass-15-model-selector-ellipsis-aligned');
   await page.getByLabel('Configurar GPT-5.5').click();
   await expect(page.getByRole('dialog', { name: 'GPT-5.5' })).toBeVisible();
-  await screenshot(page, 'pass-14-model-config-cloud');
+  await screenshot(page, 'pass-15-model-config-cloud');
+  await screenshot(page, 'pass-15-model-config-cloud-keys');
   await page.keyboard.press('Escape');
 
   await page.getByTitle(/mock-development-model/).click();
   await page.getByRole('tab', { name: 'Local' }).click();
   await page.getByLabel('Buscar modelo ou provedor').fill('Qwen');
-  await screenshot(page, 'pass-14-model-selector-local');
+  await screenshot(page, 'pass-15-model-selector-local');
   await page.getByTestId('model-row-qwen2.5-coder:1.5b').hover();
-  await screenshot(page, 'pass-14-model-selector-local-hover');
+  await screenshot(page, 'pass-15-model-selector-local-hover');
   await page.getByLabel('Configurar Qwen2.5 Coder 1.5B').click();
   await expect(page.getByRole('dialog', { name: 'Qwen2.5 Coder 1.5B' })).toBeVisible();
-  await screenshot(page, 'pass-14-model-config-local-installed');
+  await screenshot(page, 'pass-15-model-config-local-installed');
   await page.keyboard.press('Escape');
 
   await page.getByTitle(/mock-development-model/).click();
@@ -309,8 +358,12 @@ test('captura home, composer, chat temporário, seletor e modais em tema escuro'
   await page.getByTestId('model-row-qwen3:8b').hover();
   await page.getByLabel('Configurar Qwen3 8B').click();
   await expect(page.getByRole('dialog', { name: 'Qwen3 8B' })).toBeVisible();
-  await screenshot(page, 'pass-14-model-config-local-download');
-  await page.keyboard.press('Escape');
+  await screenshot(page, 'pass-15-model-config-local-download');
+  await page.getByRole('button', { name: /Download/ }).click();
+  await expect(page.locator('.model-config-progress').getByText(/42%/)).toBeVisible();
+  await screenshot(page, 'pass-15-model-config-local-download-progress');
+  await page.getByRole('dialog', { name: 'Qwen3 8B' }).getByRole('button', { name: 'Fechar' }).click();
+  await expect(page.getByRole('dialog', { name: 'Qwen3 8B' })).toHaveCount(0);
 
   await page.getByLabel('Mais ações').click();
   await page.getByText('Selecionar arquivo').click();
@@ -323,9 +376,14 @@ test('captura home, composer, chat temporário, seletor e modais em tema escuro'
   await page.getByPlaceholder('Como posso ajudá-lo hoje?').fill('loading visual temporário');
   await page.getByLabel('Enviar').click();
   await expect(page.getByLabel('Assistente respondendo')).toBeVisible();
-  await screenshot(page, 'pass-14-temporary-loading');
+  await screenshot(page, 'pass-15-temporary-loading');
+  await screenshot(page, 'pass-15-loading-dots');
+  await screenshot(page, 'pass-15-after-send-composer-cleared');
   await expect(page.getByText('Resposta temporária real do provider.')).toBeVisible();
-  await screenshot(page, 'pass-14-temporary-chat-real-response');
+  await expect(page.getByText('Pensamento concluído')).toHaveCount(0);
+  await screenshot(page, 'pass-15-temporary-chat-real-response');
+  await screenshot(page, 'pass-15-temporary-real-response');
+  await screenshot(page, 'pass-15-temporary-no-thinking-label');
 });
 
 test('captura chat normal, markdown e scrollbar longa', async ({ page }) => {
@@ -333,7 +391,9 @@ test('captura chat normal, markdown e scrollbar longa', async ({ page }) => {
   await openApp(page, 'dark');
   await page.getByText('Passada visual').click();
   await expect(page.getByText(/Markdown limpo/)).toBeVisible();
-  await screenshot(page, 'pass-14-chat-long-scrollbar');
+  await expect(page.getByText('Pensamento concluído')).toHaveCount(0);
+  await screenshot(page, 'pass-15-chat-no-thinking-label');
+  await screenshot(page, 'pass-15-chat-long-scrollbar');
 });
 
 test('captura configurações em todas as abas', async ({ page }) => {
@@ -342,23 +402,26 @@ test('captura configurações em todas as abas', async ({ page }) => {
   await page.getByLabel('Menu do usuário').click();
   await page.getByText('Configurações').click();
   await expect(page.getByRole('dialog', { name: 'Configurações' })).toBeVisible();
-  await screenshot(page, 'pass-14-settings-general-dark');
+  await screenshot(page, 'pass-15-settings-general-dark');
 
   const dialog = page.getByRole('dialog', { name: 'Configurações' });
   await dialog.getByRole('button', { name: 'Modelos' }).click();
-  await screenshot(page, 'pass-14-settings-modelos');
+  await screenshot(page, 'pass-15-settings-modelos');
+  await screenshot(page, 'pass-15-settings-models');
   await dialog.getByRole('button', { name: 'Personalização' }).click();
-  await screenshot(page, 'pass-14-settings-personalization');
+  await screenshot(page, 'pass-15-settings-personalization');
 });
 
 test('captura tema claro, composer, settings e seletor', async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   await openApp(page, 'light');
-  await screenshot(page, 'pass-14-home-light');
+  await screenshot(page, 'pass-15-home-light');
+  await page.getByPlaceholder('Como posso ajudá-lo hoje?').fill('Enviar visível no tema claro');
+  await screenshot(page, 'pass-15-home-light-send-visible');
   await page.getByPlaceholder('Como posso ajudá-lo hoje?').focus();
   await page.getByLabel('Menu do usuário').click();
   await page.getByText('Configurações').click();
-  await screenshot(page, 'pass-14-settings-general-light');
+  await screenshot(page, 'pass-15-settings-general-light');
 });
 
 test('captura estado de configuração STT', async ({ page }) => {
@@ -366,11 +429,13 @@ test('captura estado de configuração STT', async ({ page }) => {
   await openApp(page, 'dark');
   await page.getByLabel('Entrada por voz').click();
   await expect(page.getByText(/Backend local não configurado|Microfone indisponível|Permissão negada|Nenhum microfone/)).toBeVisible();
-  await page.getByText('Configurar transcrição local').click();
+  await screenshot(page, 'pass-15-mic-permission-flow');
+  await page.getByText(/Configurar microfone|Configurar transcrição local/).click();
   await expect(page.getByRole('dialog', { name: 'Configurar transcrição local' })).toBeVisible();
-  await screenshot(page, 'pass-14-mic-state');
+  await screenshot(page, 'pass-15-mic-state');
+  await screenshot(page, 'pass-15-mic-config');
 });
 
 test('mantém data fixa para evitar ruído de screenshots', () => {
-  expect(nowIso()).toBe('2026-05-09T12:00:00.000Z');
+  expect(nowIso()).toBe('2026-05-10T12:00:00.000Z');
 });

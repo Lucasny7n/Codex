@@ -228,6 +228,9 @@ impl LocalRuntimeService {
             model_id: model_id.to_owned(),
             state: LocalModelInstallState::Running,
             progress_percent: Some(0),
+            downloaded: None,
+            total: None,
+            speed: None,
             message: "Iniciando download do modelo local...".to_owned(),
             at: now_iso(),
         });
@@ -258,10 +261,14 @@ impl LocalRuntimeService {
 
         while let Some(line) = rx.recv().await {
             let progress = parse_progress_percent(&line);
+            let transfer = parse_transfer_details(&line);
             emit_progress(LocalModelInstallProgress {
                 model_id: model_id.to_owned(),
                 state: LocalModelInstallState::Running,
                 progress_percent: progress,
+                downloaded: transfer.downloaded,
+                total: transfer.total,
+                speed: transfer.speed,
                 message: line,
                 at: now_iso(),
             });
@@ -276,6 +283,9 @@ impl LocalRuntimeService {
                 model_id: model_id.to_owned(),
                 state: LocalModelInstallState::Error,
                 progress_percent: None,
+                downloaded: None,
+                total: None,
+                speed: None,
                 message: "O runtime retornou erro ao baixar o modelo.".to_owned(),
                 at: now_iso(),
             });
@@ -288,6 +298,9 @@ impl LocalRuntimeService {
             model_id: model_id.to_owned(),
             state: LocalModelInstallState::Completed,
             progress_percent: Some(100),
+            downloaded: None,
+            total: None,
+            speed: None,
             message: "Modelo instalado com sucesso.".to_owned(),
             at: now_iso(),
         });
@@ -576,6 +589,41 @@ fn parse_progress_percent(line: &str) -> Option<u8> {
     None
 }
 
+#[derive(Debug, Default, PartialEq, Eq)]
+struct TransferDetails {
+    downloaded: Option<String>,
+    total: Option<String>,
+    speed: Option<String>,
+}
+
+fn parse_transfer_details(line: &str) -> TransferDetails {
+    let mut details = TransferDetails::default();
+    if let Ok(transfer_pattern) = regex::Regex::new(
+        r"(?i)(\d+(?:[.,]\d+)?\s*(?:B|KB|MB|GB|TB))\s*/\s*(\d+(?:[.,]\d+)?\s*(?:B|KB|MB|GB|TB))",
+    ) {
+        if let Some(captures) = transfer_pattern.captures(line) {
+            details.downloaded = captures
+                .get(1)
+                .map(|value| normalize_transfer_value(value.as_str()));
+            details.total = captures
+                .get(2)
+                .map(|value| normalize_transfer_value(value.as_str()));
+        }
+    }
+    if let Ok(speed_pattern) = regex::Regex::new(r"(?i)(\d+(?:[.,]\d+)?\s*(?:B|KB|MB|GB|TB)/s)") {
+        if let Some(captures) = speed_pattern.captures(line) {
+            details.speed = captures
+                .get(1)
+                .map(|value| normalize_transfer_value(value.as_str()));
+        }
+    }
+    details
+}
+
+fn normalize_transfer_value(value: &str) -> String {
+    value.split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -595,6 +643,15 @@ mod tests {
     fn parses_progress_token() {
         assert_eq!(parse_progress_percent("downloading 57%"), Some(57));
         assert_eq!(parse_progress_percent("no percentage"), None);
+    }
+
+    #[test]
+    fn parses_transfer_details_from_ollama_progress() {
+        let details = parse_transfer_details("pulling layer 57% 1.2 GB/4.7 GB 22.5 MB/s 2m");
+
+        assert_eq!(details.downloaded.as_deref(), Some("1.2 GB"));
+        assert_eq!(details.total.as_deref(), Some("4.7 GB"));
+        assert_eq!(details.speed.as_deref(), Some("22.5 MB/s"));
     }
 
     #[test]

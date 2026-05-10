@@ -581,6 +581,9 @@ pub struct LocalModelInstallProgress {
     pub model_id: String,
     pub state: LocalModelInstallState,
     pub progress_percent: Option<u8>,
+    pub downloaded: Option<String>,
+    pub total: Option<String>,
+    pub speed: Option<String>,
     pub message: String,
     pub at: String,
 }

@@ -470,6 +470,9 @@ export interface LocalModelInstallProgress {
   modelId: string;
   state: LocalModelInstallState;
   progressPercent?: number;
+  downloaded?: string;
+  total?: string;
+  speed?: string;
   message: string;
   at: string;
 }

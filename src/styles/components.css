@@ -5481,7 +5481,9 @@
 }
 
 .model-config-key-actions {
-  gap: 4px;
+  width: 34px;
+  height: 34px;
+  flex: 0 0 34px;
   opacity: 0;
   pointer-events: none;
   transition: opacity 120ms ease;
@@ -5493,25 +5495,56 @@
   pointer-events: auto;
 }
 
-.model-config-key-actions button {
-  min-height: 28px;
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-pill);
-  background: rgba(255, 255, 255, 0.035);
-  color: var(--text-secondary);
-  padding: 0 8px;
+.model-config-key-menu-button {
+  width: 34px;
+  height: 34px;
+  min-height: 34px;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--text-muted);
+  display: grid;
+  place-items: center;
   font: inherit;
-  font-size: 0.72rem;
+  font-size: 1rem;
+  line-height: 1;
   cursor: pointer;
 }
 
-.model-config-key-actions button:hover:not(:disabled) {
+.model-config-key-menu-button:hover,
+.model-config-key-menu-button:focus-visible {
   color: var(--text-primary);
   background: rgba(255, 255, 255, 0.07);
 }
 
-.model-config-key-actions button.danger {
-  color: var(--danger-text);
+.model-config-progress {
+  display: grid;
+  gap: 7px;
+  padding: 10px 12px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.035);
+  color: var(--text-secondary);
+  font-size: 0.78rem;
+}
+
+.model-config-progress small {
+  color: var(--text-muted);
+  font-size: 0.74rem;
+}
+
+.model-config-progress-track {
+  height: 5px;
+  overflow: hidden;
+  border-radius: var(--radius-pill);
+  background: rgba(255, 255, 255, 0.065);
+}
+
+.model-config-progress-track span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, rgba(45, 149, 236, 0.95), rgba(92, 190, 255, 0.82));
 }
 
 .settings-qwen-shell,
@@ -7120,14 +7153,16 @@ body,
 .model-picker-option-row {
   min-width: 0;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 42px;
+  grid-template-columns: minmax(0, 1fr) 46px;
   align-items: center;
   gap: 8px;
   border-radius: 10px;
-  padding-right: 10px;
+  padding-right: 14px;
 }
 
-.model-picker-option-row.active {
+.model-picker-option-row.active,
+.model-picker-option-row.show-config,
+.model-picker-option-row:focus-within {
   background: rgba(255, 255, 255, 0.045);
 }
 
@@ -7142,9 +7177,9 @@ body,
 }
 
 .model-picker-row-config {
-  width: 30px;
-  height: 30px;
-  min-height: 30px;
+  width: 34px;
+  height: 34px;
+  min-height: 34px;
   border: 0;
   border-radius: 9px;
   background: transparent;
@@ -7159,8 +7194,8 @@ body,
 }
 
 .model-picker-row-config-placeholder {
-  width: 30px;
-  height: 30px;
+  width: 34px;
+  height: 34px;
   display: block;
 }
 
@@ -8150,4 +8185,72 @@ body,
 :root[data-theme='light'] .model-config-hint,
 :root[data-theme='light'] .message-attachment-chip {
   background: rgba(15, 23, 42, 0.035);
+}
+
+/* Passada 15: composer e controles sem foco interno roxo ou estados fake. */
+.prompt-pill {
+  transition: border-color 150ms ease, box-shadow 150ms ease, background-color 150ms ease;
+}
+
+.prompt-pill:focus-within {
+  border-color: rgba(255, 255, 255, 0.14);
+  background: rgba(43, 43, 48, 0.78);
+  box-shadow: 0 18px 42px rgba(0, 0, 0, 0.28), 0 0 0 3px rgba(45, 149, 236, 0.07);
+}
+
+.prompt-pill-input,
+.prompt-pill-input:hover,
+.prompt-pill-input:focus,
+.prompt-pill-input:focus-visible {
+  border: 0;
+  outline: 0;
+  box-shadow: none;
+  background: transparent;
+}
+
+.prompt-send-button:not(:disabled) {
+  background: linear-gradient(135deg, rgba(45, 149, 236, 0.96), rgba(53, 168, 255, 0.82));
+  color: #ffffff;
+  cursor: pointer;
+  box-shadow: 0 12px 24px rgba(45, 149, 236, 0.20);
+}
+
+.prompt-send-button:not(:disabled):hover {
+  background: linear-gradient(135deg, rgba(67, 166, 255, 0.98), rgba(99, 179, 255, 0.88));
+}
+
+.prompt-send-button:disabled {
+  background: rgba(255, 255, 255, 0.075);
+  color: var(--ccc-disabled);
+  cursor: default;
+  box-shadow: none;
+}
+
+.prompt-mic-button.voice-recording,
+.prompt-mic-button.voice-transcribing {
+  color: #ffffff;
+  background: rgba(45, 149, 236, 0.18);
+  box-shadow: 0 0 0 4px rgba(45, 149, 236, 0.08);
+}
+
+:root[data-theme='light'] .prompt-pill:focus-within {
+  border-color: rgba(15, 23, 42, 0.16);
+  box-shadow: 0 18px 42px rgba(15, 23, 42, 0.10), 0 0 0 3px rgba(45, 149, 236, 0.08);
+}
+
+:root[data-theme='light'] .prompt-send-button:not(:disabled) {
+  background: linear-gradient(135deg, rgba(39, 104, 201, 0.96), rgba(45, 149, 236, 0.86));
+  color: #ffffff;
+}
+
+:root[data-theme='light'] .prompt-mic-button.voice-recording,
+:root[data-theme='light'] .prompt-mic-button.voice-transcribing {
+  color: #ffffff;
+  background: rgba(39, 104, 201, 0.16);
+  box-shadow: 0 0 0 4px rgba(39, 104, 201, 0.08);
+}
+
+:root[data-theme='light'] .model-picker-option-row.show-config,
+:root[data-theme='light'] .model-picker-option-row:focus-within {
+  background: rgba(37, 99, 235, 0.075);
 }
