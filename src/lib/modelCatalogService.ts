@@ -3,6 +3,7 @@ import {
   modelRegistry,
   type CloudModelProfile,
   type LocalModelProfile,
+  type ModelModality,
 } from './modelRegistry';
 import {
   canSelectModel,
@@ -21,9 +22,27 @@ import type {
   ProviderRuntimeStatus,
 } from '../types/domain';
 
+export type ModelCatalogSource = 'cloud' | 'local';
+export type ModelProviderType = 'cloud' | 'local';
+
+export interface ModelCatalogMetadata {
+  provider: string;
+  type: ModelCatalogSource;
+  capabilities: string[];
+  contextWindow?: number;
+  multimodal: boolean;
+  promptPresetIds: string[];
+  contextFragmentScopes: string[];
+  technicalLogScope: 'provider' | 'runtime';
+  ragReady: boolean;
+  toolPermissionScopes: string[];
+}
+
 export interface ModelCatalogOption {
   id: string;
   label: string;
+  source: ModelCatalogSource;
+  providerType: ModelProviderType;
   modelId?: string;
   providerId?: string;
   providerLabel?: string;
@@ -36,6 +55,9 @@ export interface ModelCatalogOption {
   estimatedSize?: string;
   runtimeLabel?: string;
   searchTerms?: string[];
+  configured: boolean;
+  ready: boolean;
+  metadata: ModelCatalogMetadata;
 }
 
 export function isLocalModelInstalled(runtime: LocalRuntimeSnapshot | undefined, modelId: string): boolean {
@@ -97,6 +119,75 @@ function providerHasProfiles(providerId: string, profiles: ProviderAccountProfil
   return profiles.some((profile) => profile.providerId === providerId);
 }
 
+function isLocalProviderId(providerId: string | undefined): boolean {
+  return providerId === 'local-ollama' || providerId?.startsWith('local-') === true;
+}
+
+function isCloudProvider(provider: ProviderDescriptor): boolean {
+  return !isLocalProviderId(provider.id);
+}
+
+function multimodal(modalities: ModelModality[]): boolean {
+  return modalities.some((item) => item !== 'text' && item !== 'code');
+}
+
+function cloudMetadata(model: CloudModelProfile): ModelCatalogMetadata {
+  return {
+    provider: model.providerId,
+    type: 'cloud',
+    capabilities: [...new Set([...model.modalities, ...model.tags, ...model.bestFor])],
+    multimodal: multimodal(model.modalities),
+    promptPresetIds: [`cloud:${model.providerId}:default`],
+    contextFragmentScopes: ['session', 'workspace'],
+    technicalLogScope: 'provider',
+    ragReady: false,
+    toolPermissionScopes: model.modalities.includes('code') ? ['workspace-read', 'workspace-write'] : ['workspace-read'],
+  };
+}
+
+function providerModelMetadata(provider: ProviderDescriptor, model: ModelDescriptor): ModelCatalogMetadata {
+  return {
+    provider: provider.id,
+    type: 'cloud',
+    capabilities: model.supportsTools ? ['text', 'tools'] : ['text'],
+    contextWindow: model.contextWindow,
+    multimodal: false,
+    promptPresetIds: [`cloud:${provider.id}:default`],
+    contextFragmentScopes: ['session', 'workspace'],
+    technicalLogScope: 'provider',
+    ragReady: false,
+    toolPermissionScopes: model.supportsTools ? ['workspace-read', 'workspace-write', 'tool-call'] : ['workspace-read'],
+  };
+}
+
+function localMetadata(model: LocalModelProfile): ModelCatalogMetadata {
+  return {
+    provider: model.providerId,
+    type: 'local',
+    capabilities: [...new Set([...model.modalities, ...model.tags, ...model.bestFor])],
+    multimodal: multimodal(model.modalities),
+    promptPresetIds: [`local:${model.runtime}:default`],
+    contextFragmentScopes: ['session', 'workspace'],
+    technicalLogScope: 'runtime',
+    ragReady: false,
+    toolPermissionScopes: ['workspace-read'],
+  };
+}
+
+function installedLocalMetadata(model: LocalInstalledModel): ModelCatalogMetadata {
+  return {
+    provider: 'local-ollama',
+    type: 'local',
+    capabilities: ['text', localFamilyLabelFromText(model.id)],
+    multimodal: false,
+    promptPresetIds: ['local:ollama:default'],
+    contextFragmentScopes: ['session', 'workspace'],
+    technicalLogScope: 'runtime',
+    ragReady: false,
+    toolPermissionScopes: ['workspace-read'],
+  };
+}
+
 function cloudSearchTerms(model: CloudModelProfile): string[] {
   const openRouterDiscoveryTerms = model.providerId === 'openrouter-api'
     ? ['openrouter', 'router', 'catalogo openrouter', 'descoberta openrouter', 'gateway']
@@ -145,6 +236,8 @@ export function buildCloudModelOptions(input: {
       const available = canSelectModel(status) && (!hasProfiles || Boolean(readyProfile));
       return {
         id: model.id,
+        source: 'cloud',
+        providerType: 'cloud',
         modelId: model.modelId,
         providerId: model.providerId,
         label: model.displayName,
@@ -152,11 +245,15 @@ export function buildCloudModelOptions(input: {
         status,
         statusLabel: available ? 'Configurado' : statusLabelFromState(status, 'cloud'),
         available,
+        configured: Boolean(provider) && (hasProfiles ? Boolean(readyProfile) : canSelectModel(status)),
+        installed: false,
+        ready: available,
+        metadata: cloudMetadata(model),
         searchTerms: cloudSearchTerms(model),
-      };
+      } satisfies ModelCatalogOption;
     });
   const catalogKeys = new Set(registryOptions.map((option) => `${option.providerId ?? ''}:${option.modelId ?? option.id}`));
-  const discoveredOptions = input.providers.flatMap((provider) => provider.models
+  const discoveredOptions = input.providers.filter(isCloudProvider).flatMap((provider) => provider.models
     .filter((model) => !catalogKeys.has(`${provider.id}:${model.id}`))
     .map((model) => {
       const status = normalizeProviderStatus(provider.status.state);
@@ -165,6 +262,8 @@ export function buildCloudModelOptions(input: {
       const available = canSelectModel(status) && (!hasProfiles || Boolean(readyProfile));
       return {
         id: model.id,
+        source: 'cloud',
+        providerType: 'cloud',
         modelId: model.id,
         providerId: provider.id,
         label: model.label,
@@ -172,6 +271,10 @@ export function buildCloudModelOptions(input: {
         status,
         statusLabel: available ? 'Configurado' : statusLabelFromState(status, 'cloud'),
         available,
+        configured: hasProfiles ? Boolean(readyProfile) : canSelectModel(status),
+        installed: false,
+        ready: available,
+        metadata: providerModelMetadata(provider, model),
         searchTerms: providerModelSearchTerms(provider, model),
       } satisfies ModelCatalogOption;
     }));
@@ -190,8 +293,11 @@ export function buildLocalModelOptions(input: {
       const progress = input.installationProgress?.[model.id] ?? input.installationProgress?.[model.modelId];
       const installed = installedIds.has(model.modelId) || installedIds.has(model.id);
       const status = resolveModelStatus(model, input.providerStatus, input.localRuntime, progress);
+      const ready = installed && canSelectModel(status);
       return {
         id: model.id,
+        source: 'local',
+        providerType: 'local',
         modelId: model.modelId,
         providerId: model.providerId,
         label: model.displayName,
@@ -201,9 +307,12 @@ export function buildLocalModelOptions(input: {
         statusLabel: installed ? 'Instalado' : statusLabelFromState(status, 'local'),
         available: canSelectModel(status),
         installed,
+        configured: false,
+        ready,
         heavy: localCompatibility(model) === 'heavy' || localCompatibility(model) === 'not_recommended',
         estimatedSize: model.diskRequirement,
         runtimeLabel: model.runtime === 'ollama' ? 'Ollama' : model.runtime,
+        metadata: localMetadata(model),
         searchTerms: [
           model.id,
           model.modelId,
@@ -220,7 +329,7 @@ export function buildLocalModelOptions(input: {
           ...model.bestFor,
           ...model.strengths,
         ],
-      };
+      } satisfies ModelCatalogOption;
     });
   const catalogIds = new Set(
     modelRegistry.byMode('local')
@@ -235,8 +344,11 @@ export function buildLocalModelOptions(input: {
 }
 
 function localInstalledModelOption(model: LocalInstalledModel, runtimeStatus: ProviderStatus): ModelCatalogOption {
+  const ready = canSelectModel(runtimeStatus);
   return {
     id: model.id,
+    source: 'local',
+    providerType: 'local',
     modelId: model.id,
     providerId: 'local-ollama',
     label: model.id,
@@ -244,10 +356,13 @@ function localInstalledModelOption(model: LocalInstalledModel, runtimeStatus: Pr
     family: localFamilyLabelFromText(model.id),
     status: runtimeStatus,
     statusLabel: runtimeStatus === 'ready' ? 'Instalado' : statusLabelFromState(runtimeStatus, 'local'),
-    available: canSelectModel(runtimeStatus),
+    available: ready,
     installed: true,
+    configured: false,
+    ready,
     estimatedSize: model.size,
     runtimeLabel: 'Ollama',
+    metadata: installedLocalMetadata(model),
     searchTerms: [
       model.id,
       model.digest ?? '',
@@ -287,8 +402,9 @@ export function visibleModelOptions(
   query: string,
 ): ModelCatalogOption[] {
   const trimmed = query.trim();
-  const matched = options.filter((option) => modelOptionMatches(option, trimmed));
+  const sourceOptions = options.filter((option) => option.source === mode && option.providerType === mode);
+  const matched = sourceOptions.filter((option) => modelOptionMatches(option, trimmed));
   if (trimmed) return matched;
-  if (mode === 'cloud') return matched.filter((option) => option.available);
-  return matched.filter((option) => option.installed && option.available);
+  if (mode === 'cloud') return matched.filter((option) => option.configured && option.ready);
+  return matched.filter((option) => option.installed && option.ready);
 }

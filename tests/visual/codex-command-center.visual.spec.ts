@@ -329,7 +329,10 @@ test('captura home, composer, chat temporário, seletor e modais em tema escuro'
 
   await page.getByTitle(/mock-development-model/).click();
   await expect(page.locator('.model-picker-title')).toHaveText('Modelos');
+  await expect(page.getByText('Qwen2.5 Coder 1.5B')).toHaveCount(0);
   await screenshot(page, 'pass-15-model-selector-cloud');
+  await page.getByLabel('Buscar modelo ou provedor').fill('qwen2.5-coder');
+  await expect(page.getByText('Nenhum modelo encontrado')).toBeVisible();
   await page.getByLabel('Buscar modelo ou provedor').fill('GPT-5.5');
   await page.getByTestId('model-row-gpt-5.5').hover();
   await screenshot(page, 'pass-15-model-selector-cloud-hover');
@@ -343,6 +346,8 @@ test('captura home, composer, chat temporário, seletor e modais em tema escuro'
 
   await page.getByTitle(/mock-development-model/).click();
   await page.getByRole('tab', { name: 'Local' }).click();
+  await page.getByLabel('Buscar modelo ou provedor').fill('GPT-5.5');
+  await expect(page.getByText('Nenhum modelo encontrado')).toBeVisible();
   await page.getByLabel('Buscar modelo ou provedor').fill('Qwen');
   await screenshot(page, 'pass-15-model-selector-local');
   await page.getByTestId('model-row-qwen2.5-coder:1.5b').hover();

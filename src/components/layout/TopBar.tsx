@@ -68,6 +68,8 @@ function ModelOptionRow({
     <div
       className={`model-picker-option-row ${active ? 'active' : ''} ${option.available ? '' : 'disabled'} ${showConfigure ? 'show-config' : ''}`}
       data-testid={`model-row-${option.id}`}
+      data-source={option.source}
+      data-provider-type={option.providerType}
       onMouseEnter={() => onHover(true)}
       onMouseLeave={() => onHover(false)}
       onFocus={() => onHover(true)}

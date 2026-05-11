@@ -138,6 +138,25 @@ function payload(sessions: AgentSession[]): BootstrapPayload {
             supportsTools: false
           }
         ]
+      },
+      {
+        id: 'local-ollama',
+        label: 'Local Ollama',
+        configurable: true,
+        enabled: true,
+        status: {
+          state: 'ready',
+          message: 'Ollama pronto.',
+          checkedAt: new Date().toISOString()
+        },
+        models: [
+          {
+            id: 'qwen2.5-coder:1.5b',
+            label: 'Qwen2.5 Coder 1.5B',
+            providerId: 'local-ollama',
+            supportsTools: false
+          }
+        ]
       }
     ],
     providerProfiles: [],
@@ -377,6 +396,11 @@ describe('App layout visibility', () => {
 
     fireEvent.change(screen.getByLabelText('Buscar modelo ou provedor'), { target: { value: 'OpenAI' } });
     expect(screen.getByText('GPT-5.5')).toBeInTheDocument();
+    expect(screen.getByTestId('model-row-gpt-5.5')).toHaveAttribute('data-source', 'cloud');
+    expect(screen.getByTestId('model-row-gpt-5.5')).toHaveAttribute('data-provider-type', 'cloud');
+
+    fireEvent.change(screen.getByLabelText('Buscar modelo ou provedor'), { target: { value: 'qwen2.5-coder' } });
+    expect(screen.getByText('Nenhum modelo encontrado')).toBeInTheDocument();
 
     fireEvent.change(screen.getByLabelText('Buscar modelo ou provedor'), { target: { value: 'modelo-inexistente-xyz' } });
     expect(screen.getByText('Nenhum modelo encontrado')).toBeInTheDocument();
@@ -427,6 +451,8 @@ describe('App layout visibility', () => {
     fireEvent.click(screen.getByTitle(/mock-development-model/));
     fireEvent.click(screen.getAllByRole('tab', { name: 'Local' })[0]);
     fireEvent.change(screen.getByLabelText('Buscar modelo ou provedor'), { target: { value: 'Qwen2.5 Coder 1.5B' } });
+    expect(screen.getByTestId('model-row-qwen2.5-coder:1.5b')).toHaveAttribute('data-source', 'local');
+    expect(screen.getByTestId('model-row-qwen2.5-coder:1.5b')).toHaveAttribute('data-provider-type', 'local');
     fireEvent.click(screen.getByText('Qwen2.5 Coder 1.5B'));
 
     await waitFor(() => {
@@ -436,6 +462,11 @@ describe('App layout visibility', () => {
         selectedModelId: 'qwen2.5-coder:1.5b',
       }));
     });
+
+    fireEvent.click(screen.getByTitle(/Qwen2.5 Coder 1.5B/));
+    fireEvent.click(screen.getAllByRole('tab', { name: 'Local' })[0]);
+    fireEvent.change(screen.getByLabelText('Buscar modelo ou provedor'), { target: { value: 'GPT-5.5' } });
+    expect(screen.getByText('Nenhum modelo encontrado')).toBeInTheDocument();
   });
 
   it('abre configuração específica de modelo cloud e local pelo botão de três pontos', async () => {

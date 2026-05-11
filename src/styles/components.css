@@ -8262,19 +8262,19 @@ body,
 
 .model-picker-scroll {
   max-height: min(520px, calc(100vh - 230px));
-  padding-right: 14px;
+  padding-right: 22px;
   scrollbar-gutter: stable;
 }
 
 .model-picker-option-row {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 38px;
-  align-items: stretch;
-  gap: 4px;
+  grid-template-columns: minmax(0, 1fr) 42px;
+  align-items: center;
+  gap: 2px;
   width: 100%;
   min-height: 48px;
-  margin: 0 2px 3px 0;
-  padding: 3px 4px 3px 3px;
+  margin: 0 6px 3px 0;
+  padding: 3px 8px 3px 3px;
   border-radius: 11px;
 }
 
@@ -8299,15 +8299,20 @@ body,
 
 .model-picker-row-config,
 .model-picker-row-config-placeholder {
-  width: 32px;
-  min-width: 32px;
-  margin-right: 2px;
-  align-self: center;
+  width: 36px;
+  min-width: 36px;
+  height: 36px;
+  margin-right: 8px;
+  place-self: center;
 }
 
 .model-picker-row-config {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   opacity: 0;
   pointer-events: none;
+  line-height: 1;
   transition: opacity 120ms ease, background-color 120ms ease, border-color 120ms ease;
 }
 

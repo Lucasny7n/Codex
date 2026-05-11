@@ -77,6 +77,9 @@ describe('modelCatalogService', () => {
         provider('openrouter-api', 'OpenRouter', 'requires_api_key', [
           { id: 'moonshotai/kimi-k2', label: 'Kimi K2 via OpenRouter', providerId: 'openrouter-api', supportsTools: false },
         ]),
+        provider('local-ollama', 'Local Ollama', 'ready', [
+          { id: 'qwen2.5-coder:1.5b', label: 'Qwen2.5 Coder 1.5B', providerId: 'local-ollama', supportsTools: false },
+        ]),
       ],
       providerProfiles: [],
     });
@@ -84,11 +87,13 @@ describe('modelCatalogService', () => {
     const defaultCloud = visibleModelOptions('cloud', options, '');
     expect(defaultCloud.map((option) => option.label)).toContain('GPT-5.5');
     expect(defaultCloud.map((option) => option.label)).not.toContain('GPT-5.4 Mini via OpenRouter');
+    expect(defaultCloud.every((option) => option.source === 'cloud' && option.providerType === 'cloud' && option.ready)).toBe(true);
 
     const openRouterSearch = visibleModelOptions('cloud', options, 'openrouter');
     expect(openRouterSearch.map((option) => option.label)).toContain('GPT-5.4 Mini via OpenRouter');
     expect(openRouterSearch.map((option) => option.label)).toContain('Kimi K2 via OpenRouter');
     expect(openRouterSearch.find((option) => option.providerId === 'openrouter-api')?.statusLabel).toBe('Configurar API');
+    expect(visibleModelOptions('cloud', options, 'qwen2.5')).toHaveLength(0);
   });
 
   it('Nuvem não marca key salva sem teste como pronta', () => {
@@ -134,9 +139,30 @@ describe('modelCatalogService', () => {
     expect(defaultLocalLabels).toContain('Qwen2.5 Coder 1.5B');
     expect(defaultLocalLabels).toContain('custom-lab:latest');
     expect(defaultLocalLabels).not.toContain('Qwen2.5 Coder 7B');
+    expect(visibleModelOptions('local', options, '').every((option) => option.source === 'local' && option.providerType === 'local' && option.installed)).toBe(true);
 
     const deepSeekDownloads = visibleModelOptions('local', options, 'DeepSeek');
     expect(deepSeekDownloads.some((option) => option.label === 'DeepSeek Coder 6.7B' && option.statusLabel === 'Baixando')).toBe(true);
     expect(deepSeekDownloads.some((option) => option.label.includes('DeepSeek') && option.statusLabel === 'Download')).toBe(true);
+    expect(visibleModelOptions('local', options, 'GPT-5.5')).toHaveLength(0);
+  });
+
+  it('filtra defensivamente opções misturadas pela origem explícita', () => {
+    const cloud = buildCloudModelOptions({
+      providers: [provider('openai-api', 'OpenAI API', 'ready', [
+        { id: 'gpt-5.5', label: 'GPT-5.5', providerId: 'openai-api', supportsTools: false },
+      ])],
+      providerProfiles: [],
+    });
+    const local = buildLocalModelOptions({
+      localRuntime: localRuntime([{ id: 'qwen2.5-coder:1.5b', size: '986 MB' }]),
+    });
+    const mixed = [...cloud, ...local];
+
+    expect(visibleModelOptions('cloud', mixed, 'qwen').some((option) => option.providerType === 'local')).toBe(false);
+    expect(visibleModelOptions('cloud', mixed, 'qwen2.5-coder')).toHaveLength(0);
+    expect(visibleModelOptions('local', mixed, 'gpt')).toHaveLength(0);
+    expect(visibleModelOptions('cloud', mixed, 'gpt').every((option) => option.source === 'cloud')).toBe(true);
+    expect(visibleModelOptions('local', mixed, 'qwen').every((option) => option.source === 'local')).toBe(true);
   });
 });
