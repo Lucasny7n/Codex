@@ -32,6 +32,7 @@ import {
   renameSession,
   restoreSession,
   removeProviderProfile,
+  renameProviderProfile,
   saveProviderProfileCredential,
   sendOrderToAgent,
   sendTemporaryOrderToAgent,
@@ -42,11 +43,15 @@ import {
 } from './lib/api';
 import { shellQuote, trimMultiline } from './lib/format';
 import {
-  localCompatibility,
   modelRegistry,
   type CloudModelProfile,
   type LocalModelProfile,
 } from './lib/modelRegistry';
+import {
+  buildCloudModelOptions,
+  buildLocalModelOptions,
+  isLocalModelInstalled,
+} from './lib/modelCatalogService';
 import { translateError } from './lib/errorTranslator';
 import { applyAppTheme } from './lib/theme';
 import {
@@ -141,11 +146,6 @@ function pushHistory(settings: AppSettings, mode: ExecutionMode, providerId: str
   };
 }
 
-function isLocalModelInstalled(runtime: LocalRuntimeSnapshot | undefined, modelId: string): boolean {
-  if (!runtime) return false;
-  return runtime.installedModels.some((model) => model.id === modelId);
-}
-
 function accountStatusFromProviderState(
   state: ProviderStatusState,
   profile: ProviderAccountProfile,
@@ -175,35 +175,6 @@ function titleFromContent(content: string): string {
     return `Conversa ${new Date().toLocaleString('pt-BR')}`;
   }
   return compact.length > 54 ? `${compact.slice(0, 51)}...` : compact;
-}
-
-function localFamilyLabel(model: LocalModelProfile): string {
-  const value = `${model.family} ${model.displayName}`.toLowerCase();
-  if (value.includes('qwen')) return 'Qwen';
-  if (value.includes('codellama')) return 'CodeLlama';
-  if (value.includes('llama')) return 'Llama';
-  if (value.includes('deepseek')) return 'DeepSeek';
-  if (value.includes('mistral') || value.includes('mixtral') || value.includes('codestral')) return 'Mistral';
-  if (value.includes('phi')) return 'Phi';
-  if (value.includes('gemma')) return 'Gemma';
-  if (value.includes('starcoder')) return 'StarCoder';
-  if (value.includes('yi')) return 'Yi';
-  return 'Outros locais';
-}
-
-function statusLabelFromState(state: string, mode: ExecutionMode): string {
-  if (mode === 'local' && state === 'ready') return 'Instalado';
-  if (state === 'ready') return 'Configurado';
-  if (state === 'model_missing') return mode === 'local' ? 'Download' : 'Catálogo';
-  if (state === 'pulling' || state === 'installing') return mode === 'local' ? 'Baixando' : 'Testando';
-  if (state === 'testing') return 'Testar conexão';
-  if (state === 'requires_api_key' || state === 'invalid_api_key') return 'Adicionar API key';
-  if (state === 'requires_login' || state === 'requires_cli_auth' || state === 'requires_oauth') return 'Fazer login';
-  if (state === 'not_installed') return mode === 'local' ? 'Instalar runtime' : 'Catálogo';
-  if (state === 'service_offline') return 'Iniciar serviço';
-  if (state === 'api_unreachable') return 'Reparar local';
-  if (['misconfigured', 'experimental', 'unavailable', 'provider_unavailable', 'not_configured'].includes(state)) return 'Catálogo';
-  return state.replace(/_/g, ' ');
 }
 
 function readLocalStorage(key: string): string | undefined {
@@ -514,6 +485,12 @@ export default function App(): JSX.Element {
     return source.map((profile) => {
       const provider = providers.find((item) => item.id === profile.providerId);
       if (!provider) return profile;
+      if (profile.source === 'config_file') {
+        return {
+          ...profile,
+          providerLabel: provider.label,
+        };
+      }
       const statusFromProvider = accountStatusFromProviderState(provider.status.state, profile);
       const explicitFailure = [
         'invalid_api_key',
@@ -592,69 +569,19 @@ export default function App(): JSX.Element {
   );
 
   const topbarCloudModels = useMemo<TopBarModelOption[]>(() => {
-    return modelRegistry.byMode('cloud')
-      .filter((model): model is CloudModelProfile => model.mode === 'cloud')
-      .map((model) => {
-        const provider = providers.find((item) => item.id === model.providerId);
-        const status = provider ? resolveModelStatus(model, provider.status, localRuntime) : 'unavailable';
-        return {
-          id: model.id,
-          modelId: model.modelId,
-          providerId: model.providerId,
-          label: model.displayName,
-          providerLabel: model.providerLabel,
-          status,
-          statusLabel: statusLabelFromState(status, 'cloud'),
-          available: canSelectModel(status),
-          searchTerms: [
-            model.providerId,
-            model.provider,
-            model.mode,
-            ...model.modalities,
-            ...model.tags,
-            ...model.bestFor,
-            ...model.strengths,
-          ],
-        };
-      });
-  }, [localRuntime, providers]);
+    return buildCloudModelOptions({
+      providers,
+      providerProfiles: effectiveProviderProfiles,
+      localRuntime,
+    });
+  }, [effectiveProviderProfiles, localRuntime, providers]);
 
   const topbarLocalModels = useMemo<TopBarModelOption[]>(() => {
-    const installedIds = new Set(localRuntime?.installedModels.map((model) => model.id) ?? []);
-    return modelRegistry.byMode('local')
-      .filter((model): model is LocalModelProfile => model.mode === 'local')
-      .map((model) => {
-        const progress = installationProgress[model.id] ?? installationProgress[model.modelId];
-        const installed = installedIds.has(model.modelId) || installedIds.has(model.id);
-        const status = resolveModelStatus(model, selectedProviderStatus, localRuntime, progress);
-        return {
-          id: model.id,
-          modelId: model.modelId,
-          providerId: model.providerId,
-          label: model.displayName,
-          providerLabel: model.providerLabel,
-          family: localFamilyLabel(model),
-          status,
-          statusLabel: installed ? 'Instalado' : statusLabelFromState(status, 'local'),
-          available: canSelectModel(status),
-          installed,
-          heavy: localCompatibility(model) === 'heavy' || localCompatibility(model) === 'not_recommended',
-          searchTerms: [
-            model.providerId,
-            model.runtime,
-            model.mode,
-            model.family,
-            ...model.modalities,
-            model.size,
-            model.ramRequirement,
-            model.vramRequirement,
-            model.diskRequirement,
-            ...model.tags,
-            ...model.bestFor,
-            ...model.strengths,
-          ],
-        };
-      });
+    return buildLocalModelOptions({
+      localRuntime,
+      providerStatus: selectedProviderStatus,
+      installationProgress,
+    });
   }, [installationProgress, localRuntime, selectedProviderStatus]);
 
   const orderDisabledReason = useMemo(() => {
@@ -1169,6 +1096,11 @@ export default function App(): JSX.Element {
     await refreshProviderCredentials();
   }
 
+  async function handleRenameProviderProfile(profileId: string, name: string): Promise<void> {
+    await renameProviderProfile(profileId, name);
+    await refreshProviderCredentials();
+  }
+
   async function handleRemoveProviderProfile(profileId: string): Promise<void> {
     await removeProviderProfile(profileId);
     await refreshProviderCredentials();
@@ -1481,22 +1413,96 @@ export default function App(): JSX.Element {
     if (settings?.codexRoot) void openProjectInVscode(`${settings.codexRoot}/codex-ui/logs`);
   }
 
+  async function handleSetTopbarCloudOption(option: TopBarModelOption): Promise<void> {
+    if (!settings || !option.providerId || !option.available) return;
+    const providerAccounts = effectiveProviderProfiles.filter((profile) => profile.providerId === option.providerId);
+    const readyProfile =
+      providerAccounts.find((profile) => profile.isDefault && profile.status === 'ready') ??
+      providerAccounts.find((profile) => profile.status === 'ready');
+    if (providerAccounts.length > 0 && !readyProfile) {
+      setError('Nenhum profile pronto para este provider. Configure ou teste a conta antes de selecionar.');
+      openEnvironmentTab('accounts');
+      return;
+    }
+    const selectedModel = option.modelId ?? option.id;
+    setModelActionBusyId(option.id);
+    try {
+      const next = pushHistory(
+        {
+          ...settings,
+          executionMode: 'cloud',
+          selectedProviderId: option.providerId,
+          selectedModelId: selectedModel,
+          selectedProviderProfileId: readyProfile?.id ?? settings.selectedProviderProfileId,
+        },
+        'cloud',
+        option.providerId,
+        selectedModel,
+      );
+      await applySettings(next);
+      setExecutionMode('cloud');
+      selectModel(option.id);
+      pushToast('success', `Padrão global definido: ${option.label}`);
+    } finally {
+      setModelActionBusyId(undefined);
+    }
+  }
+
+  async function handleSetTopbarLocalOption(option: TopBarModelOption): Promise<void> {
+    if (!settings || !option.available) return;
+    const selectedModel = option.modelId ?? option.id;
+    setModelActionBusyId(option.id);
+    try {
+      const next = pushHistory(
+        {
+          ...settings,
+          executionMode: 'local',
+          selectedProviderId: 'local-ollama',
+          selectedModelId: selectedModel,
+          selectedLocalModelId: selectedModel,
+        },
+        'local',
+        'local-ollama',
+        selectedModel,
+      );
+      await applySettings(next);
+      setExecutionMode('local');
+      selectModel(option.id);
+      pushToast('success', `Padrão global local definido: ${option.label}`);
+    } finally {
+      setModelActionBusyId(undefined);
+    }
+  }
+
   function handleTopbarSelectModel(mode: ExecutionMode, modelId: string): void {
     const model = modelRegistry.byId(modelId);
-    if (!model) return;
-    if (mode === 'local' && model.mode === 'local') {
+    if (mode === 'local' && model?.mode === 'local') {
       void handleSetGlobalLocal(model);
       return;
     }
-    if (mode === 'cloud' && model.mode === 'cloud') {
+    if (mode === 'cloud' && model?.mode === 'cloud') {
       void handleSetGlobalCloud(model);
+      return;
     }
+    const option = (mode === 'cloud' ? topbarCloudModels : topbarLocalModels)
+      .find((item) => item.id === modelId || item.modelId === modelId);
+    if (!option) return;
+    if (mode === 'cloud') {
+      void handleSetTopbarCloudOption(option);
+      return;
+    }
+    void handleSetTopbarLocalOption(option);
   }
 
   async function handleInstallLocalModelById(modelId: string): Promise<void> {
     const model = modelRegistry.byId(modelId);
-    if (model?.mode !== 'local') return;
-    await handleInstallLocalModel(model);
+    if (model?.mode === 'local') {
+      await handleInstallLocalModel(model);
+      return;
+    }
+    const option = topbarLocalModels.find((item) => item.id === modelId || item.modelId === modelId);
+    const catalogModel = option?.modelId ? modelRegistry.byId(option.modelId) : undefined;
+    if (catalogModel?.mode === 'local') await handleInstallLocalModel(catalogModel);
   }
 
   async function handleTestLocalModelById(modelId: string): Promise<boolean> {
@@ -1582,6 +1588,7 @@ export default function App(): JSX.Element {
               onConfigureModels={() => openEnvironmentTab('ready')}
               onSaveProviderProfileCredential={handleSaveProviderProfileCredential}
               onSetDefaultProviderProfile={handleSetDefaultProviderProfile}
+              onRenameProviderProfile={handleRenameProviderProfile}
               onRemoveProviderProfile={handleRemoveProviderProfile}
               onTestProvider={handleTestProvider}
               onInstallLocalModel={handleInstallLocalModelById}

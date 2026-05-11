@@ -5,6 +5,6 @@ Comment=Central de comando para agentes tipo Codex
 Exec=codex_command_center
 Icon=codex-command-center
 Terminal=false
-Categories=Development;Utility;
+Categories=Development;IDE;
 StartupNotify=true
 StartupWMClass=codex_command_center

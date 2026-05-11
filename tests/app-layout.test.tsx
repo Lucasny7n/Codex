@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import App from '../src/App';
 import * as api from '../src/lib/api';
@@ -372,6 +372,8 @@ describe('App layout visibility', () => {
     expect(screen.getByText('Local')).toBeInTheDocument();
     expect(screen.getByText('Configurar modelos')).toBeInTheDocument();
     expect(screen.queryByText('Ambiente')).not.toBeInTheDocument();
+    expect(screen.getByText('Mock de desenvolvimento')).toBeInTheDocument();
+    expect(screen.queryByText('GPT-5.5')).not.toBeInTheDocument();
 
     fireEvent.change(screen.getByLabelText('Buscar modelo ou provedor'), { target: { value: 'OpenAI' } });
     expect(screen.getByText('GPT-5.5')).toBeInTheDocument();
@@ -438,6 +440,11 @@ describe('App layout visibility', () => {
 
   it('abre configuração específica de modelo cloud e local pelo botão de três pontos', async () => {
     vi.mocked(api.bootstrapState).mockResolvedValue(payload([baseSession()]));
+    let progressHandler: Parameters<typeof api.onLocalModelProgress>[0] = () => undefined;
+    vi.mocked(api.onLocalModelProgress).mockImplementation(async (handler) => {
+      progressHandler = handler;
+      return () => undefined;
+    });
 
     render(<App />);
 
@@ -454,6 +461,7 @@ describe('App layout visibility', () => {
     fireEvent.click(screen.getByLabelText('Configurar GPT-5.5'));
 
     expect(screen.getByRole('dialog', { name: 'GPT-5.5' })).toBeInTheDocument();
+    expect(api.updateSettings).not.toHaveBeenCalledWith(expect.objectContaining({ selectedModelId: 'gpt-5.5' }));
     expect(screen.getByLabelText('API Key')).toBeInTheDocument();
     expect(screen.getByText('Salvar API')).toBeInTheDocument();
     expect(screen.getByText('Testar API')).toBeInTheDocument();
@@ -500,6 +508,7 @@ describe('App layout visibility', () => {
 
     fireEvent.click(screen.getByTitle(/GPT-5.5/));
     fireEvent.click(screen.getAllByRole('tab', { name: 'Local' })[0]);
+    expect(screen.queryByText('Qwen2.5 Coder 7B')).not.toBeInTheDocument();
     fireEvent.change(screen.getByLabelText('Buscar modelo ou provedor'), { target: { value: 'Qwen2.5 Coder 7B' } });
     expect(screen.queryByLabelText('Configurar Qwen2.5 Coder 7B')).not.toBeInTheDocument();
     fireEvent.mouseEnter(screen.getByTestId('model-row-qwen2.5-coder:7b'));
@@ -509,6 +518,22 @@ describe('App layout visibility', () => {
     expect(screen.getByText('Status: Não instalado')).toBeInTheDocument();
     expect(screen.getByText('Download')).toBeInTheDocument();
     expect(screen.getByText('Testar')).toBeInTheDocument();
+
+    act(() => {
+      progressHandler({
+        modelId: 'qwen2.5-coder:7b',
+        state: 'running',
+        progressPercent: 42,
+        downloaded: '2.1 GB',
+        total: '5.0 GB',
+        speed: '8 MB/s',
+        message: 'Baixando modelo local',
+        at: new Date().toISOString(),
+      });
+    });
+
+    expect(screen.getByText(/Baixando modelo local · 42%/)).toBeInTheDocument();
+    expect(screen.getByText('2.1 GB / 5.0 GB · 8 MB/s')).toBeInTheDocument();
   });
 
   it('gerencia múltiplas API keys no modal cloud sem revelar key salva', async () => {

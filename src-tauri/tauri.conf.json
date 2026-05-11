@@ -25,7 +25,10 @@
       }
     ],
     "security": {
-      "capabilities": ["default"]
+      "capabilities": ["default"],
+      "headers": {
+        "Permissions-Policy": "microphone=(self), camera=(), autoplay=(self)"
+      }
     }
   },
   "bundle": {

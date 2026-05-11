@@ -246,10 +246,10 @@ export function CommandInputPanel({
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       stream.getTracks().forEach((track) => track.stop());
-      setSttMicMessage('Microfone acessível. Grave um teste curto para validar a transcrição local.');
+      setSttMicMessage('getUserMedia liberou acesso ao microfone. Grave um teste curto para validar a transcrição local.');
     } catch (cause) {
       const name = cause instanceof DOMException ? cause.name : '';
-      setSttMicMessage(name === 'NotAllowedError' ? 'Permissão negada para microfone.' : 'Não foi possível abrir o microfone.');
+      setSttMicMessage(name === 'NotAllowedError' ? 'Permissão negada pelo WebView/portal de microfone.' : 'Não foi possível abrir o microfone.');
     }
   }
 
@@ -385,7 +385,7 @@ export function CommandInputPanel({
   async function startBackendRecording(): Promise<void> {
     if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === 'undefined') {
       setVoiceState('missing-backend');
-      setVoiceMessage('Backend local não configurado. Configurar transcrição local: sudo pacman -S ffmpeg whisper.cpp');
+      setVoiceMessage('Gravação local indisponível neste WebView. Configure WebKit/portal de microfone ou use um backend STT local com ffmpeg e whisper.cpp.');
       return;
     }
 
@@ -427,7 +427,7 @@ export function CommandInputPanel({
       const name = cause instanceof DOMException ? cause.name : '';
       if (name === 'NotAllowedError' || name === 'SecurityError') {
         setVoiceState('permission-denied');
-        setVoiceMessage('Permissão negada. Revise a permissão do WebView e confirme PipeWire/WirePlumber antes de tentar novamente.');
+        setVoiceMessage('Permissão negada pelo WebView/portal. Revise a política de microfone do Tauri e confirme PipeWire/WirePlumber antes de tentar novamente.');
         return;
       }
       if (name === 'NotFoundError' || name === 'DevicesNotFoundError') {

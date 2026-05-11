@@ -9,21 +9,12 @@ import type {
   ProviderRuntimeStatus,
 } from '../../types/domain';
 import { normalizeProviderStatus, type ProviderStatus } from '../../lib/providerStatus';
+import {
+  visibleModelOptions,
+  type ModelCatalogOption,
+} from '../../lib/modelCatalogService';
 
-export interface TopBarModelOption {
-  id: string;
-  label: string;
-  modelId?: string;
-  providerId?: string;
-  providerLabel?: string;
-  family?: string;
-  statusLabel?: string;
-  status?: ProviderStatus;
-  available: boolean;
-  installed?: boolean;
-  heavy?: boolean;
-  searchTerms?: string[];
-}
+export type TopBarModelOption = ModelCatalogOption;
 
 interface TopBarProps {
   providerStatus?: ProviderRuntimeStatus;
@@ -48,6 +39,7 @@ interface TopBarProps {
     makeDefault: boolean,
   ) => Promise<ProviderAccountProfile>;
   onSetDefaultProviderProfile?: (providerId: string, profileId: string) => Promise<void>;
+  onRenameProviderProfile?: (profileId: string, name: string) => Promise<void>;
   onRemoveProviderProfile?: (profileId: string) => Promise<void>;
   onTestProvider?: (providerId: string) => Promise<ProviderRuntimeStatus>;
   onInstallLocalModel?: (modelId: string) => Promise<void>;
@@ -145,7 +137,7 @@ function providerGroupLabel(option: TopBarModelOption, mode: ExecutionMode): str
 
 function groupModelOptions(options: TopBarModelOption[], mode: ExecutionMode): Array<{ label: string; options: TopBarModelOption[] }> {
   const order = mode === 'cloud'
-    ? ['OpenAI', 'Google / Gemini', 'Anthropic', 'OpenRouter', 'Mistral', 'Groq', 'Together AI', 'Fireworks AI', 'Cerebras', 'Cohere', 'DeepSeek', 'xAI', 'Perplexity', 'OpenCode', 'Codex CLI', 'Outros provedores']
+    ? ['OpenRouter', 'OpenAI', 'Google / Gemini', 'Anthropic', 'Mistral', 'Groq', 'Together AI', 'Fireworks AI', 'Cerebras', 'Cohere', 'DeepSeek', 'xAI', 'Perplexity', 'OpenCode', 'Codex CLI', 'Outros provedores']
     : ['Ollama', 'Qwen', 'Llama', 'DeepSeek', 'Mistral', 'Phi', 'Gemma', 'CodeLlama', 'StarCoder', 'Yi', 'Outros locais'];
   const groups = new Map<string, TopBarModelOption[]>();
   for (const option of options) {
@@ -161,23 +153,6 @@ function groupModelOptions(options: TopBarModelOption[], mode: ExecutionMode): A
         return left.label.localeCompare(right.label);
       }),
     }));
-}
-
-function modelOptionMatches(option: TopBarModelOption, query: string): boolean {
-  const normalized = query.trim().toLowerCase();
-  if (!normalized) return true;
-  return [
-    option.label,
-    option.providerLabel,
-    option.family,
-    option.statusLabel,
-    ...(option.searchTerms ?? []),
-    option.available ? 'configurado instalado pronto ready' : 'configurar testar nao instalado indisponivel',
-  ]
-    .filter(Boolean)
-    .join(' ')
-    .toLowerCase()
-    .includes(normalized);
 }
 
 function credentialFor(providerId: string | undefined, credentials: ProviderCredentialStatus[]): ProviderCredentialStatus | undefined {
@@ -232,6 +207,7 @@ export function TopBar({
   onConfigureModels,
   onSaveProviderProfileCredential,
   onSetDefaultProviderProfile,
+  onRenameProviderProfile,
   onRemoveProviderProfile,
   onTestProvider,
   onInstallLocalModel,
@@ -255,7 +231,7 @@ export function TopBar({
   const environmentLabel = executionMode === 'local' ? 'Local' : 'Nuvem';
   const modelLabel = selectedModelLabel.trim() || 'Selecionar modelo';
   const pickerOptions = useMemo(
-    () => (pickerMode === 'cloud' ? cloudModels : localModels).filter((option) => modelOptionMatches(option, query)),
+    () => visibleModelOptions(pickerMode, pickerMode === 'cloud' ? cloudModels : localModels, query),
     [cloudModels, localModels, pickerMode, query],
   );
   const pickerGroups = groupModelOptions(pickerOptions, pickerMode);
@@ -432,6 +408,23 @@ export function TopBar({
     }
   }
 
+  async function renameProfile(): Promise<void> {
+    const profile = configProfile;
+    const nextName = apiKeyName.trim();
+    if (!profile || !onRenameProviderProfile || profile.source !== 'config_file' || !nextName || nextName === profile.name) return;
+    setProfileActionBusyId(profile.id);
+    setConfigError(undefined);
+    try {
+      await onRenameProviderProfile(profile.id, nextName);
+      setConfigStatus('idle');
+    } catch (cause) {
+      setConfigStatus('error');
+      setConfigError(cause instanceof Error ? cause.message : 'Falha ao renomear API key.');
+    } finally {
+      setProfileActionBusyId(undefined);
+    }
+  }
+
   async function testLocalModel(): Promise<void> {
     const modelId = configTarget?.option.modelId ?? configTarget?.option.id;
     if (!modelId || !onTestLocalModel) return;
@@ -491,6 +484,14 @@ export function TopBar({
                   placeholder="Buscar modelo ou provedor..."
                   aria-label="Buscar modelo ou provedor"
                   onChange={(event) => setQuery(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key !== 'Enter') return;
+                    const firstUsable = pickerOptions.find((option) => option.available);
+                    if (!firstUsable) return;
+                    event.preventDefault();
+                    setModelMenuOpen(false);
+                    onSelectModel(pickerMode, firstUsable.id);
+                  }}
                 />
               </label>
             </div>
@@ -653,6 +654,18 @@ export function TopBar({
                     </button>
                     <button
                       type="button"
+                      disabled={profile.source !== 'config_file'}
+                      onClick={() => {
+                        setProfileMenuId(undefined);
+                        setSelectedConfigProfileId(profile.id);
+                        setApiKeyName(profile.name);
+                        setApiKey('');
+                      }}
+                    >
+                      Renomear key
+                    </button>
+                    <button
+                      type="button"
                       className="danger"
                       disabled={profile.source !== 'config_file' || profileActionBusyId === profile.id}
                       onClick={() => void removeProfile(profile)}
@@ -693,6 +706,14 @@ export function TopBar({
             <button type="button" className="btn-modern" disabled={!onSaveProviderProfileCredential || apiKey.trim().length < 12} onClick={() => void saveApiKey()}>
               Salvar API
             </button>
+            <button
+              type="button"
+              className="btn-modern"
+              disabled={!onRenameProviderProfile || !configProfile || configProfile.source !== 'config_file' || !apiKeyName.trim() || apiKeyName.trim() === configProfile.name || profileActionBusyId === configProfile.id}
+              onClick={() => void renameProfile()}
+            >
+              Salvar nome
+            </button>
             <button type="button" className="btn-modern btn-modern-primary" disabled={!onTestProvider || configStatus === 'testing'} onClick={() => void testApiKey()}>
               Testar API
             </button>
@@ -708,11 +729,15 @@ export function TopBar({
           <div className="model-config-meta">
             <span>
               <strong>Runtime</strong>
-              {configTarget.option.providerLabel ?? 'Ollama'}
+              {configTarget.option.runtimeLabel ?? configTarget.option.providerLabel ?? 'Ollama'}
             </span>
             <span>
               <strong>Modelo</strong>
               {configTarget.option.modelId ?? configTarget.option.id}
+            </span>
+            <span>
+              <strong>Tamanho estimado</strong>
+              {configTarget.option.estimatedSize ?? 'Não informado'}
             </span>
           </div>
           <div className="model-config-status">
