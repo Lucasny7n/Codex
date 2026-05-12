@@ -88,16 +88,16 @@ describe('modelCatalogService', () => {
       providerProfiles: [],
     });
 
-    const defaultCloud = visibleModelOptions('cloud', options, '');
+    const defaultCloud = visibleModelOptions({ mode: 'cloud', options, query: '' });
     expect(defaultCloud.map((option) => option.label)).toContain('GPT-5.5');
     expect(defaultCloud.map((option) => option.label)).not.toContain('GPT-5.4 Mini via OpenRouter');
     expect(defaultCloud.every((option) => option.source === 'cloud' && option.providerType === 'cloud' && option.ready)).toBe(true);
 
-    const openRouterSearch = visibleModelOptions('cloud', options, 'openrouter');
+    const openRouterSearch = visibleModelOptions({ mode: 'cloud', options, query: 'openrouter' });
     expect(openRouterSearch.map((option) => option.label)).toContain('GPT-5.4 Mini via OpenRouter');
     expect(openRouterSearch.map((option) => option.label)).toContain('Kimi K2 via OpenRouter');
     expect(openRouterSearch.find((option) => option.providerId === 'openrouter-api')?.statusLabel).toBe('Configurar API');
-    expect(visibleModelOptions('cloud', options, 'qwen2.5')).toHaveLength(0);
+    expect(visibleModelOptions({ mode: 'cloud', options, query: 'qwen2.5' })).toHaveLength(0);
   });
 
   it('Nuvem não marca key salva sem teste como pronta', () => {
@@ -110,13 +110,13 @@ describe('modelCatalogService', () => {
       providers,
       providerProfiles: [profile('testing')],
     });
-    expect(visibleModelOptions('cloud', untested, '').map((option) => option.label)).not.toContain('GPT-5.5');
+    expect(visibleModelOptions({ mode: 'cloud', options: untested, query: '' }).map((option) => option.label)).not.toContain('GPT-5.5');
 
     const ready = buildCloudModelOptions({
       providers,
       providerProfiles: [profile('ready')],
     });
-    expect(visibleModelOptions('cloud', ready, '').map((option) => option.label)).toContain('GPT-5.5');
+    expect(visibleModelOptions({ mode: 'cloud', options: ready, query: '' }).map((option) => option.label)).toContain('GPT-5.5');
   });
 
   it('Local vazio mostra só instalados reais e busca cria candidato Ollama sem catálogo fixo', () => {
@@ -139,23 +139,39 @@ describe('modelCatalogService', () => {
       },
     });
 
-    const defaultLocalLabels = visibleModelOptions('local', options, '').map((option) => option.label);
+    const defaultLocalLabels = visibleModelOptions({ mode: 'local', options, query: '' }).map((option) => option.label);
     expect(defaultLocalLabels).toContain('qwen2.5-coder:1.5b');
     expect(defaultLocalLabels).toContain('custom-lab:latest');
-    expect(defaultLocalLabels).not.toContain('Baixar qwen2.5-coder:7b');
-    expect(visibleModelOptions('local', options, '').every((option) => option.source === 'local' && option.providerType === 'local' && option.installed)).toBe(true);
+    expect(defaultLocalLabels).not.toContain('qwen2.5-coder:7b');
+    expect(visibleModelOptions({ mode: 'local', options, query: '' }).every((option) => option.source === 'local' && option.providerType === 'local' && option.installed)).toBe(true);
 
-    const deepSeekDownloads = visibleModelOptions('local', options, 'DeepSeek Coder');
+    const deepSeekDownloads = visibleModelOptions({
+      mode: 'local',
+      options,
+      query: 'DeepSeek Coder',
+      installationProgress: {
+        'deepseek-coder': {
+          modelId: 'deepseek-coder',
+          state: 'running',
+          progressPercent: 42,
+          downloaded: '2.1 GB',
+          total: '5.0 GB',
+          speed: '8 MB/s',
+          message: 'Baixando modelo local',
+          at: now,
+        },
+      },
+    });
     expect(deepSeekDownloads).toHaveLength(1);
     expect(deepSeekDownloads[0]).toMatchObject({
-      label: 'Baixar deepseek-coder',
+      label: 'deepseek-coder',
       modelId: 'deepseek-coder',
       installed: false,
-      statusLabel: 'Disponível para pull',
+      statusLabel: 'Baixando',
     });
-    expect(visibleModelOptions('local', options, 'GPT-5.5')).toHaveLength(0);
+    expect(visibleModelOptions({ mode: 'local', options, query: 'GPT-5.5' })).toHaveLength(0);
 
-    const installedQwen = visibleModelOptions('local', options, '').find((option) => option.modelId === 'qwen2.5-coder:1.5b');
+    const installedQwen = visibleModelOptions({ mode: 'local', options, query: '' }).find((option) => option.modelId === 'qwen2.5-coder:1.5b');
     expect(installedQwen?.digest).toBe('sha256:qwen');
     expect(installedQwen?.modifiedAt).toBe(now);
   });
@@ -165,22 +181,55 @@ describe('modelCatalogService', () => {
       localRuntime: localRuntime([{ id: 'llama3.2:latest', size: '2 GB' }]),
     });
 
-    expect(visibleModelOptions('local', options, '').map((option) => option.modelId)).toContain('llama3.2:latest');
+    expect(visibleModelOptions({ mode: 'local', options, query: '' }).map((option) => option.modelId)).toContain('llama3.2:latest');
     expect(normalizeOllamaQuery('gpt oss')).toBe('gpt-oss');
     expect(normalizeOllamaQuery('gpt_oss')).toBe('gpt-oss');
     expect(normalizeOllamaQuery('gptoss')).toBe('gpt-oss');
 
-    const gptOss = visibleModelOptions('local', options, 'gpt oss');
+    const gptOss = visibleModelOptions({ mode: 'local', options, query: 'gpt oss' });
     expect(gptOss).toHaveLength(1);
     expect(gptOss[0]).toMatchObject({
-      label: 'Baixar gpt-oss',
+      label: 'gpt-oss',
       modelId: 'gpt-oss',
       providerLabel: 'Ollama',
-      statusLabel: 'Disponível para pull',
+      statusLabel: 'Disponível para baixar',
       installed: false,
       ready: false,
     });
+    expect(visibleModelOptions({ mode: 'local', options, query: 'gpt_oss' })[0]?.modelId).toBe('gpt-oss');
+    expect(visibleModelOptions({ mode: 'local', options, query: 'gptoss' })[0]?.modelId).toBe('gpt-oss');
+    expect(visibleModelOptions({ mode: 'local', options, query: 'gpt oss' })[0]?.statusLabel).not.toContain('pull');
+    expect(visibleModelOptions({ mode: 'local', options, query: 'qwen2.5 coder' })[0]).toMatchObject({
+      label: 'qwen2.5-coder',
+      modelId: 'qwen2.5-coder',
+      installed: false,
+    });
+    expect(visibleModelOptions({ mode: 'local', options, query: 'qwen2.5-coder:7b' })[0]).toMatchObject({
+      label: 'qwen2.5-coder:7b',
+      modelId: 'qwen2.5-coder:7b',
+    });
     expect(buildPullCandidateFromQuery('llama3.2', localRuntime([{ id: 'llama3.2:latest' }]))).toBeUndefined();
+  });
+
+  it('preserva tag Ollama na busca e não trata outra tag instalada como instalada', () => {
+    const options = buildLocalModelOptions({
+      localRuntime: localRuntime([{ id: 'qwen2.5-coder:1.5b', size: '986 MB' }]),
+    });
+
+    const taggedCandidate = visibleModelOptions({
+      mode: 'local',
+      options,
+      query: 'qwen2.5-coder:7b',
+      localRuntime: localRuntime([{ id: 'qwen2.5-coder:1.5b', size: '986 MB' }]),
+    });
+
+    expect(taggedCandidate).toHaveLength(1);
+    expect(taggedCandidate[0]).toMatchObject({
+      label: 'qwen2.5-coder:7b',
+      modelId: 'qwen2.5-coder:7b',
+      installed: false,
+      statusLabel: 'Disponível para baixar',
+    });
   });
 
   it('filtra defensivamente opções misturadas pela origem explícita', () => {
@@ -195,10 +244,10 @@ describe('modelCatalogService', () => {
     });
     const mixed = [...cloud, ...local];
 
-    expect(visibleModelOptions('cloud', mixed, 'qwen').some((option) => option.providerType === 'local')).toBe(false);
-    expect(visibleModelOptions('cloud', mixed, 'qwen2.5-coder')).toHaveLength(0);
-    expect(visibleModelOptions('local', mixed, 'gpt')).toHaveLength(0);
-    expect(visibleModelOptions('cloud', mixed, 'gpt').every((option) => option.source === 'cloud')).toBe(true);
-    expect(visibleModelOptions('local', mixed, 'qwen').every((option) => option.source === 'local')).toBe(true);
+    expect(visibleModelOptions({ mode: 'cloud', options: mixed, query: 'qwen' }).some((option) => option.providerType === 'local')).toBe(false);
+    expect(visibleModelOptions({ mode: 'cloud', options: mixed, query: 'qwen2.5-coder' })).toHaveLength(0);
+    expect(visibleModelOptions({ mode: 'local', options: mixed, query: 'gpt' })).toHaveLength(0);
+    expect(visibleModelOptions({ mode: 'cloud', options: mixed, query: 'gpt' }).every((option) => option.source === 'cloud')).toBe(true);
+    expect(visibleModelOptions({ mode: 'local', options: mixed, query: 'qwen' }).every((option) => option.source === 'local')).toBe(true);
   });
 });

@@ -5696,18 +5696,6 @@
   font-size: 0.74rem;
 }
 
-.prompt-preset-select select {
-  min-width: 116px;
-  max-width: 150px;
-  border: 1px solid rgba(157, 202, 255, 0.18);
-  border-radius: var(--radius-sm);
-  background: rgba(5, 10, 16, 0.82);
-  color: var(--text-main);
-  padding: 7px 8px;
-  font: inherit;
-  font-size: 0.78rem;
-}
-
 .custom-preset-list {
   display: grid;
   gap: 8px;
@@ -5740,9 +5728,6 @@
     grid-template-columns: 1fr;
   }
 
-  .prompt-preset-select select {
-    max-width: 118px;
-  }
 }
 
 .settings-qwen-shell,
@@ -8469,27 +8454,27 @@ body,
   background: rgba(37, 99, 235, 0.075);
 }
 
-/* Passada 17: seletor de modelos alinhado, com menu de linha discreto e sem sobrepor scrollbar. */
+/* Passada 19: seletor de modelos alinhado, com menu de linha discreto e sem sobrepor scrollbar. */
 .model-picker-menu {
   width: min(620px, calc(100vw - 32px));
 }
 
 .model-picker-scroll {
   max-height: min(520px, calc(100vh - 230px));
-  padding-right: 22px;
+  padding-right: 18px;
   scrollbar-gutter: stable;
 }
 
 .model-picker-option-row {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 42px;
+  grid-template-columns: minmax(0, 1fr) 32px;
   align-items: center;
-  gap: 2px;
-  width: 100%;
+  gap: 8px;
+  width: calc(100% - 6px);
   min-height: 48px;
-  margin: 0 6px 3px 0;
-  padding: 3px 8px 3px 3px;
-  border-radius: 11px;
+  margin: 0 6px 4px 0;
+  padding: 4px 10px 4px 6px;
+  border-radius: 10px;
 }
 
 .model-picker-option-row:hover,
@@ -8499,10 +8484,11 @@ body,
 }
 
 .model-picker-option-row .model-picker-option {
-  width: 100%;
   min-width: 0;
+  width: 100%;
   height: 100%;
-  border-radius: 9px;
+  border-radius: 8px;
+  background: transparent;
   justify-content: flex-start;
 }
 
@@ -8511,12 +8497,21 @@ body,
   cursor: pointer;
 }
 
+.model-picker-option-row.disabled {
+  opacity: 1;
+}
+
+.model-picker-option-row.disabled .model-picker-option-copy strong {
+  color: var(--text-secondary);
+}
+
 .model-picker-row-config,
 .model-picker-row-config-placeholder {
-  width: 36px;
-  min-width: 36px;
-  height: 36px;
-  margin-right: 8px;
+  width: 32px;
+  min-width: 32px;
+  height: 32px;
+  min-height: 32px;
+  margin: 0;
   place-self: center;
 }
 
@@ -8524,10 +8519,16 @@ body,
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 1rem;
   opacity: 0;
   pointer-events: none;
   line-height: 1;
-  transition: opacity 120ms ease, background-color 120ms ease, border-color 120ms ease;
+  transition: opacity 120ms ease, background-color 120ms ease, border-color 120ms ease, color 120ms ease;
 }
 
 .model-picker-option-row:hover .model-picker-row-config,
@@ -8535,6 +8536,13 @@ body,
 .model-picker-option-row.show-config .model-picker-row-config {
   opacity: 1;
   pointer-events: auto;
+}
+
+.model-picker-row-config:hover,
+.model-picker-row-config:focus-visible {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: var(--border-subtle);
+  color: var(--text-primary);
 }
 
 .model-picker-status-label {

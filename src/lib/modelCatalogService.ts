@@ -346,6 +346,10 @@ export function modelOptionMatches(option: ModelCatalogOption, query: string): b
     .includes(normalized);
   if (textMatches) return true;
   if (option.source === 'local') {
+    const normalizedLocalQuery = query.trim().toLowerCase().includes(':') ? normalizeOllamaModelId(query) : undefined;
+    if (normalizedLocalQuery) {
+      return normalizeOllamaModelId(option.modelId ?? option.id) === normalizedLocalQuery;
+    }
     const queryTerms = ollamaIdentityTerms(query);
     const optionTerms = [
       ...ollamaIdentityTerms(option.modelId ?? option.id),
@@ -356,32 +360,46 @@ export function modelOptionMatches(option: ModelCatalogOption, query: string): b
   return false;
 }
 
-export function visibleModelOptions(
-  mode: ExecutionMode,
-  options: ModelCatalogOption[],
-  query: string,
-): ModelCatalogOption[] {
+export interface VisibleModelOptionsInput {
+  mode: ExecutionMode;
+  options: ModelCatalogOption[];
+  query: string;
+  localRuntime?: LocalRuntimeSnapshot;
+  installationProgress?: Record<string, LocalModelInstallProgress>;
+}
+
+export function visibleModelOptions({
+  mode,
+  options,
+  query,
+  localRuntime,
+  installationProgress,
+}: VisibleModelOptionsInput): ModelCatalogOption[] {
   const trimmed = query.trim();
-  const sourceOptions = options.filter((option) => option.source === mode && option.providerType === mode);
+  const sourceOptions = options.filter((option) => {
+    if (mode === 'cloud') {
+      return option.source === 'cloud' && option.providerType === 'cloud' && option.providerId !== 'local-ollama';
+    }
+    return option.source === 'local' && option.providerType === 'local' && option.providerId === 'local-ollama';
+  });
   const matched = sourceOptions.filter((option) => modelOptionMatches(option, trimmed));
   if (trimmed) {
     if (mode !== 'local') return matched;
-    const runtimeModels = sourceOptions
-      .filter((option) => option.installed)
-      .map((option) => ({
-        id: option.modelId ?? option.id,
-        size: option.estimatedSize,
-        modifiedAt: option.modifiedAt,
-        digest: option.digest,
-      }));
-    const runtime = {
-      installedModels: runtimeModels,
-    } as LocalRuntimeSnapshot;
+    const runtime = localRuntime ?? ({
+      installedModels: sourceOptions
+        .filter((option) => option.installed)
+        .map((option) => ({
+          id: option.modelId ?? option.id,
+          size: option.estimatedSize,
+          modifiedAt: option.modifiedAt,
+          digest: option.digest,
+        })),
+    } as LocalRuntimeSnapshot);
     const installedMatches = searchInstalledOllamaModels(runtime, trimmed);
     const hasInstalledMatch = installedMatches.length > 0 || matched.some((option) => option.installed);
     const candidate = hasInstalledMatch
       ? undefined
-      : buildPullCandidateOption(trimmed, runtime);
+      : buildPullCandidateOption(trimmed, runtime, installationProgress);
     return candidate ? [...matched, candidate] : matched;
   }
   if (mode === 'cloud') return matched.filter((option) => option.configured && option.ready);

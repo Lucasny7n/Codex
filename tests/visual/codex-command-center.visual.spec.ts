@@ -188,7 +188,10 @@ async function installTauriMock(page: Page): Promise<void> {
         if (cmd === 'list_provider_credentials') return [];
         if (cmd === 'list_provider_profiles') return providerProfiles;
         if (cmd === 'list_privileged_actions') return [];
-        if (cmd === 'get_local_runtime_state') return localRuntime;
+        if (cmd === 'get_local_runtime_state') return {
+          ...localRuntime,
+          installedModels: [...localRuntime.installedModels],
+        };
         if (cmd === 'get_stt_config_state') {
           return {
             ffmpeg: { id: 'ffmpeg', label: 'ffmpeg', installed: true, ready: true, message: 'ffmpeg disponível.' },
@@ -234,9 +237,10 @@ async function installTauriMock(page: Page): Promise<void> {
             at: now,
           });
           await new Promise((resolve) => window.setTimeout(resolve, 120));
+          localRuntime.installedModels = [...localRuntime.installedModels, { id: modelId }];
           return {
             ...localRuntime,
-            installedModels: [...localRuntime.installedModels, { id: modelId }],
+            installedModels: [...localRuntime.installedModels],
           };
         }
         if (cmd === 'plugin:event|listen') {
@@ -308,7 +312,10 @@ async function screenshot(page: Page, name: string): Promise<void> {
 test('captura home, composer, chat temporário, seletor e modais em tema escuro', async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   await openApp(page, 'dark');
+  await expect(page.locator('.prompt-preset-select')).toHaveCount(0);
+  await expect(page.locator('select[aria-label="Selecionar preset"]')).toHaveCount(0);
   await screenshot(page, 'pass-15-home-dark');
+  await screenshot(page, 'pass-19-home-no-preset-select');
   await screenshot(page, 'pass-15-composer-empty');
   await screenshot(page, 'pass-15-send-disabled-neutral');
   await screenshot(page, 'pass-15-app-icon');
@@ -331,9 +338,11 @@ test('captura home, composer, chat temporário, seletor e modais em tema escuro'
   await page.getByTitle(/mock-development-model/).click();
   await expect(page.locator('.model-picker-title')).toHaveText('Modelos');
   await expect(page.getByText('Qwen2.5 Coder 1.5B')).toHaveCount(0);
+  await expect(page.getByText('Local Ollama')).toHaveCount(0);
   await screenshot(page, 'pass-15-model-selector-cloud');
+  await screenshot(page, 'pass-19-cloud-no-local-ollama');
   await page.getByLabel('Buscar modelo ou provedor').fill('qwen2.5-coder');
-  await expect(page.getByText('Nenhum modelo encontrado')).toBeVisible();
+  await expect(page.getByText('Nenhum modelo cloud configurado encontrado.')).toBeVisible();
   await page.getByLabel('Buscar modelo ou provedor').fill('GPT-5.5');
   await page.getByTestId('model-row-gpt-5.5').hover();
   await screenshot(page, 'pass-15-model-selector-cloud-hover');
@@ -348,7 +357,21 @@ test('captura home, composer, chat temporário, seletor e modais em tema escuro'
   await page.getByTitle(/mock-development-model/).click();
   await page.getByRole('tab', { name: 'Local' }).click();
   await page.getByLabel('Buscar modelo ou provedor').fill('GPT-5.5');
-  await expect(page.getByText('Nenhum modelo encontrado')).toBeVisible();
+  await expect(page.getByText('Modelo não instalado. Você pode baixar pelo Ollama.')).toBeVisible();
+  await page.getByLabel('Buscar modelo ou provedor').fill('gpt oss');
+  await expect(page.getByTestId('model-row-ollama-pull:gpt-oss')).toBeVisible();
+  await expect(page.getByText('gpt-oss')).toBeVisible();
+  await expect(page.getByText('Disponível para baixar')).toBeVisible();
+  await expect(page.getByText('Disponível para pull')).toHaveCount(0);
+  await screenshot(page, 'pass-19-local-search-gpt-oss');
+  await page.getByTestId('model-row-ollama-pull:gpt-oss').hover();
+  await screenshot(page, 'pass-19-model-selector-ellipsis-aligned');
+  await page.getByLabel('Configurar gpt-oss').click();
+  await expect(page.getByRole('dialog', { name: 'gpt-oss' })).toBeVisible();
+  await expect(page.getByTitle(/mock-development-model/)).toBeVisible();
+  await page.keyboard.press('Escape');
+  await page.getByTitle(/mock-development-model/).click();
+  await page.getByRole('tab', { name: 'Local' }).click();
   await page.getByLabel('Buscar modelo ou provedor').fill('Qwen');
   await screenshot(page, 'pass-15-model-selector-local');
   await page.getByTestId('model-row-qwen2.5-coder:1.5b').hover();
@@ -362,14 +385,14 @@ test('captura home, composer, chat temporário, seletor e modais em tema escuro'
   await page.getByRole('tab', { name: 'Local' }).click();
   await page.getByLabel('Buscar modelo ou provedor').fill('qwen3:8b');
   await page.getByTestId('model-row-ollama-pull:qwen3:8b').hover();
-  await page.getByLabel('Configurar Baixar qwen3:8b').click();
-  await expect(page.getByRole('dialog', { name: 'Baixar qwen3:8b' })).toBeVisible();
+  await page.getByLabel('Configurar qwen3:8b').click();
+  await expect(page.getByRole('dialog', { name: 'qwen3:8b' })).toBeVisible();
   await screenshot(page, 'pass-15-model-config-local-download');
   await page.getByRole('button', { name: /Download/ }).click();
   await expect(page.locator('.model-config-progress').getByText(/42%/)).toBeVisible();
   await screenshot(page, 'pass-15-model-config-local-download-progress');
-  await page.getByRole('dialog', { name: 'Baixar qwen3:8b' }).getByRole('button', { name: 'Fechar' }).click();
-  await expect(page.getByRole('dialog', { name: 'Baixar qwen3:8b' })).toHaveCount(0);
+  await page.getByRole('dialog', { name: 'qwen3:8b' }).getByRole('button', { name: 'Fechar' }).click();
+  await expect(page.getByRole('dialog', { name: 'qwen3:8b' })).toHaveCount(0);
 
   await page.getByLabel('Mais ações').click();
   await page.getByText('Selecionar arquivo').click();

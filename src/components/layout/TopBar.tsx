@@ -4,6 +4,7 @@ import { CredentialInput, PopupMenu, PremiumModal, StatusDot } from '../common/P
 import type {
   ExecutionMode,
   LocalModelInstallProgress,
+  LocalRuntimeSnapshot,
   ProviderAccountProfile,
   ProviderCredentialStatus,
   ProviderRuntimeStatus,
@@ -24,6 +25,7 @@ interface TopBarProps {
   selectedModelId?: string;
   cloudModels: TopBarModelOption[];
   localModels: TopBarModelOption[];
+  localRuntime?: LocalRuntimeSnapshot;
   credentials?: ProviderCredentialStatus[];
   providerProfiles?: ProviderAccountProfile[];
   installationProgress?: Record<string, LocalModelInstallProgress>;
@@ -99,7 +101,10 @@ function ModelOptionRow({
           type="button"
           className="model-picker-row-config"
           aria-label={`Configurar ${option.label}`}
-          onMouseDown={(event) => event.stopPropagation()}
+          onMouseDown={(event) => {
+            event.preventDefault();
+            event.stopPropagation();
+          }}
           onClick={(event) => {
             event.stopPropagation();
             onConfigure();
@@ -114,8 +119,9 @@ function ModelOptionRow({
 
 function providerGroupLabel(option: TopBarModelOption, mode: ExecutionMode): string {
   if (mode === 'local') {
-    if (option.family) return option.family;
     if (option.providerLabel?.toLowerCase().includes('ollama')) return 'Ollama';
+    if (option.providerId === 'local-ollama') return 'Ollama';
+    if (option.family) return option.family;
     if (option.providerLabel?.toLowerCase().includes('lm studio')) return 'LM Studio';
     return option.providerLabel ?? 'Outros locais';
   }
@@ -201,6 +207,7 @@ export function TopBar({
   selectedModelId,
   cloudModels,
   localModels,
+  localRuntime,
   credentials = [],
   providerProfiles = [],
   installationProgress = {},
@@ -234,12 +241,26 @@ export function TopBar({
   const providerStatusLabel = providerStatus?.state.replace('_', ' ') ?? 'offline';
   const environmentLabel = executionMode === 'local' ? 'Local' : 'Nuvem';
   const modelLabel = selectedModelLabel.trim() || 'Selecionar modelo';
+  const safeCloudModels = useMemo(
+    () => cloudModels.filter((item) => item.source === 'cloud' && item.providerType === 'cloud' && item.providerId !== 'local-ollama'),
+    [cloudModels],
+  );
+  const safeLocalModels = useMemo(
+    () => localModels.filter((item) => item.source === 'local' && item.providerType === 'local' && item.providerId === 'local-ollama'),
+    [localModels],
+  );
   const pickerOptions = useMemo(
-    () => visibleModelOptions(pickerMode, pickerMode === 'cloud' ? cloudModels : localModels, query),
-    [cloudModels, localModels, pickerMode, query],
+    () => visibleModelOptions({
+      mode: pickerMode,
+      options: pickerMode === 'cloud' ? safeCloudModels : safeLocalModels,
+      query,
+      localRuntime,
+      installationProgress,
+    }),
+    [installationProgress, localRuntime, pickerMode, query, safeCloudModels, safeLocalModels],
   );
   const pickerGroups = groupModelOptions(pickerOptions, pickerMode);
-  const currentPickerOption = (pickerMode === 'cloud' ? cloudModels : localModels).find((option) => selectedModelId === option.id || selectedModelId === option.modelId || selectedModelLabel === option.label);
+  const currentPickerOption = (pickerMode === 'cloud' ? safeCloudModels : safeLocalModels).find((option) => selectedModelId === option.id || selectedModelId === option.modelId || selectedModelLabel === option.label);
   const configCredential = credentialFor(configTarget?.option.providerId, credentials);
   const configProfiles = configTarget?.option.providerId
     ? providerProfiles.filter((profile) => profile.providerId === configTarget.option.providerId)
@@ -492,11 +513,29 @@ export function TopBar({
     }
   }
 
+  function setPickerTab(mode: ExecutionMode): void {
+    setPickerMode(mode);
+    setQuery('');
+    setHoveredOptionId(undefined);
+  }
+
+  function pickerEmptyTitle(): string {
+    if (pickerMode === 'cloud') return 'Nenhum modelo cloud configurado encontrado.';
+    if (query.trim()) return 'Modelo não instalado. Você pode baixar pelo Ollama.';
+    return 'Nenhum modelo Ollama instalado encontrado.';
+  }
+
+  function pickerEmptyDetail(): string {
+    if (pickerMode === 'cloud') return 'Ajuste a busca ou configure um provider em Modelos.';
+    if (query.trim()) return 'Use Download no candidato local para baixar pelo Ollama.';
+    return 'Abra o Model Manager local ou baixe um modelo pelo Ollama.';
+  }
+
   return (
     <>
     <header className="topbar-clean">
       <div className="popup-anchor">
-        <button type="button" className="model-top-selector" onClick={() => { setPickerMode(executionMode); setModelMenuOpen((current) => !current); }} title={`${environmentLabel} ${modelLabel} • ${activeModelLabel}`}>
+        <button type="button" className="model-top-selector" onClick={() => { setPickerTab(executionMode); setModelMenuOpen((current) => !current); }} title={`${environmentLabel} ${modelLabel} • ${activeModelLabel}`}>
           <span className="model-top-mode">{environmentLabel}</span>
           <span className="model-top-name">{modelLabel}</span>
           <UiIcon name="chevronDown" className="model-top-chevron" />
@@ -524,10 +563,10 @@ export function TopBar({
               </label>
             </div>
             <div className="model-picker-tabs" role="tablist" aria-label="Origem dos modelos">
-              <button type="button" className={pickerMode === 'cloud' ? 'active' : ''} role="tab" aria-selected={pickerMode === 'cloud'} onClick={() => setPickerMode('cloud')}>
+              <button type="button" className={pickerMode === 'cloud' ? 'active' : ''} role="tab" aria-selected={pickerMode === 'cloud'} onClick={() => setPickerTab('cloud')}>
                 Nuvem
               </button>
-              <button type="button" className={pickerMode === 'local' ? 'active' : ''} role="tab" aria-selected={pickerMode === 'local'} onClick={() => setPickerMode('local')}>
+              <button type="button" className={pickerMode === 'local' ? 'active' : ''} role="tab" aria-selected={pickerMode === 'local'} onClick={() => setPickerTab('local')}>
                 Local
               </button>
             </div>
@@ -554,8 +593,8 @@ export function TopBar({
               </section>
             )) : (
               <div className="model-picker-empty" role="status">
-                <strong>Nenhum modelo encontrado</strong>
-                <span>Ajuste a busca ou troque entre Nuvem e Local.</span>
+                <strong>{pickerEmptyTitle()}</strong>
+                <span>{pickerEmptyDetail()}</span>
               </div>
             )}
           </div>

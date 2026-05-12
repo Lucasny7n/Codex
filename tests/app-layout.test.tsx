@@ -403,10 +403,10 @@ describe('App layout visibility', () => {
     expect(screen.getByTestId('model-row-gpt-5.5')).toHaveAttribute('data-provider-type', 'cloud');
 
     fireEvent.change(screen.getByLabelText('Buscar modelo ou provedor'), { target: { value: 'qwen2.5-coder' } });
-    expect(screen.getByText('Nenhum modelo encontrado')).toBeInTheDocument();
+    expect(screen.getByText('Nenhum modelo cloud configurado encontrado.')).toBeInTheDocument();
 
     fireEvent.change(screen.getByLabelText('Buscar modelo ou provedor'), { target: { value: 'modelo-inexistente-xyz' } });
-    expect(screen.getByText('Nenhum modelo encontrado')).toBeInTheDocument();
+    expect(screen.getByText('Nenhum modelo cloud configurado encontrado.')).toBeInTheDocument();
 
     fireEvent.click(screen.getByText('Configurar modelos'));
     expect(screen.queryByRole('tab', { name: 'Prontos' })).not.toBeInTheDocument();
@@ -469,7 +469,7 @@ describe('App layout visibility', () => {
     fireEvent.click(screen.getByTitle(/Qwen2.5 Coder 1.5B/));
     fireEvent.click(screen.getAllByRole('tab', { name: 'Local' })[0]);
     fireEvent.change(screen.getByLabelText('Buscar modelo ou provedor'), { target: { value: 'GPT-5.5' } });
-    expect(screen.getByText('Nenhum modelo encontrado')).toBeInTheDocument();
+    expect(screen.getByText('Modelo não instalado. Você pode baixar pelo Ollama.')).toBeInTheDocument();
   });
 
   it('abre configuração específica de modelo cloud e local pelo botão de três pontos', async () => {
@@ -542,13 +542,16 @@ describe('App layout visibility', () => {
 
     fireEvent.click(screen.getByTitle(/GPT-5.5/));
     fireEvent.click(screen.getAllByRole('tab', { name: 'Local' })[0]);
-    expect(screen.queryByText('Baixar qwen2.5-coder:7b')).not.toBeInTheDocument();
+    expect(screen.queryByText('qwen2.5-coder:7b')).not.toBeInTheDocument();
     fireEvent.change(screen.getByLabelText('Buscar modelo ou provedor'), { target: { value: 'qwen2.5-coder:7b' } });
-    expect(screen.queryByLabelText('Configurar Baixar qwen2.5-coder:7b')).not.toBeInTheDocument();
+    expect(screen.getByText('qwen2.5-coder:7b')).toBeInTheDocument();
+    expect(screen.getByText('Disponível para baixar')).toBeInTheDocument();
+    expect(screen.queryByText('Disponível para pull')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('Configurar qwen2.5-coder:7b')).not.toBeInTheDocument();
     fireEvent.mouseEnter(screen.getByTestId('model-row-ollama-pull:qwen2.5-coder:7b'));
-    fireEvent.click(screen.getByLabelText('Configurar Baixar qwen2.5-coder:7b'));
+    fireEvent.click(screen.getByLabelText('Configurar qwen2.5-coder:7b'));
 
-    expect(screen.getByRole('dialog', { name: 'Baixar qwen2.5-coder:7b' })).toBeInTheDocument();
+    expect(screen.getByRole('dialog', { name: 'qwen2.5-coder:7b' })).toBeInTheDocument();
     expect(screen.getByText('Status: Não instalado')).toBeInTheDocument();
     expect(screen.getByText('Download')).toBeInTheDocument();
     expect(screen.getByText('Testar')).toBeInTheDocument();

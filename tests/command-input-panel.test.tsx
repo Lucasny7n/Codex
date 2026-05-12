@@ -213,7 +213,7 @@ describe('CommandInputPanel', () => {
     });
   });
 
-  it('aplica preset selecionado como contexto oculto sem mudar o texto visível', async () => {
+  it('não renderiza seletor nativo de preset e não injeta preset oculto no envio', async () => {
     const onSendOrder = vi.fn().mockResolvedValue(undefined);
 
     render(
@@ -227,7 +227,12 @@ describe('CommandInputPanel', () => {
       />,
     );
 
-    fireEvent.change(screen.getByLabelText('Selecionar preset'), { target: { value: 'programador' } });
+    expect(document.querySelector('.prompt-preset-select')).toBeNull();
+    expect(screen.queryByLabelText('Selecionar preset')).not.toBeInTheDocument();
+    expect(screen.queryByText('Geral')).not.toBeInTheDocument();
+    expect(screen.queryByText('Programador')).not.toBeInTheDocument();
+    expect(screen.queryByText('Terminal seguro')).not.toBeInTheDocument();
+
     fireEvent.change(screen.getByPlaceholderText('Como posso ajudá-lo hoje?'), {
       target: { value: 'corrija este bug' },
     });
@@ -237,7 +242,7 @@ describe('CommandInputPanel', () => {
       expect(onSendOrder).toHaveBeenCalledWith(
         'corrija este bug',
         'auto',
-        [expect.objectContaining({ hidden: true, contextSource: 'preset' })],
+        [],
       );
     });
   });

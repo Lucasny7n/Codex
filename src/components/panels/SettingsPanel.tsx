@@ -416,7 +416,7 @@ export function SettingsPanel({
       const snapshot = await installLocalModel(target);
       setManagerRuntimeOverride(snapshot);
       if (!snapshot.installedModels.some((model) => normalizeOllamaModelId(model.id) === normalizeOllamaModelId(target))) {
-        throw new Error(`Ollama concluiu o pull, mas ${target} não apareceu em /api/tags.`);
+        throw new Error(`Ollama concluiu o download, mas ${target} não apareceu em /api/tags.`);
       }
       setManagerMessage(`${target} instalado e confirmado por /api/tags.`);
     } catch (cause) {
@@ -774,7 +774,7 @@ export function SettingsPanel({
                   {managerInstalledMatches.length === 0 ? (
                     <div className="model-picker-empty" role="status">
                       <strong>Nenhum instalado encontrado</strong>
-                      <span>{managerPullCandidate ? `Use Baixar ${managerPullCandidate.modelId} para testar o pull real.` : 'Aba Local sem busca mostra apenas modelos instalados do Ollama.'}</span>
+                      <span>{managerPullCandidate ? `Use Baixar ${managerPullCandidate.modelId} para testar o download real pelo Ollama.` : 'Aba Local sem busca mostra apenas modelos instalados do Ollama.'}</span>
                     </div>
                   ) : null}
                 </div>

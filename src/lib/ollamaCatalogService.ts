@@ -57,6 +57,10 @@ export function searchInstalledOllamaModels(
 ): LocalInstalledModel[] {
   const normalized = normalizeOllamaQuery(query);
   if (!normalized) return listInstalledOllamaModels(runtime);
+  if (normalized.includes(':')) {
+    const exact = normalizeOllamaModelId(normalized);
+    return listInstalledOllamaModels(runtime).filter((model) => normalizeOllamaModelId(model.id) === exact);
+  }
   const queryTerms = ollamaIdentityTerms(normalized);
   return listInstalledOllamaModels(runtime).filter((model) => {
     const terms = ollamaIdentityTerms(model.id);
@@ -80,7 +84,7 @@ export function buildPullCandidateFromQuery(
   return {
     id: `ollama-pull:${modelId}`,
     modelId,
-    label: `Baixar ${modelId}`,
+    label: modelId,
     normalizedQuery: modelId,
   };
 }
@@ -120,7 +124,7 @@ export function buildPullCandidateOption(
     providerLabel: 'Ollama',
     family: inferOllamaFamily(candidate.modelId),
     status: pulling ? 'pulling' : 'model_missing',
-    statusLabel: pulling ? 'Baixando' : 'Disponível para pull',
+    statusLabel: pulling ? 'Baixando' : 'Disponível para baixar',
     available: false,
     installed: false,
     configured: false,
@@ -144,7 +148,6 @@ export function buildPullCandidateOption(
       'ollama',
       'download',
       'baixar',
-      'pull',
     ],
   };
 }
@@ -158,7 +161,7 @@ export async function pullOllamaModel(modelId: string): Promise<LocalRuntimeSnap
   const { installLocalModel } = await import('./api');
   const snapshot = await installLocalModel(normalizeOllamaQuery(modelId));
   if (!isInstalledOllamaModel(snapshot, modelId)) {
-    throw new Error(`Ollama concluiu o pull, mas ${modelId} ainda não apareceu em /api/tags.`);
+    throw new Error(`Ollama concluiu o download, mas ${modelId} ainda não apareceu em /api/tags.`);
   }
   return snapshot;
 }

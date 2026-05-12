@@ -1258,8 +1258,9 @@ export default function App(): JSX.Element {
     setModelActionBusyId(model.id);
     try {
       const snapshot = await installLocalModel(model.modelId);
-      setLocalRuntime(snapshot);
-      if (!isLocalModelInstalled(snapshot, model.modelId)) {
+      const refreshed = await getLocalRuntimeState().catch(() => snapshot);
+      setLocalRuntime(refreshed);
+      if (!isLocalModelInstalled(refreshed, model.modelId)) {
         throw new Error(`Ollama terminou o download, mas ${model.modelId} ainda não aparece em /api/tags ou ollama list.`);
       }
       const next = pushHistory(
@@ -1561,8 +1562,9 @@ export default function App(): JSX.Element {
     setModelActionBusyId(option?.id ?? targetModelId);
     try {
       const snapshot = await installLocalModel(targetModelId);
-      setLocalRuntime(snapshot);
-      if (!isLocalModelInstalled(snapshot, targetModelId)) {
+      const refreshed = await getLocalRuntimeState().catch(() => snapshot);
+      setLocalRuntime(refreshed);
+      if (!isLocalModelInstalled(refreshed, targetModelId)) {
         throw new Error(`Ollama terminou o download, mas ${targetModelId} ainda não aparece em /api/tags ou ollama list.`);
       }
       const next = pushHistory(
@@ -1663,6 +1665,7 @@ export default function App(): JSX.Element {
               selectedModelId={activeModel?.id ?? selectedModelId ?? settings?.selectedModelId}
               cloudModels={topbarCloudModels}
               localModels={topbarLocalModels}
+              localRuntime={localRuntime}
               credentials={providerCredentials}
               providerProfiles={effectiveProviderProfiles}
               installationProgress={installationProgress}

@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
 import { getSttConfigState, transcribeAudio } from '../../lib/api';
-import { allPromptPresets, presetContextAttachment } from '../../lib/promptPresetService';
 import type { PrivilegedActionSpec } from '../../types/domain';
 import type { ChatAttachment, LocalSttConfigSnapshot, SelectedFileAttachment } from '../../types/domain';
 import { UiIcon } from '../common/AppIcons';
@@ -172,7 +171,6 @@ export function CommandInputPanel({
   orderDisabledReason,
 }: CommandInputPanelProps): JSX.Element {
   const [mode, setMode] = useState<InputModeId>('auto');
-  const [presetId, setPresetId] = useState('geral');
   const [prompt, setPrompt] = useState('');
   const [plusOpen, setPlusOpen] = useState(false);
   const [modeOpen, setModeOpen] = useState(false);
@@ -193,8 +191,6 @@ export function CommandInputPanel({
   const recordedChunksRef = useRef<Blob[]>([]);
 
   const selectedMode = INPUT_MODES.find((item) => item.id === mode) ?? INPUT_MODES[0];
-  const promptPresets = allPromptPresets();
-  const selectedPreset = promptPresets.find((preset) => preset.id === presetId) ?? promptPresets[0];
   const canSubmit =
     !busy &&
     (prompt.trim().length > 0 || attachments.length > 0) &&
@@ -298,9 +294,6 @@ export function CommandInputPanel({
 
   async function handleSend(): Promise<void> {
     const payloadAttachments = attachments.map(toChatAttachment);
-    if (selectedPreset && selectedPreset.id !== 'geral') {
-      payloadAttachments.push(presetContextAttachment(selectedPreset));
-    }
     const visiblePrompt = prompt.trim() || (payloadAttachments.length > 0 ? 'Anexo enviado.' : '');
     if (!visiblePrompt && payloadAttachments.length === 0) return;
     setPrompt('');
@@ -590,15 +583,6 @@ export function CommandInputPanel({
             ))}
           </PopupMenu>
         </div>
-
-        <label className="prompt-preset-select">
-          <span className="sr-only">Preset</span>
-          <select value={selectedPreset?.id ?? 'geral'} onChange={(event) => setPresetId(event.target.value)} aria-label="Selecionar preset">
-            {promptPresets.map((preset) => (
-              <option key={preset.id} value={preset.id}>{preset.label}</option>
-            ))}
-          </select>
-        </label>
 
         <button
           type="button"
