@@ -421,6 +421,7 @@ pub enum AiFallbackPolicy {
     CloudFirst,
     LocalFirst,
     Code,
+    CostLow,
 }
 
 impl Default for AiFallbackPolicy {
@@ -440,6 +441,8 @@ pub struct AiFallbackModelConfig {
     pub enabled: bool,
     #[serde(default)]
     pub label: Option<String>,
+    #[serde(default)]
+    pub timeout_ms: Option<u64>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -640,8 +643,24 @@ pub struct LocalModelInstallProgress {
     pub downloaded: Option<String>,
     pub total: Option<String>,
     pub speed: Option<String>,
+    pub digest: Option<String>,
+    pub layer: Option<String>,
     pub message: String,
     pub at: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct OllamaModelDetails {
+    pub id: String,
+    pub raw: String,
+    pub family: Option<String>,
+    pub parameter_size: Option<String>,
+    pub quantization: Option<String>,
+    pub format: Option<String>,
+    pub digest: Option<String>,
+    pub size: Option<String>,
+    pub modified_at: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -683,6 +702,44 @@ pub struct ProviderRunResult {
     pub stdout: Option<String>,
     pub stderr: Option<String>,
     pub exit_code: Option<i32>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ModelComparisonTarget {
+    pub provider_id: String,
+    pub model_id: String,
+    #[serde(default)]
+    pub account_profile_id: Option<String>,
+    #[serde(default)]
+    pub label: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ModelComparisonRequest {
+    pub prompt: String,
+    pub targets: Vec<ModelComparisonTarget>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ModelComparisonResult {
+    pub provider_id: String,
+    pub model_id: String,
+    pub label: Option<String>,
+    pub ok: bool,
+    pub content: Option<String>,
+    pub error: Option<String>,
+    pub command: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ModelComparisonResponse {
+    pub prompt: String,
+    pub results: Vec<ModelComparisonResult>,
+    pub completed_at: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -733,6 +790,17 @@ pub struct AppHealthAction {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SystemHealthItem {
+    pub id: String,
+    pub label: String,
+    pub status: String,
+    pub detail: String,
+    pub action: Option<String>,
+    pub command: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum AppHealthOverallStatus {
     Ok,
@@ -757,6 +825,7 @@ pub struct AppHealthCheck {
     pub active_session_id: Option<String>,
     pub storage_root: Option<String>,
     pub credentials_encrypted: Option<bool>,
+    pub items: Vec<SystemHealthItem>,
     pub recent_errors: Vec<ActionableError>,
     pub overall_status: AppHealthOverallStatus,
     pub actions: Vec<AppHealthAction>,

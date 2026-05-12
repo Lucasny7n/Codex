@@ -1,4 +1,5 @@
 use std::sync::Arc;
+use std::time::Duration;
 
 use serde_json::Value;
 
@@ -42,6 +43,7 @@ pub struct AiRouteCandidate {
     pub provider_id: String,
     pub model_id: String,
     pub account_profile_id: Option<String>,
+    pub timeout_ms: Option<u64>,
 }
 
 impl AiRouter {
@@ -56,6 +58,7 @@ impl AiRouter {
                 provider_id: request.provider_id.clone(),
                 model_id: request.model_id.clone(),
                 account_profile_id: request.account_profile_id.clone(),
+                timeout_ms: None,
             },
             &request.routing,
             request.developer_mode,
@@ -68,7 +71,7 @@ impl AiRouter {
             let provider_id = candidate.provider_id.clone();
             let model_id = candidate.model_id.clone();
             attempts.push(format!("{provider_id}/{model_id}"));
-            let result = self
+            let call = self
                 .provider_registry
                 .generate_response(ProviderGenerateRequest {
                     provider_id: provider_id.clone(),
@@ -77,8 +80,17 @@ impl AiRouter {
                     attachments: request.attachments.clone(),
                     workspace_root: request.workspace_root.clone(),
                     account_profile_id: candidate.account_profile_id.clone(),
-                })
-                .await;
+                });
+            let result = if let Some(timeout_ms) = candidate.timeout_ms {
+                match tokio::time::timeout(Duration::from_millis(timeout_ms), call).await {
+                    Ok(result) => result,
+                    Err(_) => Err(AppError::Message(format!(
+                        "Timeout de fallback após {timeout_ms} ms em {provider_id}/{model_id}."
+                    ))),
+                }
+            } else {
+                call.await
+            };
 
             match result {
                 Ok(result) => {
@@ -143,6 +155,7 @@ fn candidate_from_config(config: &AiFallbackModelConfig) -> AiRouteCandidate {
         provider_id: config.provider_id.clone(),
         model_id: config.model_id.clone(),
         account_profile_id: config.account_profile_id.clone(),
+        timeout_ms: config.timeout_ms,
     }
 }
 
@@ -181,6 +194,19 @@ fn policy_score(candidate: &AiRouteCandidate, policy: &AiFallbackPolicy) -> u8 {
                 || model.contains("code")
                 || model.contains("codestral")
                 || model.contains("devstral")
+            {
+                0
+            } else {
+                1
+            }
+        }
+        AiFallbackPolicy::CostLow => {
+            if is_local
+                || model.contains("free")
+                || model.contains("mini")
+                || model.contains("flash")
+                || model.contains("1.5b")
+                || model.contains("3b")
             {
                 0
             } else {
@@ -250,7 +276,7 @@ fn attachment_text(value: &Value, key: &str) -> Option<String> {
         .map(redact_secret_like)
 }
 
-fn attachment_context(attachments: &[Value]) -> String {
+fn attachment_context(prompt: &str, attachments: &[Value]) -> String {
     if attachments.is_empty() {
         return String::new();
     }
@@ -261,15 +287,27 @@ fn attachment_context(attachments: &[Value]) -> String {
         let path = attachment_text(attachment, "path")
             .unwrap_or_else(|| "caminho indisponível".to_owned());
         let kind = attachment_text(attachment, "kind").unwrap_or_else(|| "generic".to_owned());
-        let preview = attachment_text(attachment, "previewTextLimited");
+        let context_source = attachment_text(attachment, "contextSource");
+        let preview = attachment_text(attachment, "contextText")
+            .or_else(|| attachment_text(attachment, "previewTextLimited"));
         let mut lines = vec![
             format!("Nome: {name}"),
             format!("Caminho: {path}"),
             format!("Tipo: {kind}"),
         ];
+        if let Some(source) = context_source {
+            lines.push(format!("Origem: {source}"));
+        }
         if let Some(preview) = preview {
-            lines.push("Preview limitado para contexto oculto:".to_owned());
-            lines.push(preview);
+            let chunks = relevant_chunks(prompt, &preview, 4);
+            if chunks.is_empty() {
+                lines.push("Conteúdo disponível, mas sem trecho textual relevante para a solicitação atual.".to_owned());
+            } else {
+                lines.push("Trechos relevantes para contexto oculto:".to_owned());
+                for (index, chunk) in chunks.iter().enumerate() {
+                    lines.push(format!("[chunk {}]\n{}", index + 1, chunk));
+                }
+            }
         }
         blocks.push(lines.join("\n"));
     }
@@ -280,8 +318,95 @@ fn attachment_context(attachments: &[Value]) -> String {
     )
 }
 
+fn relevant_chunks(prompt: &str, text: &str, limit: usize) -> Vec<String> {
+    let chunks = chunk_text(text, 1200, 180);
+    if chunks.is_empty() {
+        return Vec::new();
+    }
+    let terms = lexical_terms(prompt);
+    if terms.is_empty() {
+        return chunks.into_iter().take(limit).collect();
+    }
+    let mut scored = chunks
+        .into_iter()
+        .enumerate()
+        .map(|(index, chunk)| {
+            let lower = normalize_for_search(&chunk);
+            let score = terms
+                .iter()
+                .map(|term| lower.matches(term).count())
+                .sum::<usize>();
+            (score, index, chunk)
+        })
+        .filter(|(score, _, _)| *score > 0)
+        .collect::<Vec<_>>();
+    scored.sort_by(|left, right| right.0.cmp(&left.0).then_with(|| left.1.cmp(&right.1)));
+    scored
+        .into_iter()
+        .take(limit)
+        .map(|(_, _, chunk)| chunk)
+        .collect()
+}
+
+fn chunk_text(text: &str, size: usize, overlap: usize) -> Vec<String> {
+    let clean = text.trim();
+    if clean.is_empty() {
+        return Vec::new();
+    }
+    let mut chunks = Vec::new();
+    let mut start = 0;
+    while start < clean.len() {
+        let mut end = (start + size).min(clean.len());
+        while end > start && !clean.is_char_boundary(end) {
+            end -= 1;
+        }
+        let chunk = clean[start..end].trim();
+        if !chunk.is_empty() {
+            chunks.push(chunk.to_owned());
+        }
+        if end >= clean.len() {
+            break;
+        }
+        start = end.saturating_sub(overlap);
+        while start < clean.len() && !clean.is_char_boundary(start) {
+            start += 1;
+        }
+    }
+    chunks
+}
+
+fn lexical_terms(text: &str) -> Vec<String> {
+    let normalized = normalize_for_search(text);
+    let mut terms = Vec::new();
+    for term in normalized
+        .split(|ch: char| !(ch.is_ascii_alphanumeric() || ch == '_' || ch == '-' || ch == '.'))
+        .map(str::trim)
+        .filter(|term| term.len() >= 3)
+    {
+        if !terms.iter().any(|existing: &String| existing == term) {
+            terms.push(term.to_owned());
+        }
+    }
+    terms
+}
+
+fn normalize_for_search(text: &str) -> String {
+    text.to_lowercase()
+        .chars()
+        .map(|ch| match ch {
+            'á' | 'à' | 'â' | 'ã' | 'ä' => 'a',
+            'é' | 'è' | 'ê' | 'ë' => 'e',
+            'í' | 'ì' | 'î' | 'ï' => 'i',
+            'ó' | 'ò' | 'ô' | 'õ' | 'ö' => 'o',
+            'ú' | 'ù' | 'û' | 'ü' => 'u',
+            'ç' => 'c',
+            other => other,
+        })
+        .collect()
+}
+
 fn prompt_with_attachments(prompt: &str, attachments: &[Value]) -> String {
-    let context = attachment_context(attachments);
+    let context = attachment_context(prompt, attachments);
     if context.is_empty() {
         prompt.to_owned()
     } else {
@@ -373,6 +498,7 @@ mod tests {
                     account_profile_id: None,
                     enabled: true,
                     label: None,
+                    timeout_ms: Some(30_000),
                 },
                 AiFallbackModelConfig {
                     provider_id: "openai-api".to_owned(),
@@ -380,6 +506,7 @@ mod tests {
                     account_profile_id: Some("openai-api:default".to_owned()),
                     enabled: true,
                     label: None,
+                    timeout_ms: Some(30_000),
                 },
             ],
         }
@@ -394,6 +521,7 @@ mod tests {
                 provider_id: "openai-api".to_owned(),
                 model_id: "gpt-5.5".to_owned(),
                 account_profile_id: None,
+                timeout_ms: None,
             },
             &routing,
             true,
@@ -410,6 +538,7 @@ mod tests {
                 provider_id: "openai-api".to_owned(),
                 model_id: "gpt-5.5".to_owned(),
                 account_profile_id: None,
+                timeout_ms: None,
             },
             &config(AiFallbackPolicy::LocalFirst),
             true,
@@ -426,6 +555,7 @@ mod tests {
                 provider_id: "gemini-api".to_owned(),
                 model_id: "gemini-2.5-pro".to_owned(),
                 account_profile_id: None,
+                timeout_ms: None,
             },
             &config(AiFallbackPolicy::Code),
             true,

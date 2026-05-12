@@ -174,9 +174,9 @@ export function ChatPanel({ session, emptyTitle = 'Pronto para criar algo?', onO
                 ) : (
                   <div className="message-content">{cleanVisibleContent(message.content)}</div>
                 )}
-                {message.attachments?.length ? (
+                {message.attachments?.filter((attachment) => !attachment.hidden).length ? (
                   <div className="message-attachment-list" aria-label="Anexos da mensagem">
-                    {message.attachments.map((attachment) => (
+                    {message.attachments.filter((attachment) => !attachment.hidden).map((attachment) => (
                       <span key={`${message.id}-${attachment.path}`} className="message-attachment-chip" title={attachment.path}>
                         <UiIcon name={fileIconNameForKind(attachment.kind)} className="message-attachment-icon" />
                         <strong>{attachment.name}</strong>

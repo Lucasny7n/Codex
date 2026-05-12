@@ -159,6 +159,9 @@ export interface ChatAttachment {
   kind: FileEntryKind;
   previewAvailable: boolean;
   previewTextLimited?: string;
+  hidden?: boolean;
+  contextText?: string;
+  contextSource?: 'document' | 'preset' | 'project_memory' | 'system';
 }
 
 export type VoiceTranscriptionResultStatus = 'done' | 'missing_backend' | 'error';
@@ -335,7 +338,7 @@ export interface AppPersonalizationSettings {
   localImageUpscaling: boolean;
 }
 
-export type AiFallbackPolicy = 'automatic' | 'fast_first' | 'cloud_first' | 'local_first' | 'code';
+export type AiFallbackPolicy = 'automatic' | 'fast_first' | 'cloud_first' | 'local_first' | 'code' | 'cost_low';
 
 export interface AiFallbackModelConfig {
   providerId: string;
@@ -343,6 +346,7 @@ export interface AiFallbackModelConfig {
   accountProfileId?: string;
   enabled: boolean;
   label?: string;
+  timeoutMs?: number;
 }
 
 export interface AiRoutingSettings {
@@ -433,6 +437,34 @@ export interface ExecutionResponse {
   permissionRequest?: PermissionRequest;
 }
 
+export interface ModelComparisonTarget {
+  providerId: string;
+  modelId: string;
+  accountProfileId?: string;
+  label?: string;
+}
+
+export interface ModelComparisonRequest {
+  prompt: string;
+  targets: ModelComparisonTarget[];
+}
+
+export interface ModelComparisonResult {
+  providerId: string;
+  modelId: string;
+  label?: string;
+  ok: boolean;
+  content?: string;
+  error?: string;
+  command?: string;
+}
+
+export interface ModelComparisonResponse {
+  prompt: string;
+  results: ModelComparisonResult[];
+  completedAt: string;
+}
+
 export interface StatusNote {
   id: string;
   sessionId: string;
@@ -491,8 +523,22 @@ export interface LocalModelInstallProgress {
   downloaded?: string;
   total?: string;
   speed?: string;
+  digest?: string;
+  layer?: string;
   message: string;
   at: string;
+}
+
+export interface OllamaModelDetails {
+  id: string;
+  raw: string;
+  family?: string;
+  parameterSize?: string;
+  quantization?: string;
+  format?: string;
+  digest?: string;
+  size?: string;
+  modifiedAt?: string;
 }
 
 export interface ActionableError {
@@ -517,6 +563,15 @@ export interface AppHealthAction {
   command?: string;
 }
 
+export interface SystemHealthItem {
+  id: string;
+  label: string;
+  status: 'ok' | 'warning' | 'error';
+  detail: string;
+  action?: string;
+  command?: string;
+}
+
 export interface AppHealthCheck {
   baseDir: string;
   expectedBaseDir: string;
@@ -532,6 +587,7 @@ export interface AppHealthCheck {
   activeSessionId?: string;
   storageRoot?: string;
   credentialsEncrypted?: boolean;
+  items?: SystemHealthItem[];
   recentErrors: ActionableError[];
   overallStatus: 'ok' | 'warning' | 'error';
   actions: AppHealthAction[];

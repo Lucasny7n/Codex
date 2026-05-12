@@ -1,4 +1,26 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import {
+  compareModels,
+  getAppHealthCheck,
+  getLocalRuntimeState,
+  installLocalModel,
+  onLocalModelProgress,
+  removeLocalModel,
+  showLocalModel,
+  testLocalModel,
+} from '../../lib/api';
+import { parseComparisonTargets } from '../../lib/modelComparisonService';
+import {
+  buildPullCandidateFromQuery,
+  normalizeOllamaModelId,
+  normalizeOllamaQuery,
+} from '../../lib/ollamaCatalogService';
+import {
+  readCustomPromptPresets,
+  removeCustomPromptPreset,
+  saveCustomPromptPreset,
+  type PromptPreset,
+} from '../../lib/promptPresetService';
 import { modelRegistry, type ModelProfile } from '../../lib/modelRegistry';
 import { resolveModelStatus } from '../../lib/providerStatus';
 import type {
@@ -9,8 +31,13 @@ import type {
   AiRoutingSettings,
   AppPersonalizationSettings,
   AppSettings,
+  AppHealthCheck,
+  LocalModelInstallProgress,
   LocalRuntimeSnapshot,
+  ModelComparisonResponse,
+  OllamaModelDetails,
   ProviderDescriptor,
+  ProviderRuntimeStatus,
   ThemePreference,
 } from '../../types/domain';
 import { FileManagerModal } from '../file/FileManagerModal';
@@ -29,7 +56,7 @@ interface SettingsPanelProps {
   initialTab?: SettingsTab;
 }
 
-export type SettingsTab = 'general' | 'interface' | 'models' | 'conversations' | 'personalization';
+export type SettingsTab = 'general' | 'interface' | 'models' | 'conversations' | 'personalization' | 'health';
 
 const SETTINGS_TABS: Array<{ id: SettingsTab; label: string }> = [
   { id: 'general', label: 'Geral' },
@@ -37,6 +64,7 @@ const SETTINGS_TABS: Array<{ id: SettingsTab; label: string }> = [
   { id: 'models', label: 'Modelos' },
   { id: 'conversations', label: 'Conversas' },
   { id: 'personalization', label: 'Personalização' },
+  { id: 'health', label: 'Saúde' },
 ];
 
 const LANGUAGE_OPTIONS: Array<{ value: AiResponseLanguage; label: string }> = [
@@ -92,6 +120,7 @@ const ROUTING_POLICY_OPTIONS: Array<{ value: AiFallbackPolicy; label: string }> 
   { value: 'cloud_first', label: 'Cloud primeiro' },
   { value: 'local_first', label: 'Local primeiro' },
   { value: 'code', label: 'Código' },
+  { value: 'cost_low', label: 'Custo baixo' },
 ];
 
 const UNKNOWN_MODEL_VALUE = 'Não informado';
@@ -168,6 +197,7 @@ function parseFallbackText(value: string): AiRoutingSettings {
           modelId,
           accountProfileId: profile || undefined,
           enabled,
+          timeoutMs: 45_000,
           label: undefined,
         };
       })
@@ -247,6 +277,26 @@ export function SettingsPanel({
   const [inlineMessage, setInlineMessage] = useState<string>();
   const [inlineError, setInlineError] = useState<string>();
   const [fallbackDraft, setFallbackDraft] = useState(() => settings ? fallbackText(settings) : '');
+  const [managerRuntimeOverride, setManagerRuntimeOverride] = useState<LocalRuntimeSnapshot>();
+  const [managerQuery, setManagerQuery] = useState('');
+  const [managerBusyId, setManagerBusyId] = useState<string>();
+  const [managerProgress, setManagerProgress] = useState<Record<string, LocalModelInstallProgress>>({});
+  const [managerMessage, setManagerMessage] = useState<string>();
+  const [managerError, setManagerError] = useState<string>();
+  const [managerRemoveConfirm, setManagerRemoveConfirm] = useState<string>();
+  const [managerDetails, setManagerDetails] = useState<OllamaModelDetails>();
+  const [managerTestStatus, setManagerTestStatus] = useState<Record<string, ProviderRuntimeStatus>>({});
+  const [customPresets, setCustomPresets] = useState<PromptPreset[]>(readCustomPromptPresets);
+  const [customPresetId, setCustomPresetId] = useState<string>();
+  const [customPresetLabel, setCustomPresetLabel] = useState('');
+  const [customPresetPrompt, setCustomPresetPrompt] = useState('');
+  const [comparisonTargets, setComparisonTargets] = useState('local-ollama/qwen2.5-coder:1.5b\nopenai-api/gpt-5.4-mini');
+  const [comparisonPrompt, setComparisonPrompt] = useState('');
+  const [comparisonBusy, setComparisonBusy] = useState(false);
+  const [comparisonResult, setComparisonResult] = useState<ModelComparisonResponse>();
+  const [health, setHealth] = useState<AppHealthCheck>();
+  const [healthLoading, setHealthLoading] = useState(false);
+  const [healthError, setHealthError] = useState<string>();
 
   const modelItems = useMemo(() => {
     const featured = new Set(FEATURED_MODEL_IDS);
@@ -255,6 +305,24 @@ export function SettingsPanel({
       const rightFeatured = featured.has(right.id) ? 0 : 1;
       return leftFeatured - rightFeatured || left.providerLabel.localeCompare(right.providerLabel) || left.displayName.localeCompare(right.displayName);
     });
+  }, []);
+
+  useEffect(() => {
+    let active = true;
+    let unlisten: (() => void) | undefined;
+    void onLocalModelProgress((progress) => {
+      if (!active) return;
+      setManagerProgress((current) => ({
+        ...current,
+        [progress.modelId]: progress,
+      }));
+    }).then((dispose) => {
+      unlisten = dispose;
+    }).catch(() => undefined);
+    return () => {
+      active = false;
+      unlisten?.();
+    };
   }, []);
 
   if (!settings) {
@@ -279,6 +347,16 @@ export function SettingsPanel({
   };
   const selectedAgentLabel = profiles.find((profile) => profile.id === settings.selectedAgentId)?.label ?? 'Padrão';
   const installedLocalModels = new Set(localRuntime?.installedModels.map((model) => model.id) ?? []);
+  const managerRuntime = managerRuntimeOverride ?? localRuntime;
+  const managerInstalled = managerRuntime?.installedModels ?? [];
+  const managerNormalizedQuery = normalizeOllamaQuery(managerQuery);
+  const managerInstalledMatches = managerQuery.trim()
+    ? managerInstalled.filter((model) => {
+      const normalizedId = normalizeOllamaModelId(model.id);
+      return normalizedId.includes(normalizeOllamaModelId(managerNormalizedQuery)) || model.id.toLowerCase().includes(managerNormalizedQuery);
+    })
+    : managerInstalled;
+  const managerPullCandidate = buildPullCandidateFromQuery(managerQuery, managerRuntime);
 
   async function commit(patch: Partial<AppSettings>): Promise<void> {
     setInlineError(undefined);
@@ -313,6 +391,138 @@ export function SettingsPanel({
     }
   }
 
+  async function refreshManager(): Promise<void> {
+    setManagerError(undefined);
+    setManagerMessage(undefined);
+    setManagerBusyId('refresh');
+    try {
+      const snapshot = await getLocalRuntimeState();
+      setManagerRuntimeOverride(snapshot);
+      setManagerMessage(`Ollama atualizado: ${snapshot.installedModels.length} modelo(s) instalado(s).`);
+    } catch (cause) {
+      setManagerError(cause instanceof Error ? cause.message : 'Falha ao atualizar Ollama.');
+    } finally {
+      setManagerBusyId(undefined);
+    }
+  }
+
+  async function pullManagerModel(modelId: string): Promise<void> {
+    const target = normalizeOllamaQuery(modelId);
+    if (!target) return;
+    setManagerBusyId(target);
+    setManagerError(undefined);
+    setManagerMessage(undefined);
+    try {
+      const snapshot = await installLocalModel(target);
+      setManagerRuntimeOverride(snapshot);
+      if (!snapshot.installedModels.some((model) => normalizeOllamaModelId(model.id) === normalizeOllamaModelId(target))) {
+        throw new Error(`Ollama concluiu o pull, mas ${target} não apareceu em /api/tags.`);
+      }
+      setManagerMessage(`${target} instalado e confirmado por /api/tags.`);
+    } catch (cause) {
+      setManagerError(cause instanceof Error ? cause.message : `Falha ao baixar ${target}.`);
+    } finally {
+      setManagerBusyId(undefined);
+    }
+  }
+
+  async function removeManagerModel(modelId: string): Promise<void> {
+    setManagerBusyId(modelId);
+    setManagerError(undefined);
+    setManagerMessage(undefined);
+    try {
+      const snapshot = await removeLocalModel(modelId);
+      setManagerRuntimeOverride(snapshot);
+      setManagerRemoveConfirm(undefined);
+      setManagerMessage(`${modelId} removido do Ollama.`);
+    } catch (cause) {
+      setManagerError(cause instanceof Error ? cause.message : `Falha ao remover ${modelId}.`);
+    } finally {
+      setManagerBusyId(undefined);
+    }
+  }
+
+  async function testManagerModel(modelId: string): Promise<void> {
+    setManagerBusyId(modelId);
+    setManagerError(undefined);
+    try {
+      const status = await testLocalModel(modelId);
+      setManagerTestStatus((current) => ({ ...current, [modelId]: status }));
+      if (status.state !== 'ready') setManagerError(status.message);
+    } catch (cause) {
+      setManagerError(cause instanceof Error ? cause.message : `Falha ao testar ${modelId}.`);
+    } finally {
+      setManagerBusyId(undefined);
+    }
+  }
+
+  async function showManagerModel(modelId: string): Promise<void> {
+    setManagerBusyId(modelId);
+    setManagerError(undefined);
+    try {
+      setManagerDetails(await showLocalModel(modelId));
+    } catch (cause) {
+      setManagerError(cause instanceof Error ? cause.message : `Falha ao carregar detalhes de ${modelId}.`);
+    } finally {
+      setManagerBusyId(undefined);
+    }
+  }
+
+  function savePromptPresetDraft(): void {
+    const next = saveCustomPromptPreset({
+      id: customPresetId,
+      label: customPresetLabel,
+      systemPrompt: customPresetPrompt,
+    });
+    setCustomPresets(next);
+    setCustomPresetId(undefined);
+    setCustomPresetLabel('');
+    setCustomPresetPrompt('');
+    setInlineMessage('Preset customizado salvo.');
+  }
+
+  function editPromptPreset(preset: PromptPreset): void {
+    setCustomPresetId(preset.id);
+    setCustomPresetLabel(preset.label);
+    setCustomPresetPrompt(preset.systemPrompt);
+  }
+
+  function deletePromptPreset(id: string): void {
+    setCustomPresets(removeCustomPromptPreset(id));
+    if (customPresetId === id) {
+      setCustomPresetId(undefined);
+      setCustomPresetLabel('');
+      setCustomPresetPrompt('');
+    }
+    setInlineMessage('Preset customizado removido.');
+  }
+
+  async function runModelComparison(): Promise<void> {
+    const targets = parseComparisonTargets(comparisonTargets);
+    if (targets.length < 2 || !comparisonPrompt.trim()) return;
+    setComparisonBusy(true);
+    setManagerError(undefined);
+    try {
+      setComparisonResult(await compareModels({ prompt: comparisonPrompt, targets }));
+    } catch (cause) {
+      setManagerError(cause instanceof Error ? cause.message : 'Comparação entre modelos falhou.');
+    } finally {
+      setComparisonBusy(false);
+    }
+  }
+
+  async function refreshHealth(): Promise<void> {
+    setHealthLoading(true);
+    setHealthError(undefined);
+    try {
+      setHealth(await getAppHealthCheck());
+    } catch (cause) {
+      setHealthError(cause instanceof Error ? cause.message : 'Falha ao carregar saúde do sistema.');
+    } finally {
+      setHealthLoading(false);
+    }
+  }
+
   return (
     <section className="panel settings-panel settings-premium settings-qwen">
       <header className="panel-header settings-panel-header">
@@ -329,7 +539,10 @@ export function SettingsPanel({
               key={tab.id}
               type="button"
               className={`settings-nav-item ${activeTab === tab.id ? 'active' : ''}`}
-              onClick={() => setActiveTab(tab.id)}
+              onClick={() => {
+                setActiveTab(tab.id);
+                if (tab.id === 'health' && !health && !healthLoading) void refreshHealth();
+              }}
             >
               {tab.label}
             </button>
@@ -480,8 +693,147 @@ export function SettingsPanel({
             <div className="settings-page">
               <header className="settings-page-heading">
                 <span>Modelos</span>
-                <h3>Informações dos modelos</h3>
+                <h3>Gerenciador Ollama e catálogo cloud</h3>
               </header>
+
+              <section className="ollama-manager" aria-label="Model Manager Ollama">
+                <div className="ollama-manager-header">
+                  <div>
+                    <strong>Model Manager local</strong>
+                    <small>{managerRuntime?.message ?? 'Ollama ainda não foi consultado.'}</small>
+                  </div>
+                  <button type="button" className="settings-pill-button" disabled={managerBusyId === 'refresh'} onClick={() => void refreshManager()}>
+                    Refresh
+                  </button>
+                </div>
+
+                <label className="ollama-manager-search">
+                  Buscar ou baixar modelo Ollama
+                  <div>
+                    <input
+                      className="input-modern"
+                      value={managerQuery}
+                      placeholder="gpt-oss, llama3.2, qwen2.5-coder:7b"
+                      onChange={(event) => setManagerQuery(event.target.value)}
+                    />
+                    <button
+                      type="button"
+                      className="btn-modern btn-modern-primary"
+                      disabled={!managerPullCandidate || managerBusyId === managerPullCandidate?.modelId}
+                      onClick={() => managerPullCandidate ? void pullManagerModel(managerPullCandidate.modelId) : undefined}
+                    >
+                      {managerPullCandidate ? `Baixar ${managerPullCandidate.modelId}` : 'Baixar modelo'}
+                    </button>
+                  </div>
+                </label>
+
+                {managerError ? <div className="input-error-tip" role="alert">{managerError}</div> : null}
+                {managerMessage ? <div className="settings-inline-note" role="status">{managerMessage}</div> : null}
+
+                <div className="ollama-model-grid">
+                  {managerInstalledMatches.map((model) => {
+                    const progress = managerProgress[model.id] ?? managerProgress[normalizeOllamaQuery(model.id)];
+                    const testStatus = managerTestStatus[model.id];
+                    return (
+                      <article key={model.id} className="ollama-model-card">
+                        <header>
+                          <strong>{model.id}</strong>
+                          <small>{[model.size, model.modifiedAt].filter(Boolean).join(' · ') || 'Instalado pelo Ollama'}</small>
+                        </header>
+                        <div className="ollama-model-meta">
+                          {model.digest ? <span><b>Digest</b>{model.digest}</span> : null}
+                          {testStatus ? <span><b>Teste</b>{testStatus.state === 'ready' ? 'respondeu' : testStatus.message}</span> : null}
+                        </div>
+                        {progress ? (
+                          <div className="model-config-progress" role="status">
+                            <span>{progress.message}{typeof progress.progressPercent === 'number' ? ` · ${progress.progressPercent}%` : ''}</span>
+                            {typeof progress.progressPercent === 'number' ? (
+                              <div className="model-config-progress-track" aria-hidden="true">
+                                <span style={{ width: `${Math.max(0, Math.min(100, progress.progressPercent))}%` }} />
+                              </div>
+                            ) : null}
+                            {[progress.downloaded && progress.total ? `${progress.downloaded} / ${progress.total}` : undefined, progress.speed, progress.digest, progress.layer].filter(Boolean).join(' · ')}
+                          </div>
+                        ) : null}
+                        {managerRemoveConfirm === model.id ? (
+                          <div className="settings-confirm-inline" role="alert">
+                            <span>Remover {model.id} do Ollama?</span>
+                            <button type="button" className="settings-pill-button" onClick={() => setManagerRemoveConfirm(undefined)}>Cancelar</button>
+                            <button type="button" className="settings-pill-button danger" onClick={() => void removeManagerModel(model.id)}>Confirmar</button>
+                          </div>
+                        ) : (
+                          <div className="dialog-actions">
+                            <button type="button" className="btn-modern" disabled={managerBusyId === model.id} onClick={() => void testManagerModel(model.id)}>Testar</button>
+                            <button type="button" className="btn-modern" disabled={managerBusyId === model.id} onClick={() => void showManagerModel(model.id)}>Detalhes</button>
+                            <button type="button" className="btn-modern danger" disabled={managerBusyId === model.id} onClick={() => setManagerRemoveConfirm(model.id)}>Remover</button>
+                          </div>
+                        )}
+                      </article>
+                    );
+                  })}
+                  {managerInstalledMatches.length === 0 ? (
+                    <div className="model-picker-empty" role="status">
+                      <strong>Nenhum instalado encontrado</strong>
+                      <span>{managerPullCandidate ? `Use Baixar ${managerPullCandidate.modelId} para testar o pull real.` : 'Aba Local sem busca mostra apenas modelos instalados do Ollama.'}</span>
+                    </div>
+                  ) : null}
+                </div>
+
+                {managerDetails ? (
+                  <details className="ollama-details" open>
+                    <summary>Detalhes de {managerDetails.id}</summary>
+                    <div className="settings-model-facts">
+                      <span><strong>Família</strong>{managerDetails.family ?? 'Não informado'}</span>
+                      <span><strong>Parâmetros</strong>{managerDetails.parameterSize ?? 'Não informado'}</span>
+                      <span><strong>Quantização</strong>{managerDetails.quantization ?? 'Não informado'}</span>
+                      <span><strong>Formato</strong>{managerDetails.format ?? 'Não informado'}</span>
+                      <span><strong>Tamanho</strong>{managerDetails.size ?? 'Não informado'}</span>
+                      <span><strong>Digest</strong>{managerDetails.digest ?? 'Não informado'}</span>
+                    </div>
+                    <pre>{managerDetails.raw}</pre>
+                  </details>
+                ) : null}
+              </section>
+
+              <section className="model-comparison-panel" aria-label="Comparação de modelos">
+                <header className="ollama-manager-header">
+                  <div>
+                    <strong>Comparação de modelos</strong>
+                    <small>Desligada por padrão. Só envia o prompt quando você inicia.</small>
+                  </div>
+                </header>
+                <label className="settings-line settings-routing-list">
+                  <span>
+                    <strong>Modelos</strong>
+                    <small>Um por linha: provider/modelo. Use @ profile opcional.</small>
+                  </span>
+                  <textarea className="input-modern" rows={3} value={comparisonTargets} onChange={(event) => setComparisonTargets(event.target.value)} />
+                </label>
+                <label className="settings-line settings-routing-list">
+                  <span>
+                    <strong>Prompt</strong>
+                    <small>Será enviado a cada modelo escolhido.</small>
+                  </span>
+                  <textarea className="input-modern" rows={3} value={comparisonPrompt} onChange={(event) => setComparisonPrompt(event.target.value)} placeholder="Pergunta para comparar respostas..." />
+                </label>
+                <button type="button" className="btn-modern btn-modern-primary" disabled={comparisonBusy || parseComparisonTargets(comparisonTargets).length < 2 || !comparisonPrompt.trim()} onClick={() => void runModelComparison()}>
+                  {comparisonBusy ? 'Comparando...' : 'Comparar'}
+                </button>
+                {comparisonResult ? (
+                  <div className="comparison-result-grid">
+                    {comparisonResult.results.map((result) => (
+                      <article key={`${result.providerId}/${result.modelId}`} className={`comparison-card ${result.ok ? 'ok' : 'error'}`}>
+                        <strong>{result.label ?? `${result.providerId}/${result.modelId}`}</strong>
+                        <small>{result.ok ? 'respondeu' : 'falhou'}</small>
+                        <p>{result.ok ? result.content : result.error}</p>
+                        <button type="button" className="settings-pill-button" onClick={() => void navigator.clipboard?.writeText(result.ok ? result.content ?? '' : result.error ?? '')}>
+                          Copiar
+                        </button>
+                      </article>
+                    ))}
+                  </div>
+                ) : null}
+              </section>
 
               <section className="settings-model-list" aria-label="Informações dos modelos">
                 {modelItems.map((model) => {
@@ -632,6 +984,48 @@ export function SettingsPanel({
                 />
               </section>
 
+              <section className="settings-block prompt-preset-settings">
+                <div className="settings-section-label">Presets customizados</div>
+                <label className="settings-line settings-routing-list">
+                  <span>
+                    <strong>Nome</strong>
+                    <small>O preset aparece no composer sem poluir a home.</small>
+                  </span>
+                  <input className="input-modern" value={customPresetLabel} onChange={(event) => setCustomPresetLabel(event.target.value)} placeholder="Meu preset" />
+                </label>
+                <label className="settings-line settings-routing-list">
+                  <span>
+                    <strong>Contexto</strong>
+                    <small>Injetado como contexto oculto no provider.</small>
+                  </span>
+                  <textarea className="input-modern" rows={4} value={customPresetPrompt} onChange={(event) => setCustomPresetPrompt(event.target.value)} placeholder="Instruções do preset..." />
+                </label>
+                <div className="dialog-actions">
+                  <button type="button" className="btn-modern btn-modern-primary" disabled={!customPresetLabel.trim() || !customPresetPrompt.trim()} onClick={savePromptPresetDraft}>
+                    {customPresetId ? 'Salvar alterações' : 'Salvar preset'}
+                  </button>
+                  {customPresetId ? (
+                    <button type="button" className="btn-modern" onClick={() => { setCustomPresetId(undefined); setCustomPresetLabel(''); setCustomPresetPrompt(''); }}>
+                      Cancelar edição
+                    </button>
+                  ) : null}
+                </div>
+                {customPresets.length > 0 ? (
+                  <div className="custom-preset-list">
+                    {customPresets.map((preset) => (
+                      <div key={preset.id} className="custom-preset-row">
+                        <span>
+                          <strong>{preset.label}</strong>
+                          <small>{preset.description}</small>
+                        </span>
+                        <button type="button" className="settings-pill-button" onClick={() => editPromptPreset(preset)}>Editar</button>
+                        <button type="button" className="settings-pill-button danger" onClick={() => deletePromptPreset(preset.id)}>Remover</button>
+                      </div>
+                    ))}
+                  </div>
+                ) : null}
+              </section>
+
               <section className="settings-block">
                 <button type="button" className="settings-advanced-toggle" aria-expanded={advancedOpen} onClick={() => setAdvancedOpen((current) => !current)}>
                   <span>Avançado</span>
@@ -650,6 +1044,44 @@ export function SettingsPanel({
                     ))}
                   </div>
                 ) : null}
+              </section>
+            </div>
+          ) : null}
+
+          {activeTab === 'health' ? (
+            <div className="settings-page">
+              <header className="settings-page-heading">
+                <span>Saúde</span>
+                <h3>Diagnóstico real do sistema</h3>
+              </header>
+              <section className="settings-block health-panel">
+                <div className="ollama-manager-header">
+                  <div>
+                    <strong>Status geral: {health?.overallStatus ?? 'não carregado'}</strong>
+                    <small>{health ? `${health.baseDir} · branch ${health.branch ?? 'desconhecida'}` : 'Carregue o diagnóstico para ver ações sugeridas.'}</small>
+                  </div>
+                  <button type="button" className="settings-pill-button" disabled={healthLoading} onClick={() => void refreshHealth()}>
+                    {healthLoading ? 'Verificando...' : 'Atualizar'}
+                  </button>
+                </div>
+                {healthError ? <div className="input-error-tip" role="alert">{healthError}</div> : null}
+                <div className="health-item-grid">
+                  {(health?.items ?? []).map((item) => (
+                    <article key={item.id} className={`health-item-card health-${item.status}`}>
+                      <strong>{item.label}</strong>
+                      <small>{item.status}</small>
+                      <p>{item.detail}</p>
+                      {item.action ? <span>{item.action}</span> : null}
+                      {item.command ? <code>{item.command}</code> : null}
+                    </article>
+                  ))}
+                  {!health ? (
+                    <div className="model-picker-empty" role="status">
+                      <strong>Diagnóstico não carregado</strong>
+                      <span>Use Atualizar para verificar Ollama, STT, portal, ícone, CI e Git.</span>
+                    </div>
+                  ) : null}
+                </div>
               </section>
             </div>
           ) : null}

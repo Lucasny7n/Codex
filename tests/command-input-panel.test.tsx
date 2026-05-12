@@ -213,6 +213,35 @@ describe('CommandInputPanel', () => {
     });
   });
 
+  it('aplica preset selecionado como contexto oculto sem mudar o texto visível', async () => {
+    const onSendOrder = vi.fn().mockResolvedValue(undefined);
+
+    render(
+      <CommandInputPanel
+        busy={false}
+        privilegedActions={[]}
+        actionJsonExamples={{}}
+        onSendOrder={onSendOrder}
+        onExecuteCommand={vi.fn()}
+        onRequestPrivilegedAction={vi.fn()}
+      />,
+    );
+
+    fireEvent.change(screen.getByLabelText('Selecionar preset'), { target: { value: 'programador' } });
+    fireEvent.change(screen.getByPlaceholderText('Como posso ajudá-lo hoje?'), {
+      target: { value: 'corrija este bug' },
+    });
+    fireEvent.click(screen.getByLabelText('Enviar'));
+
+    await waitFor(() => {
+      expect(onSendOrder).toHaveBeenCalledWith(
+        'corrija este bug',
+        'auto',
+        [expect.objectContaining({ hidden: true, contextSource: 'preset' })],
+      );
+    });
+  });
+
   it('limpa o composer imediatamente ao enviar', async () => {
     let resolveSend: (() => void) | undefined;
     const onSendOrder = vi.fn(() => new Promise<void>((resolve) => {

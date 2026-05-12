@@ -39,16 +39,22 @@ O app também procura modelos em:
 ~/.cache/whisper
 ```
 
-## Estado Atual do Host na Passada 13
+## Diagnóstico no App
 
-- `ffmpeg`: encontrado em `/usr/bin/ffmpeg`.
-- `whisper-cli`: não encontrado.
-- `whisper`: não encontrado.
-- `faster-whisper`: não encontrado.
-- `vosk-transcriber`: não encontrado.
-- modelos STT locais em `~/.codex/models` ou `~/.local/share/codex/models`: não encontrados na varredura segura.
+Use o botão de microfone no composer e depois `Configurar microfone`/`Configurar transcrição local`.
 
-Resultado: gravação pode depender do WebView/portal, mas transcrição local completa ainda exige instalar um backend STT e apontar um modelo local.
+O diagnóstico mostra:
+
+- suporte a `navigator.mediaDevices`/`MediaRecorder` no WebView;
+- mensagem clara quando a permissão do portal é negada;
+- estado de `ffmpeg`;
+- backends Whisper/Vosk detectados;
+- candidatos de modelo em `~/.codex/models` e pastas locais conhecidas;
+- comando sugerido quando faltar dependência.
+
+O painel `Settings > Saúde` também verifica PipeWire, WirePlumber e `xdg-desktop-portal`.
+
+Resultado esperado: o app só diz que STT está pronto quando áudio, conversão, backend e modelo local estiverem disponíveis. Caso contrário, mostra exatamente a dependência ausente.
 
 ## Instalação Manual Sugerida no Arch
 

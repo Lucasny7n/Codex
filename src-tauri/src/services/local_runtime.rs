@@ -12,7 +12,7 @@ use tokio::time::sleep;
 use crate::error::{AppError, AppResult};
 use crate::models::{
     now_iso, AppSettings, LocalInstalledModel, LocalModelInstallProgress, LocalModelInstallState,
-    LocalRuntimeSnapshot, LocalRuntimeState,
+    LocalRuntimeSnapshot, LocalRuntimeState, OllamaModelDetails,
 };
 
 #[derive(Default)]
@@ -231,6 +231,8 @@ impl LocalRuntimeService {
             downloaded: None,
             total: None,
             speed: None,
+            digest: None,
+            layer: None,
             message: "Iniciando download do modelo local...".to_owned(),
             at: now_iso(),
         });
@@ -259,9 +261,16 @@ impl LocalRuntimeService {
 
         drop(tx);
 
+        let mut recent_lines = Vec::<String>::new();
         while let Some(line) = rx.recv().await {
+            recent_lines.push(line.clone());
+            if recent_lines.len() > 12 {
+                recent_lines.remove(0);
+            }
             let progress = parse_progress_percent(&line);
             let transfer = parse_transfer_details(&line);
+            let layer = parse_progress_layer(&line);
+            let digest = parse_progress_digest(&line);
             emit_progress(LocalModelInstallProgress {
                 model_id: model_id.to_owned(),
                 state: LocalModelInstallState::Running,
@@ -269,6 +278,8 @@ impl LocalRuntimeService {
                 downloaded: transfer.downloaded,
                 total: transfer.total,
                 speed: transfer.speed,
+                digest,
+                layer,
                 message: line,
                 at: now_iso(),
             });
@@ -286,12 +297,15 @@ impl LocalRuntimeService {
                 downloaded: None,
                 total: None,
                 speed: None,
-                message: "O runtime retornou erro ao baixar o modelo.".to_owned(),
+                digest: None,
+                layer: None,
+                message: classify_pull_error(model_id, &recent_lines.join("\n")),
                 at: now_iso(),
             });
-            return Err(AppError::Message(
-                "Instalação do modelo falhou no runtime local. Confira os logs de progresso no inspector.".to_owned(),
-            ));
+            return Err(AppError::Message(classify_pull_error(
+                model_id,
+                &recent_lines.join("\n"),
+            )));
         }
 
         let snapshot = self.snapshot(settings).await;
@@ -307,6 +321,8 @@ impl LocalRuntimeService {
                 downloaded: None,
                 total: None,
                 speed: None,
+                digest: None,
+                layer: None,
                 message: format!(
                     "Download finalizado, mas `{model_id}` não aparece em /api/tags nem em `ollama list`."
                 ),
@@ -330,6 +346,8 @@ impl LocalRuntimeService {
             downloaded: None,
             total: None,
             speed: None,
+            digest: None,
+            layer: None,
             message: "Modelo instalado com sucesso.".to_owned(),
             at: now_iso(),
         });
@@ -373,6 +391,60 @@ impl LocalRuntimeService {
         }
 
         Ok(self.snapshot(settings).await)
+    }
+
+    pub async fn show_model(
+        &self,
+        settings: &AppSettings,
+        model_id: &str,
+    ) -> AppResult<OllamaModelDetails> {
+        let Some(path) = self.ollama_path() else {
+            return Err(AppError::Message(
+                "Runtime local indisponível. Instale o Ollama antes de ver detalhes.".to_owned(),
+            ));
+        };
+
+        let output = Command::new(path)
+            .args(["show", model_id, "--json"])
+            .output()
+            .await
+            .or_else(|_| {
+                std::process::Command::new("ollama")
+                    .args(["show", model_id])
+                    .output()
+            })
+            .map_err(|cause| {
+                AppError::Message(format!("Falha ao consultar `ollama show`: {cause}"))
+            })?;
+
+        if !output.status.success() {
+            let detail = compact_text(&String::from_utf8_lossy(&output.stderr));
+            return Err(AppError::Message(format!(
+                "Ollama não retornou detalhes de `{model_id}`. {}",
+                if detail.is_empty() {
+                    "Modelo ausente ou runtime offline.".to_owned()
+                } else {
+                    detail
+                }
+            )));
+        }
+
+        let raw = String::from_utf8_lossy(&output.stdout).trim().to_owned();
+        let installed = self
+            .snapshot(settings)
+            .await
+            .installed_models
+            .into_iter()
+            .find(|model| ollama_model_matches(&model.id, model_id));
+        Ok(parse_ollama_show(model_id, &raw, installed.as_ref()))
+    }
+
+    pub async fn test_model(&self, model_id: &str) -> AppResult<()> {
+        test_generate(model_id).await.map_err(|cause| {
+            AppError::Message(format!(
+                "Teste curto do modelo `{model_id}` falhou: {cause}"
+            ))
+        })
     }
 
     pub fn ollama_path(&self) -> Option<PathBuf> {
@@ -658,6 +730,119 @@ fn parse_transfer_details(line: &str) -> TransferDetails {
 
 fn normalize_transfer_value(value: &str) -> String {
     value.split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
+fn parse_progress_digest(line: &str) -> Option<String> {
+    regex::Regex::new(r"(?i)\b(?:sha256:)?([a-f0-9]{12,64})\b")
+        .ok()
+        .and_then(|pattern| pattern.captures(line))
+        .and_then(|captures| captures.get(1))
+        .map(|value| {
+            let digest = value.as_str();
+            if line.to_lowercase().contains("sha256:") {
+                format!("sha256:{digest}")
+            } else {
+                digest.to_owned()
+            }
+        })
+}
+
+fn parse_progress_layer(line: &str) -> Option<String> {
+    let lower = line.to_lowercase();
+    if !(lower.contains("pulling") || lower.contains("downloading") || lower.contains("verifying"))
+    {
+        return None;
+    }
+    let compact = line
+        .split_whitespace()
+        .take(6)
+        .collect::<Vec<_>>()
+        .join(" ");
+    (!compact.is_empty()).then_some(compact)
+}
+
+fn classify_pull_error(model_id: &str, detail: &str) -> String {
+    let lower = detail.to_lowercase();
+    let reason = if lower.contains("not found")
+        || lower.contains("404")
+        || lower.contains("pull model manifest")
+        || lower.contains("manifest unknown")
+    {
+        "modelo não encontrado no Ollama"
+    } else if lower.contains("connection refused")
+        || lower.contains("could not connect")
+        || lower.contains("ollama server")
+    {
+        "Ollama offline ou API local inacessível"
+    } else if lower.contains("temporary failure")
+        || lower.contains("no such host")
+        || lower.contains("dns")
+        || lower.contains("network")
+        || lower.contains("timeout")
+    {
+        "sem internet ou registry do Ollama indisponível"
+    } else if lower.contains("permission denied") || lower.contains("access denied") {
+        "permissão negada pelo runtime ou diretório de modelos"
+    } else if lower.contains("no space") || lower.contains("disk") || lower.contains("quota") {
+        "espaço em disco insuficiente"
+    } else {
+        "erro desconhecido do Ollama"
+    };
+    let compact = compact_text(detail);
+    if compact.is_empty() {
+        format!("Falha ao baixar `{model_id}`: {reason}.")
+    } else {
+        format!("Falha ao baixar `{model_id}`: {reason}. Detalhe: {compact}")
+    }
+}
+
+fn parse_ollama_show(
+    model_id: &str,
+    raw: &str,
+    installed: Option<&LocalInstalledModel>,
+) -> OllamaModelDetails {
+    let parsed = serde_json::from_str::<Value>(raw).ok();
+    let details = parsed.as_ref().and_then(|value| value.get("details"));
+    let family = details
+        .and_then(|value| value.get("family"))
+        .or_else(|| parsed.as_ref().and_then(|value| value.get("family")))
+        .and_then(Value::as_str)
+        .map(str::to_owned);
+    let parameter_size = details
+        .and_then(|value| value.get("parameter_size"))
+        .or_else(|| {
+            parsed
+                .as_ref()
+                .and_then(|value| value.get("parameter_size"))
+        })
+        .and_then(Value::as_str)
+        .map(str::to_owned);
+    let quantization = details
+        .and_then(|value| value.get("quantization_level"))
+        .or_else(|| {
+            parsed
+                .as_ref()
+                .and_then(|value| value.get("quantization_level"))
+        })
+        .and_then(Value::as_str)
+        .map(str::to_owned);
+    let format = details
+        .and_then(|value| value.get("format"))
+        .or_else(|| parsed.as_ref().and_then(|value| value.get("format")))
+        .and_then(Value::as_str)
+        .map(str::to_owned);
+
+    OllamaModelDetails {
+        id: normalize_ollama_model_id(model_id),
+        raw: raw.to_owned(),
+        family,
+        parameter_size,
+        quantization,
+        format,
+        digest: installed.and_then(|model| model.digest.clone()),
+        size: installed.and_then(|model| model.size.clone()),
+        modified_at: installed.and_then(|model| model.modified_at.clone()),
+    }
 }
 
 #[cfg(test)]

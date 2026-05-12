@@ -4,6 +4,10 @@ import {
   buildLocalModelOptions,
   visibleModelOptions,
 } from '../src/lib/modelCatalogService';
+import {
+  buildPullCandidateFromQuery,
+  normalizeOllamaQuery,
+} from '../src/lib/ollamaCatalogService';
 import type {
   LocalRuntimeSnapshot,
   ProviderAccountProfile,
@@ -115,7 +119,7 @@ describe('modelCatalogService', () => {
     expect(visibleModelOptions('cloud', ready, '').map((option) => option.label)).toContain('GPT-5.5');
   });
 
-  it('Local vazio mostra só instalados reais e busca mostra downloads do catálogo', () => {
+  it('Local vazio mostra só instalados reais e busca cria candidato Ollama sem catálogo fixo', () => {
     const options = buildLocalModelOptions({
       localRuntime: localRuntime([
         { id: 'qwen2.5-coder:1.5b', size: '986 MB', digest: 'sha256:qwen', modifiedAt: now },
@@ -136,14 +140,19 @@ describe('modelCatalogService', () => {
     });
 
     const defaultLocalLabels = visibleModelOptions('local', options, '').map((option) => option.label);
-    expect(defaultLocalLabels).toContain('Qwen2.5 Coder 1.5B');
+    expect(defaultLocalLabels).toContain('qwen2.5-coder:1.5b');
     expect(defaultLocalLabels).toContain('custom-lab:latest');
-    expect(defaultLocalLabels).not.toContain('Qwen2.5 Coder 7B');
+    expect(defaultLocalLabels).not.toContain('Baixar qwen2.5-coder:7b');
     expect(visibleModelOptions('local', options, '').every((option) => option.source === 'local' && option.providerType === 'local' && option.installed)).toBe(true);
 
-    const deepSeekDownloads = visibleModelOptions('local', options, 'DeepSeek');
-    expect(deepSeekDownloads.some((option) => option.label === 'DeepSeek Coder 6.7B' && option.statusLabel === 'Baixando')).toBe(true);
-    expect(deepSeekDownloads.some((option) => option.label.includes('DeepSeek') && option.statusLabel === 'Download')).toBe(true);
+    const deepSeekDownloads = visibleModelOptions('local', options, 'DeepSeek Coder');
+    expect(deepSeekDownloads).toHaveLength(1);
+    expect(deepSeekDownloads[0]).toMatchObject({
+      label: 'Baixar deepseek-coder',
+      modelId: 'deepseek-coder',
+      installed: false,
+      statusLabel: 'Disponível para pull',
+    });
     expect(visibleModelOptions('local', options, 'GPT-5.5')).toHaveLength(0);
 
     const installedQwen = visibleModelOptions('local', options, '').find((option) => option.modelId === 'qwen2.5-coder:1.5b');
@@ -151,17 +160,27 @@ describe('modelCatalogService', () => {
     expect(installedQwen?.modifiedAt).toBe(now);
   });
 
-  it('normaliza IDs Ollama e mantém catálogo local pesquisável sem poluir padrão', () => {
+  it('normaliza IDs Ollama e cria pull candidate para gpt oss sem marcar instalado', () => {
     const options = buildLocalModelOptions({
       localRuntime: localRuntime([{ id: 'llama3.2:latest', size: '2 GB' }]),
     });
 
     expect(visibleModelOptions('local', options, '').map((option) => option.modelId)).toContain('llama3.2:latest');
-    expect(visibleModelOptions('local', options, 'Granite').some((option) => option.modelId === 'granite-code:8b')).toBe(true);
-    expect(visibleModelOptions('local', options, 'Devstral').some((option) => option.modelId === 'devstral:latest')).toBe(true);
-    expect(visibleModelOptions('local', options, 'TinyLlama').some((option) => option.modelId === 'tinyllama:1.1b')).toBe(true);
-    expect(visibleModelOptions('local', options, 'OpenChat').some((option) => option.modelId === 'openchat:latest')).toBe(true);
-    expect(visibleModelOptions('local', options, '').some((option) => option.modelId === 'granite-code:8b')).toBe(false);
+    expect(normalizeOllamaQuery('gpt oss')).toBe('gpt-oss');
+    expect(normalizeOllamaQuery('gpt_oss')).toBe('gpt-oss');
+    expect(normalizeOllamaQuery('gptoss')).toBe('gpt-oss');
+
+    const gptOss = visibleModelOptions('local', options, 'gpt oss');
+    expect(gptOss).toHaveLength(1);
+    expect(gptOss[0]).toMatchObject({
+      label: 'Baixar gpt-oss',
+      modelId: 'gpt-oss',
+      providerLabel: 'Ollama',
+      statusLabel: 'Disponível para pull',
+      installed: false,
+      ready: false,
+    });
+    expect(buildPullCandidateFromQuery('llama3.2', localRuntime([{ id: 'llama3.2:latest' }]))).toBeUndefined();
   });
 
   it('filtra defensivamente opções misturadas pela origem explícita', () => {

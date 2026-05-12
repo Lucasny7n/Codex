@@ -1,10 +1,16 @@
 import {
-  localCompatibility,
   modelRegistry,
   type CloudModelProfile,
   type LocalModelProfile,
   type ModelModality,
 } from './modelRegistry';
+import {
+  buildPullCandidateOption,
+  isInstalledOllamaModel,
+  normalizeOllamaModelId,
+  ollamaIdentityTerms,
+  searchInstalledOllamaModels,
+} from './ollamaCatalogService';
 import {
   canSelectModel,
   normalizeProviderStatus,
@@ -63,19 +69,11 @@ export interface ModelCatalogOption {
 }
 
 export function isLocalModelInstalled(runtime: LocalRuntimeSnapshot | undefined, modelId: string): boolean {
-  if (!runtime) return false;
-  const normalized = normalizeOllamaModelId(modelId);
-  return runtime.installedModels.some((model) => normalizeOllamaModelId(model.id) === normalized);
+  return isInstalledOllamaModel(runtime, modelId);
 }
 
 export function localFamilyLabel(model: LocalModelProfile): string {
   return localFamilyLabelFromText(`${model.family} ${model.displayName}`);
-}
-
-export function normalizeOllamaModelId(modelId: string): string {
-  const normalized = modelId.trim().toLowerCase();
-  if (!normalized) return normalized;
-  return normalized.includes(':') ? normalized : `${normalized}:latest`;
 }
 
 function localFamilyLabelFromText(text: string): string {
@@ -173,20 +171,6 @@ function providerModelMetadata(provider: ProviderDescriptor, model: ModelDescrip
     technicalLogScope: 'provider',
     ragReady: false,
     toolPermissionScopes: model.supportsTools ? ['workspace-read', 'workspace-write', 'tool-call'] : ['workspace-read'],
-  };
-}
-
-function localMetadata(model: LocalModelProfile): ModelCatalogMetadata {
-  return {
-    provider: model.providerId,
-    type: 'local',
-    capabilities: [...new Set([...model.modalities, ...model.tags, ...model.bestFor])],
-    multimodal: multimodal(model.modalities),
-    promptPresetIds: [`local:${model.runtime}:default`],
-    contextFragmentScopes: ['session', 'workspace'],
-    technicalLogScope: 'runtime',
-    ragReady: false,
-    toolPermissionScopes: ['workspace-read'],
   };
 }
 
@@ -302,68 +286,8 @@ export function buildLocalModelOptions(input: {
   providerStatus?: ProviderRuntimeStatus;
   installationProgress?: Record<string, LocalModelInstallProgress>;
 }): ModelCatalogOption[] {
-  const installedIds = new Set(input.localRuntime?.installedModels.map((model) => normalizeOllamaModelId(model.id)) ?? []);
-  const installedById = new Map(
-    (input.localRuntime?.installedModels ?? []).map((model) => [normalizeOllamaModelId(model.id), model] as const),
-  );
-  const registryOptions = modelRegistry.byMode('local')
-    .filter((model): model is LocalModelProfile => model.mode === 'local')
-    .map((model) => {
-      const progress = input.installationProgress?.[model.id] ?? input.installationProgress?.[model.modelId];
-      const normalizedModelId = normalizeOllamaModelId(model.modelId);
-      const installedModel = installedById.get(normalizedModelId) ?? installedById.get(normalizeOllamaModelId(model.id));
-      const installed = installedIds.has(normalizedModelId) || installedIds.has(normalizeOllamaModelId(model.id));
-      const status = resolveModelStatus(model, input.providerStatus, input.localRuntime, progress);
-      const ready = installed && canSelectModel(status);
-      return {
-        id: model.id,
-        source: 'local',
-        providerType: 'local',
-        modelId: model.modelId,
-        providerId: model.providerId,
-        label: model.displayName,
-        providerLabel: model.providerLabel,
-        family: localFamilyLabel(model),
-        status,
-        statusLabel: installed ? 'Instalado' : statusLabelFromState(status, 'local'),
-        available: canSelectModel(status),
-        installed,
-        configured: false,
-        ready,
-        heavy: localCompatibility(model) === 'heavy' || localCompatibility(model) === 'not_recommended',
-        estimatedSize: installedModel?.size ?? model.diskRequirement,
-        digest: installedModel?.digest,
-        modifiedAt: installedModel?.modifiedAt,
-        runtimeLabel: model.runtime === 'ollama' ? 'Ollama' : model.runtime,
-        metadata: localMetadata(model),
-        searchTerms: [
-          model.id,
-          model.modelId,
-          model.providerId,
-          model.runtime,
-          model.mode,
-          model.family,
-          ...model.modalities,
-          model.size,
-          model.ramRequirement,
-          model.vramRequirement,
-          model.diskRequirement,
-          ...model.tags,
-          ...model.bestFor,
-          ...model.strengths,
-        ],
-      } satisfies ModelCatalogOption;
-    });
-  const catalogIds = new Set(
-    modelRegistry.byMode('local')
-      .filter((model): model is LocalModelProfile => model.mode === 'local')
-      .flatMap((model) => [normalizeOllamaModelId(model.id), normalizeOllamaModelId(model.modelId)]),
-  );
   const runtimeStatus = localRuntimeStatus(input.localRuntime);
-  const discoveredInstalled = (input.localRuntime?.installedModels ?? [])
-    .filter((model) => !catalogIds.has(normalizeOllamaModelId(model.id)))
-    .map((model) => localInstalledModelOption(model, runtimeStatus));
-  return [...registryOptions, ...discoveredInstalled];
+  return (input.localRuntime?.installedModels ?? []).map((model) => localInstalledModelOption(model, runtimeStatus));
 }
 
 function localInstalledModelOption(model: LocalInstalledModel, runtimeStatus: ProviderStatus): ModelCatalogOption {
@@ -390,6 +314,7 @@ function localInstalledModelOption(model: LocalInstalledModel, runtimeStatus: Pr
     metadata: installedLocalMetadata(model),
     searchTerms: [
       model.id,
+      ...ollamaIdentityTerms(model.id),
       model.digest ?? '',
       model.modifiedAt ?? '',
       model.size ?? '',
@@ -404,7 +329,7 @@ function localInstalledModelOption(model: LocalInstalledModel, runtimeStatus: Pr
 export function modelOptionMatches(option: ModelCatalogOption, query: string): boolean {
   const normalized = query.trim().toLowerCase();
   if (!normalized) return true;
-  return [
+  const textMatches = [
     option.label,
     option.modelId,
     option.providerLabel,
@@ -419,6 +344,16 @@ export function modelOptionMatches(option: ModelCatalogOption, query: string): b
     .join(' ')
     .toLowerCase()
     .includes(normalized);
+  if (textMatches) return true;
+  if (option.source === 'local') {
+    const queryTerms = ollamaIdentityTerms(query);
+    const optionTerms = [
+      ...ollamaIdentityTerms(option.modelId ?? option.id),
+      ...ollamaIdentityTerms(option.label),
+    ];
+    return queryTerms.some((queryTerm) => optionTerms.some((term) => term.includes(queryTerm) || queryTerm.includes(term)));
+  }
+  return false;
 }
 
 export function visibleModelOptions(
@@ -429,7 +364,28 @@ export function visibleModelOptions(
   const trimmed = query.trim();
   const sourceOptions = options.filter((option) => option.source === mode && option.providerType === mode);
   const matched = sourceOptions.filter((option) => modelOptionMatches(option, trimmed));
-  if (trimmed) return matched;
+  if (trimmed) {
+    if (mode !== 'local') return matched;
+    const runtimeModels = sourceOptions
+      .filter((option) => option.installed)
+      .map((option) => ({
+        id: option.modelId ?? option.id,
+        size: option.estimatedSize,
+        modifiedAt: option.modifiedAt,
+        digest: option.digest,
+      }));
+    const runtime = {
+      installedModels: runtimeModels,
+    } as LocalRuntimeSnapshot;
+    const installedMatches = searchInstalledOllamaModels(runtime, trimmed);
+    const hasInstalledMatch = installedMatches.length > 0 || matched.some((option) => option.installed);
+    const candidate = hasInstalledMatch
+      ? undefined
+      : buildPullCandidateOption(trimmed, runtime);
+    return candidate ? [...matched, candidate] : matched;
+  }
   if (mode === 'cloud') return matched.filter((option) => option.configured && option.ready);
   return matched.filter((option) => option.installed && option.ready);
 }
+
+export { normalizeOllamaModelId };

@@ -1,6 +1,6 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import type { ComponentProps } from 'react';
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import * as api from '../src/lib/api';
 import { SettingsPanel } from '../src/components/panels/SettingsPanel';
 import type {
@@ -12,8 +12,16 @@ import type {
 } from '../src/types/domain';
 
 vi.mock('../src/lib/api', () => ({
+  compareModels: vi.fn(),
+  getAppHealthCheck: vi.fn(),
   getFileAttachment: vi.fn(),
+  getLocalRuntimeState: vi.fn(),
+  installLocalModel: vi.fn(),
   listFileDirectory: vi.fn(),
+  onLocalModelProgress: vi.fn(),
+  removeLocalModel: vi.fn(),
+  showLocalModel: vi.fn(),
+  testLocalModel: vi.fn(),
 }));
 
 const readyStatus: ProviderRuntimeStatus = {
@@ -113,6 +121,27 @@ function localRuntime(): LocalRuntimeSnapshot {
 }
 
 function renderSettings(overrides: Partial<ComponentProps<typeof SettingsPanel>> = {}) {
+  vi.mocked(api.onLocalModelProgress).mockResolvedValue(() => undefined);
+  vi.mocked(api.getLocalRuntimeState).mockResolvedValue(localRuntime());
+  vi.mocked(api.getAppHealthCheck).mockResolvedValue({
+    baseDir: '/tmp/workspace',
+    expectedBaseDir: '/tmp/workspace',
+    correctBaseDir: true,
+    branch: 'main',
+    nodeOk: true,
+    npmOk: true,
+    cargoOk: true,
+    tauriOk: true,
+    providers: [],
+    ollama: localRuntime(),
+    credentialsEncrypted: false,
+    items: [
+      { id: 'ollama-api', label: 'Ollama API ativa', status: 'ok', detail: 'http://127.0.0.1:11434' },
+    ],
+    recentErrors: [],
+    overallStatus: 'ok',
+    actions: [],
+  });
   return render(
     <SettingsPanel
       settings={settings()}
@@ -131,10 +160,14 @@ function renderSettings(overrides: Partial<ComponentProps<typeof SettingsPanel>>
 }
 
 describe('SettingsPanel', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
   it('renderiza somente as abas principais e remove telas antigas', () => {
     renderSettings();
 
-    for (const label of ['Geral', 'Interface', 'Modelos', 'Conversas', 'Personalização']) {
+    for (const label of ['Geral', 'Interface', 'Modelos', 'Conversas', 'Personalização', 'Saúde']) {
       expect(screen.getByRole('button', { name: label })).toBeInTheDocument();
     }
 
@@ -215,6 +248,9 @@ describe('SettingsPanel', () => {
   it('Modelos mostra accordions informativos sem configuração de credencial', () => {
     renderSettings({ initialTab: 'models' });
 
+    expect(screen.getByText('Model Manager local')).toBeInTheDocument();
+    expect(screen.getByPlaceholderText('gpt-oss, llama3.2, qwen2.5-coder:7b')).toBeInTheDocument();
+    expect(screen.getByText('qwen2.5-coder:1.5b')).toBeInTheDocument();
     expect(screen.getByText('GPT-5.5')).toBeInTheDocument();
     expect(screen.getByText('GPT-5.4 Mini via OpenRouter')).toBeInTheDocument();
     expect(screen.getByText('Qwen2.5 Coder 1.5B')).toBeInTheDocument();
@@ -223,6 +259,37 @@ describe('SettingsPanel', () => {
     expect(screen.getByText('Fornecedor')).toBeInTheDocument();
     expect(screen.queryByText('API Key')).not.toBeInTheDocument();
     expect(screen.queryByText('Salvar API')).not.toBeInTheDocument();
+  });
+
+  it('Model Manager cria pull candidate gpt-oss e mostra erro inline de pull', async () => {
+    vi.mocked(api.installLocalModel).mockRejectedValueOnce(new Error('Falha ao baixar `gpt-oss`: modelo não encontrado no Ollama.'));
+    renderSettings({ initialTab: 'models' });
+
+    fireEvent.change(screen.getByPlaceholderText('gpt-oss, llama3.2, qwen2.5-coder:7b'), {
+      target: { value: 'gpt oss' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Baixar gpt-oss' }));
+
+    await waitFor(() => {
+      expect(api.installLocalModel).toHaveBeenCalledWith('gpt-oss');
+      expect(screen.getByRole('alert')).toHaveTextContent('modelo não encontrado');
+    });
+  });
+
+  it('Model Manager remove modelo Ollama com confirmação inline', async () => {
+    vi.mocked(api.removeLocalModel).mockResolvedValueOnce({
+      ...localRuntime(),
+      installedModels: [],
+    });
+    renderSettings({ initialTab: 'models' });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Remover' }));
+    expect(screen.getByRole('alert')).toHaveTextContent('Remover qwen2.5-coder:1.5b');
+    fireEvent.click(screen.getByRole('button', { name: 'Confirmar' }));
+
+    await waitFor(() => {
+      expect(api.removeLocalModel).toHaveBeenCalledWith('qwen2.5-coder:1.5b');
+    });
   });
 
   it('Conversas chama backend real para exportar, arquivar e excluir', async () => {
@@ -340,5 +407,16 @@ describe('SettingsPanel', () => {
     ]) {
       expect(screen.getByText(label)).toBeInTheDocument();
     }
+  });
+
+  it('Saúde mostra estados reais e ações sugeridas sem log cru', async () => {
+    renderSettings({ initialTab: 'health' });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Atualizar' }));
+    await waitFor(() => {
+      expect(api.getAppHealthCheck).toHaveBeenCalled();
+      expect(screen.getByText('Ollama API ativa')).toBeInTheDocument();
+      expect(screen.getByText('http://127.0.0.1:11434')).toBeInTheDocument();
+    });
   });
 });

@@ -9,6 +9,7 @@ vi.mock('../src/lib/api', () => ({
   archiveAllSessions: vi.fn(),
   archiveSession: vi.fn(),
   bootstrapState: vi.fn(),
+  compareModels: vi.fn(),
   createSession: vi.fn(),
   deleteAllSessions: vi.fn(),
   deleteSession: vi.fn(),
@@ -51,10 +52,12 @@ vi.mock('../src/lib/api', () => ({
   saveProviderProfileCredential: vi.fn(),
   saveProviderCredential: vi.fn(),
   setDefaultProviderProfile: vi.fn(),
+  showLocalModel: vi.fn(),
   sendOrderToAgent: vi.fn(),
   sendTemporaryOrderToAgent: vi.fn(),
   startLocalRuntime: vi.fn(),
   testProviderConnection: vi.fn(),
+  testLocalModel: vi.fn(),
   transcribeAudio: vi.fn(),
   updateBasePrompt: vi.fn(),
   updateSessionEnvironment: vi.fn(),
@@ -450,10 +453,10 @@ describe('App layout visibility', () => {
 
     fireEvent.click(screen.getByTitle(/mock-development-model/));
     fireEvent.click(screen.getAllByRole('tab', { name: 'Local' })[0]);
-    fireEvent.change(screen.getByLabelText('Buscar modelo ou provedor'), { target: { value: 'Qwen2.5 Coder 1.5B' } });
+    fireEvent.change(screen.getByLabelText('Buscar modelo ou provedor'), { target: { value: 'qwen2.5 coder 1.5b' } });
     expect(screen.getByTestId('model-row-qwen2.5-coder:1.5b')).toHaveAttribute('data-source', 'local');
     expect(screen.getByTestId('model-row-qwen2.5-coder:1.5b')).toHaveAttribute('data-provider-type', 'local');
-    fireEvent.click(screen.getByText('Qwen2.5 Coder 1.5B'));
+    fireEvent.click(screen.getByText('qwen2.5-coder:1.5b'));
 
     await waitFor(() => {
       expect(api.updateSettings).toHaveBeenCalledWith(expect.objectContaining({
@@ -539,13 +542,13 @@ describe('App layout visibility', () => {
 
     fireEvent.click(screen.getByTitle(/GPT-5.5/));
     fireEvent.click(screen.getAllByRole('tab', { name: 'Local' })[0]);
-    expect(screen.queryByText('Qwen2.5 Coder 7B')).not.toBeInTheDocument();
-    fireEvent.change(screen.getByLabelText('Buscar modelo ou provedor'), { target: { value: 'Qwen2.5 Coder 7B' } });
-    expect(screen.queryByLabelText('Configurar Qwen2.5 Coder 7B')).not.toBeInTheDocument();
-    fireEvent.mouseEnter(screen.getByTestId('model-row-qwen2.5-coder:7b'));
-    fireEvent.click(screen.getByLabelText('Configurar Qwen2.5 Coder 7B'));
+    expect(screen.queryByText('Baixar qwen2.5-coder:7b')).not.toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText('Buscar modelo ou provedor'), { target: { value: 'qwen2.5-coder:7b' } });
+    expect(screen.queryByLabelText('Configurar Baixar qwen2.5-coder:7b')).not.toBeInTheDocument();
+    fireEvent.mouseEnter(screen.getByTestId('model-row-ollama-pull:qwen2.5-coder:7b'));
+    fireEvent.click(screen.getByLabelText('Configurar Baixar qwen2.5-coder:7b'));
 
-    expect(screen.getByRole('dialog', { name: 'Qwen2.5 Coder 7B' })).toBeInTheDocument();
+    expect(screen.getByRole('dialog', { name: 'Baixar qwen2.5-coder:7b' })).toBeInTheDocument();
     expect(screen.getByText('Status: Não instalado')).toBeInTheDocument();
     expect(screen.getByText('Download')).toBeInTheDocument();
     expect(screen.getByText('Testar')).toBeInTheDocument();

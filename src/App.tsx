@@ -55,6 +55,10 @@ import {
   normalizeOllamaModelId,
 } from './lib/modelCatalogService';
 import { translateError } from './lib/errorTranslator';
+import {
+  buildProjectMemoryAttachment,
+  updateProjectMemoryFromExchange,
+} from './lib/projectMemoryService';
 import { applyAppTheme } from './lib/theme';
 import {
   canSelectModel,
@@ -921,6 +925,16 @@ export default function App(): JSX.Element {
     const cleaned = trimMultiline(prompt);
     if (!cleaned && attachments.length === 0) return;
     const visibleContent = cleaned || 'Anexo enviado.';
+    const outgoingAttachments = [...attachments];
+
+    if (!temporaryChatActive && activeProject) {
+      const meta = readProjectMeta(activeProject);
+      const projectMemory = buildProjectMemoryAttachment(
+        activeProject,
+        meta?.memoryScope === 'project' ? meta.instructions : undefined,
+      );
+      if (projectMemory) outgoingAttachments.push(projectMemory);
+    }
 
     if (temporaryChatActive) {
       const userMessage: ChatMessage = {
@@ -928,13 +942,13 @@ export default function App(): JSX.Element {
         role: 'user',
         content: visibleContent,
         createdAt: new Date().toISOString(),
-        attachments,
+        attachments: outgoingAttachments,
       };
       const previousMessages = temporaryMessages;
       setTemporaryMessages([...previousMessages, userMessage]);
       setBusy(true);
       try {
-        const session = await sendTemporaryOrderToAgent(previousMessages, visibleContent, mode, attachments);
+        const session = await sendTemporaryOrderToAgent(previousMessages, visibleContent, mode, outgoingAttachments);
         setTemporaryMessages(session.messages);
       } catch (cause) {
         const message = cause instanceof Error ? cause.message : 'Falha ao executar Bate-papo Temporário.';
@@ -953,7 +967,7 @@ export default function App(): JSX.Element {
     }
 
     let sessionId: string | undefined;
-    const optimisticUserMessage = createOptimisticUserMessage(visibleContent, attachments);
+    const optimisticUserMessage = createOptimisticUserMessage(visibleContent, outgoingAttachments);
     setBusy(true);
     try {
       sessionId = await ensureSession(visibleContent);
@@ -969,7 +983,11 @@ export default function App(): JSX.Element {
       if (activeProject) {
         rememberProjectSession(activeProject, sessionId);
       }
-      const updated = await sendOrderToAgent(sessionId, visibleContent, mode, attachments);
+      const updated = await sendOrderToAgent(sessionId, visibleContent, mode, outgoingAttachments);
+      if (activeProject) {
+        const assistantText = [...updated.messages].reverse().find((message) => message.role === 'assistant')?.content ?? '';
+        if (assistantText.trim()) updateProjectMemoryFromExchange(activeProject, visibleContent, assistantText);
+      }
       upsertSession(updated);
     } catch (cause) {
       const message = cause instanceof Error ? cause.message : 'Falha ao enviar mensagem ao provider.';
@@ -1533,7 +1551,42 @@ export default function App(): JSX.Element {
     }
     const option = topbarLocalModels.find((item) => item.id === modelId || item.modelId === modelId);
     const catalogModel = option?.modelId ? modelRegistry.byId(option.modelId) : undefined;
-    if (catalogModel?.mode === 'local') await handleInstallLocalModel(catalogModel);
+    if (catalogModel?.mode === 'local') {
+      await handleInstallLocalModel(catalogModel);
+      return;
+    }
+
+    const targetModelId = option?.modelId ?? modelId.replace(/^ollama-pull:/u, '');
+    if (!settings || !targetModelId) return;
+    setModelActionBusyId(option?.id ?? targetModelId);
+    try {
+      const snapshot = await installLocalModel(targetModelId);
+      setLocalRuntime(snapshot);
+      if (!isLocalModelInstalled(snapshot, targetModelId)) {
+        throw new Error(`Ollama terminou o download, mas ${targetModelId} ainda não aparece em /api/tags ou ollama list.`);
+      }
+      const next = pushHistory(
+        {
+          ...settings,
+          executionMode: 'local',
+          selectedProviderId: 'local-ollama',
+          selectedModelId: targetModelId,
+          selectedLocalModelId: targetModelId,
+        },
+        'local',
+        'local-ollama',
+        targetModelId,
+      );
+      await applySettings(next);
+      setExecutionMode('local');
+      selectModel(targetModelId);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Falha ao instalar modelo local.');
+      await refreshLocalRuntime();
+      throw cause;
+    } finally {
+      setModelActionBusyId(undefined);
+    }
   }
 
   async function handleTestLocalModelById(modelId: string): Promise<boolean> {

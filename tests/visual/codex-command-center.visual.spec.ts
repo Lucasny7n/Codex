@@ -353,23 +353,23 @@ test('captura home, composer, chat temporário, seletor e modais em tema escuro'
   await screenshot(page, 'pass-15-model-selector-local');
   await page.getByTestId('model-row-qwen2.5-coder:1.5b').hover();
   await screenshot(page, 'pass-15-model-selector-local-hover');
-  await page.getByLabel('Configurar Qwen2.5 Coder 1.5B').click();
-  await expect(page.getByRole('dialog', { name: 'Qwen2.5 Coder 1.5B' })).toBeVisible();
+  await page.getByLabel('Configurar qwen2.5-coder:1.5b').click();
+  await expect(page.getByRole('dialog', { name: 'qwen2.5-coder:1.5b' })).toBeVisible();
   await screenshot(page, 'pass-15-model-config-local-installed');
   await page.keyboard.press('Escape');
 
   await page.getByTitle(/mock-development-model/).click();
   await page.getByRole('tab', { name: 'Local' }).click();
-  await page.getByLabel('Buscar modelo ou provedor').fill('Qwen3 8B');
-  await page.getByTestId('model-row-qwen3:8b').hover();
-  await page.getByLabel('Configurar Qwen3 8B').click();
-  await expect(page.getByRole('dialog', { name: 'Qwen3 8B' })).toBeVisible();
+  await page.getByLabel('Buscar modelo ou provedor').fill('qwen3:8b');
+  await page.getByTestId('model-row-ollama-pull:qwen3:8b').hover();
+  await page.getByLabel('Configurar Baixar qwen3:8b').click();
+  await expect(page.getByRole('dialog', { name: 'Baixar qwen3:8b' })).toBeVisible();
   await screenshot(page, 'pass-15-model-config-local-download');
   await page.getByRole('button', { name: /Download/ }).click();
   await expect(page.locator('.model-config-progress').getByText(/42%/)).toBeVisible();
   await screenshot(page, 'pass-15-model-config-local-download-progress');
-  await page.getByRole('dialog', { name: 'Qwen3 8B' }).getByRole('button', { name: 'Fechar' }).click();
-  await expect(page.getByRole('dialog', { name: 'Qwen3 8B' })).toHaveCount(0);
+  await page.getByRole('dialog', { name: 'Baixar qwen3:8b' }).getByRole('button', { name: 'Fechar' }).click();
+  await expect(page.getByRole('dialog', { name: 'Baixar qwen3:8b' })).toHaveCount(0);
 
   await page.getByLabel('Mais ações').click();
   await page.getByText('Selecionar arquivo').click();

@@ -5547,6 +5547,204 @@
   background: linear-gradient(90deg, rgba(45, 149, 236, 0.95), rgba(92, 190, 255, 0.82));
 }
 
+.ollama-manager,
+.model-comparison-panel {
+  border: 1px solid rgba(157, 202, 255, 0.16);
+  border-radius: var(--radius-sm);
+  background: rgba(5, 9, 15, 0.72);
+  padding: 14px;
+  display: grid;
+  gap: 12px;
+}
+
+.ollama-manager-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.ollama-manager-header > div,
+.ollama-model-card header,
+.custom-preset-row > span,
+.health-item-card {
+  min-width: 0;
+}
+
+.ollama-manager-header strong,
+.ollama-model-card strong,
+.health-item-card strong {
+  color: var(--text-main);
+  font-size: 0.9rem;
+}
+
+.ollama-manager-header small,
+.ollama-model-card small,
+.health-item-card small {
+  display: block;
+  color: var(--text-muted);
+  font-size: 0.74rem;
+  margin-top: 3px;
+}
+
+.ollama-manager-search {
+  display: grid;
+  gap: 7px;
+  color: var(--text-muted);
+  font-size: 0.78rem;
+}
+
+.ollama-manager-search > div {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+}
+
+.ollama-model-grid,
+.comparison-result-grid,
+.health-item-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 10px;
+}
+
+.ollama-model-card,
+.comparison-card,
+.health-item-card,
+.custom-preset-row {
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: var(--radius-sm);
+  background: rgba(255, 255, 255, 0.025);
+  padding: 11px;
+  display: grid;
+  gap: 9px;
+}
+
+.ollama-model-meta {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 8px;
+}
+
+.ollama-model-meta span {
+  min-width: 0;
+  color: var(--text-muted);
+  font-size: 0.76rem;
+  overflow-wrap: anywhere;
+}
+
+.ollama-model-meta b {
+  display: block;
+  color: var(--text-dim);
+  font-size: 0.68rem;
+  margin-bottom: 2px;
+  text-transform: uppercase;
+  letter-spacing: 0;
+}
+
+.ollama-details {
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  padding-top: 10px;
+}
+
+.ollama-details summary {
+  cursor: pointer;
+  color: var(--text-main);
+  font-weight: 650;
+}
+
+.ollama-details pre,
+.health-item-card code {
+  max-height: 180px;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: var(--radius-sm);
+  background: rgba(0, 0, 0, 0.24);
+  padding: 8px;
+  color: var(--text-muted);
+  font-size: 0.72rem;
+}
+
+.comparison-card.ok,
+.health-item-card.health-ok {
+  border-color: rgba(90, 209, 154, 0.22);
+}
+
+.comparison-card.error,
+.health-item-card.health-error {
+  border-color: rgba(255, 122, 134, 0.28);
+}
+
+.health-item-card.health-warning {
+  border-color: rgba(255, 204, 102, 0.22);
+}
+
+.comparison-card p,
+.health-item-card p {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 0.8rem;
+  line-height: 1.45;
+  white-space: pre-wrap;
+}
+
+.health-item-card span {
+  color: var(--text-dim);
+  font-size: 0.74rem;
+}
+
+.prompt-preset-select select {
+  min-width: 116px;
+  max-width: 150px;
+  border: 1px solid rgba(157, 202, 255, 0.18);
+  border-radius: var(--radius-sm);
+  background: rgba(5, 10, 16, 0.82);
+  color: var(--text-main);
+  padding: 7px 8px;
+  font: inherit;
+  font-size: 0.78rem;
+}
+
+.custom-preset-list {
+  display: grid;
+  gap: 8px;
+}
+
+.custom-preset-row {
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+}
+
+.custom-preset-row small {
+  color: var(--text-muted);
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+@media (max-width: 760px) {
+  .ollama-manager-search > div,
+  .custom-preset-row {
+    grid-template-columns: 1fr;
+  }
+
+  .prompt-preset-select select {
+    max-width: 118px;
+  }
+}
+
 .settings-qwen-shell,
 .settings-block,
 .settings-model-list,

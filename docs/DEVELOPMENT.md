@@ -20,6 +20,24 @@ App desktop:
 npm run tauri dev
 ```
 
+## Ollama Local
+
+O app trata Ollama como única fonte local ativa. Para validar o runtime manualmente:
+
+```bash
+ollama list
+curl -s http://127.0.0.1:11434/api/tags
+ollama pull gpt-oss
+ollama show gpt-oss
+ollama rm gpt-oss
+```
+
+No app, use `Settings > Modelos > Model Manager local` para buscar qualquer nome aceito pelo Ollama, baixar com progresso real, testar, ver detalhes e remover. O resultado só vira instalado depois do refresh do snapshot do Ollama.
+
+## STT
+
+O modal de microfone fica no composer, não em uma aba separada. A detecção verifica `navigator.mediaDevices`, permissões do WebView, PipeWire/WirePlumber/portal no painel de saúde, `ffmpeg`, backends Whisper/Vosk e modelo local.
+
 ## Scripts
 
 ```bash
@@ -50,6 +68,8 @@ cargo test
 - Não adicionar abas técnicas em Configurações.
 - Não executar sudo silencioso.
 - Não commitar secrets, modelos pesados, logs ou screenshots temporárias.
+- Não usar `modelRegistry.ts` como fonte principal da aba Local; local real vem de Ollama.
+- Não habilitar fallback entre modelos fora do Modo Desenvolvedor.
 
 ## Testes Visuais
 
@@ -77,7 +97,12 @@ A fonte vetorial fica em `assets/icon-source.svg`. Gere os PNGs com `npm run ico
 - UI compartilhada vai em `src/components/common`.
 - Painéis completos ficam em `src/components/panels`.
 - Contratos de dados ficam em `src/types/domain.ts`.
-- Catálogo de modelos fica em `src/lib/modelRegistry.ts`.
+- Catálogo cloud e sugestões ficam em `src/lib/modelRegistry.ts`.
+- Opções do seletor ficam em `src/lib/modelCatalogService.ts`.
+- Ollama real fica em `src/lib/ollamaCatalogService.ts` e `src-tauri/src/services/local_runtime.rs`.
+- Documentos/RAG lexical ficam em `src/lib/documentContextService.ts`.
+- Presets ficam em `src/lib/promptPresetService.ts`.
+- Memória por projeto fica em `src/lib/projectMemoryService.ts`.
 - Estados e ações de provider ficam em `src/lib/providerStatus.ts`.
 - Commands Tauri ficam em `src-tauri/src/commands/mod.rs`.
 - Serviços Rust ficam em `src-tauri/src/services`.

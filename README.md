@@ -12,10 +12,10 @@ As capturas oficiais de validação visual são geradas por Playwright:
 npm run screenshots
 ```
 
-Na Passada 13, os arquivos `pass-13-*.png` são gravados em:
+Por padrão, os arquivos são gravados em:
 
 ```text
-/home/lucas/Lucas-Workspace/Temp
+test-results/screenshots
 ```
 
 ## Recursos
@@ -23,9 +23,13 @@ Na Passada 13, os arquivos `pass-13-*.png` são gravados em:
 - Chat persistente com sessões, exportação e arquivamento.
 - Bate-papo temporário em memória, sem aparecer no histórico.
 - Composer com anexos como chips, sem despejar TXT no campo de texto.
-- Seletor único `Nuvem | Local` com status honesto.
-- Catálogo cloud/local pesquisável por modelo, provider, runtime, família e capacidade.
-- Configurações limpas com cinco abas: Geral, Interface, Modelos, Conversas e Personalização.
+- Seletor único `Nuvem | Local` com status honesto e sem mistura entre providers cloud e Ollama.
+- Aba Local baseada no Ollama real: `/api/tags`, `ollama list`, `ollama show`, `ollama pull` e `ollama rm`.
+- Busca local aceita nomes livres como `gpt oss`, `llama3.2` e `qwen2.5-coder:7b`; modelo não instalado aparece como candidato de pull, não como pronto.
+- Model Manager local com instalados, download, remoção, teste, detalhes, progresso e refresh.
+- Chat com anexos como contexto oculto, chunks lexicais simples e metadados sem despejar arquivo no composer.
+- Presets/personas, memória curta por projeto, comparação manual entre modelos e fallback avançado só no Modo Desenvolvedor.
+- Configurações limpas com seis abas: Geral, Interface, Modelos, Conversas, Personalização e Saúde.
 - STT local preparado para `ffmpeg`, `whisper.cpp`, `whisper`, `faster-whisper` ou Vosk.
 - Terminal e ações privilegiadas via fluxo controlado, sem `sudo` silencioso.
 - Tema claro/escuro/sistema com tokens centralizados.
@@ -36,7 +40,7 @@ Na Passada 13, os arquivos `pass-13-*.png` são gravados em:
 - Desktop: Tauri v2.
 - Backend: Rust, Tokio, Reqwest.
 - Testes: Vitest, Testing Library, Playwright.
-- Modelos locais: Ollama hoje; arquitetura preparada para outros runtimes.
+- Modelos locais: Ollama é a única fonte local ativa.
 
 ## Requisitos
 
@@ -113,7 +117,17 @@ scripts/                 Scripts de ambiente e instalação local
 
 Providers cloud precisam de API key/login e teste real antes de ficarem selecionáveis. Credencial salva sem teste fica em estado de configuração/teste, não `ready`.
 
-Modelos locais só ficam selecionáveis quando o runtime está ativo, o modelo aparece em `ollama list` e o teste curto de geração confirma funcionamento.
+Modelos locais só ficam selecionáveis quando o runtime está ativo, o modelo aparece em `/api/tags`/`ollama list` e o teste curto de geração confirma funcionamento. O registry local existe apenas como sugestão/documentação, nunca como limite da busca local.
+
+Fluxo manual equivalente:
+
+```bash
+ollama list
+curl -s http://127.0.0.1:11434/api/tags
+ollama pull gpt-oss
+ollama show gpt-oss
+ollama rm gpt-oss
+```
 
 Veja [docs/MODELS.md](docs/MODELS.md).
 
@@ -126,7 +140,7 @@ Veja [docs/STT.md](docs/STT.md).
 ## Troubleshooting
 
 - Provider sem chave: abra o seletor de modelos e configure o provider específico.
-- Ollama offline: valide `command -v ollama`, `systemctl is-active ollama` e `ollama list`.
+- Ollama offline: valide `command -v ollama`, `systemctl is-active ollama`, `ollama list` e `curl -s http://127.0.0.1:11434/api/tags`.
 - STT sem transcrição: valide `ffmpeg`, backend Whisper/Vosk e modelo local.
 - Screenshot visual falhando: rode `npx playwright install chromium`.
 - Tauri dev na porta ocupada: verifique a porta `5173`.

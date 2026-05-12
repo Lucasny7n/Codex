@@ -41,5 +41,6 @@ function policyScore(candidate: AiRouteCandidate, policy: AiFallbackPolicy): num
   if (policy === 'cloud_first') return local ? 1 : 0;
   if (policy === 'fast_first') return /mini|flash|haiku|3b|1\.5b/u.test(model) ? 0 : 1;
   if (policy === 'code') return /coder|code|codestral|devstral/u.test(model) ? 0 : 1;
+  if (policy === 'cost_low') return local || /free|mini|flash|haiku|1\.5b|3b/u.test(model) ? 0 : 1;
   return 0;
 }

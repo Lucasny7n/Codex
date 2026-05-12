@@ -16,11 +16,13 @@ use crate::models::{
     ActionableError, ActionableErrorSeverity, AgentSession, AppHealthAction, AppHealthCheck,
     AppHealthOverallStatus, AppHealthProvider, AppSettings, BootstrapPayload, ChatMessage,
     ChatRole, CommandLogChunk, ConversationImportResult, ExecutionRequestInput, ExecutionResponse,
-    LocalModelInstallProgress, LocalRuntimeSnapshot, LogStream, PendingIntentKind,
+    LocalModelInstallProgress, LocalRuntimeSnapshot, LogStream, ModelComparisonRequest,
+    ModelComparisonResponse, ModelComparisonResult, OllamaModelDetails, PendingIntentKind,
     PermissionDecision, PermissionOutcome, PermissionOutcomeStatus, PermissionRequest,
     PrivilegedActionRequestInput, PrivilegedActionSpec, ProviderAccountProfile,
-    ProviderCredentialStatus, ProviderRuntimeStatus, ProviderStatusState, SessionExportFormat,
-    SessionExportResult, SessionStatus, StatusKind, TaskStatus, WorkspaceMeta,
+    ProviderCredentialStatus, ProviderGenerateRequest, ProviderRuntimeStatus, ProviderStatusState,
+    SessionExportFormat, SessionExportResult, SessionStatus, StatusKind, SystemHealthItem,
+    TaskStatus, WorkspaceMeta,
 };
 use crate::services::ai_router::{AiRouteRequest, AiRouter};
 use crate::services::privileged_actions;
@@ -102,6 +104,40 @@ fn git_output<const N: usize>(root: &str, args: [&str; N]) -> Option<String> {
 fn command_ok<const N: usize>(program: &str, args: [&str; N]) -> bool {
     Command::new(program)
         .args(args)
+        .output()
+        .ok()
+        .is_some_and(|output| output.status.success())
+}
+
+fn command_text(program: &str, args: &[&str]) -> Option<String> {
+    let output = Command::new(program).args(args).output().ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    Some(String::from_utf8_lossy(&output.stdout).trim().to_owned())
+}
+
+fn health_item(
+    id: &str,
+    label: &str,
+    ok: bool,
+    detail: String,
+    action: Option<&str>,
+    command: Option<&str>,
+) -> SystemHealthItem {
+    SystemHealthItem {
+        id: id.to_owned(),
+        label: label.to_owned(),
+        status: if ok { "ok" } else { "warning" }.to_owned(),
+        detail,
+        action: action.map(str::to_owned),
+        command: command.map(str::to_owned),
+    }
+}
+
+fn systemctl_user_active(unit: &str) -> bool {
+    Command::new("systemctl")
+        .args(["--user", "is-active", unit])
         .output()
         .ok()
         .is_some_and(|output| output.status.success())
@@ -1518,6 +1554,7 @@ pub async fn get_app_health_check(
         })
         .collect::<Vec<_>>();
     let ollama = state.local_runtime_service.snapshot(&settings).await;
+    let stt = stt_config_snapshot(None).ok();
     let branch =
         git_output(&base_dir, ["branch", "--show-current"]).filter(|value| !value.is_empty());
     let node_ok = command_ok("node", ["--version"]);
@@ -1525,6 +1562,177 @@ pub async fn get_app_health_check(
     let cargo_ok = command_ok("cargo", ["--version"]);
     let tauri_ok = command_ok("npm", ["run", "tauri", "--", "--version"]);
     let correct_base_dir = base_dir == expected_base_dir;
+    let git_dirty =
+        git_output(&base_dir, ["status", "--short"]).is_some_and(|value| !value.is_empty());
+    let disk_detail = command_text("df", &["-h", &settings.local_models_root])
+        .and_then(|text| text.lines().nth(1).map(str::to_owned))
+        .unwrap_or_else(|| "Espaço em disco não detectado.".to_owned());
+    let gpu_detail = command_text(
+        "sh",
+        &[
+            "-c",
+            "lspci 2>/dev/null | grep -Ei 'vga|3d|display' | head -3",
+        ],
+    )
+    .filter(|text| !text.is_empty())
+    .unwrap_or_else(|| "GPU não detectada via lspci neste ambiente.".to_owned());
+    let workflow_exists = Path::new(&base_dir)
+        .join(".github/workflows/ci.yml")
+        .is_file();
+    let desktop_entry_exists = Path::new(&base_dir)
+        .join("assets/codex-command-center.desktop")
+        .is_file();
+    let icon_exists = Path::new(&base_dir)
+        .join("src-tauri/icons/512x512.png")
+        .is_file();
+
+    let mut items = vec![
+        health_item(
+            "ollama-installed",
+            "Ollama instalado",
+            ollama.installed,
+            ollama
+                .runtime_path
+                .clone()
+                .unwrap_or_else(|| ollama.message.clone()),
+            Some("Instalar Ollama"),
+            ollama.install_command.as_deref(),
+        ),
+        health_item(
+            "ollama-api",
+            "Ollama API ativa",
+            ollama.api_reachable,
+            ollama.api_url.clone(),
+            Some("Iniciar serviço Ollama"),
+            Some("systemctl --user status ollama || systemctl status ollama"),
+        ),
+        health_item(
+            "ollama-models",
+            "Modelos Ollama instalados",
+            !ollama.installed_models.is_empty(),
+            format!("{} modelo(s)", ollama.installed_models.len()),
+            Some("Baixar modelo pelo Model Manager"),
+            Some("ollama list"),
+        ),
+        health_item(
+            "disk",
+            "Espaço em disco",
+            ollama.disk_ok.unwrap_or(false),
+            disk_detail,
+            Some("Liberar espaço em disco"),
+            Some("df -h ~/.codex/models"),
+        ),
+        health_item(
+            "gpu",
+            "GPU detectada",
+            !gpu_detail.starts_with("GPU não"),
+            gpu_detail,
+            None,
+            Some("lspci | grep -Ei 'vga|3d|display'"),
+        ),
+        health_item(
+            "pipewire",
+            "PipeWire",
+            systemctl_user_active("pipewire.service"),
+            "Serviço de áudio do usuário.".to_owned(),
+            Some("Verificar PipeWire"),
+            Some("systemctl --user status pipewire"),
+        ),
+        health_item(
+            "wireplumber",
+            "WirePlumber",
+            systemctl_user_active("wireplumber.service"),
+            "Gerenciador PipeWire.".to_owned(),
+            Some("Verificar WirePlumber"),
+            Some("systemctl --user status wireplumber"),
+        ),
+        health_item(
+            "portal",
+            "xdg-desktop-portal",
+            systemctl_user_active("xdg-desktop-portal.service"),
+            "Portal necessário para permissões do WebView.".to_owned(),
+            Some("Verificar portal"),
+            Some("systemctl --user status xdg-desktop-portal"),
+        ),
+        health_item(
+            "ffmpeg",
+            "ffmpeg",
+            command_ok("ffmpeg", ["-version"]),
+            "Conversão de áudio para STT.".to_owned(),
+            Some("Instalar ffmpeg"),
+            Some("sudo pacman -S --needed ffmpeg"),
+        ),
+        health_item(
+            "stt",
+            "STT local",
+            stt.as_ref().is_some_and(|snapshot| snapshot.ready),
+            stt.as_ref()
+                .map(|snapshot| snapshot.message.clone())
+                .unwrap_or_else(|| "Diagnóstico STT indisponível.".to_owned()),
+            Some("Configurar microfone no composer"),
+            stt.as_ref()
+                .map(|snapshot| snapshot.install_command.as_str()),
+        ),
+        health_item(
+            "api-keys",
+            "API keys configuradas",
+            providers.iter().any(|provider| provider.has_key),
+            "Credenciais são mascaradas e testadas por provider.".to_owned(),
+            Some("Configurar provider"),
+            None,
+        ),
+        health_item(
+            "providers-tested",
+            "Providers testados",
+            providers
+                .iter()
+                .any(|provider| matches!(provider.status.state, ProviderStatusState::Ready)),
+            "Ready só aparece após teste real.".to_owned(),
+            Some("Testar conexão"),
+            None,
+        ),
+        health_item(
+            "desktop-entry",
+            "Desktop entry",
+            desktop_entry_exists,
+            "assets/codex-command-center.desktop".to_owned(),
+            Some("Instalar desktop entry"),
+            Some("bash scripts/install-desktop-entry.sh"),
+        ),
+        health_item(
+            "icon",
+            "Ícone",
+            icon_exists,
+            "src-tauri/icons/512x512.png".to_owned(),
+            Some("Validar alpha"),
+            Some("npm run icons:validate"),
+        ),
+        health_item(
+            "ci",
+            "GitHub Actions",
+            workflow_exists,
+            ".github/workflows/ci.yml".to_owned(),
+            Some("Rodar CI local"),
+            Some("npm run lint && npm run test -- --run"),
+        ),
+        health_item(
+            "git",
+            "Workspace Git",
+            !git_dirty,
+            if git_dirty {
+                "Worktree sujo.".to_owned()
+            } else {
+                "Worktree limpo.".to_owned()
+            },
+            Some("Revisar git status"),
+            Some("git status --short"),
+        ),
+    ];
+    for item in &mut items {
+        if item.id == "ollama-api" && !ollama.installed {
+            item.status = "error".to_owned();
+        }
+    }
 
     let mut actions = Vec::new();
     let mut recent_errors = Vec::new();
@@ -1595,6 +1803,7 @@ pub async fn get_app_health_check(
                 .to_string(),
         ),
         credentials_encrypted: Some(false),
+        items,
         recent_errors,
         overall_status,
         actions,
@@ -1653,6 +1862,42 @@ pub async fn remove_local_model(
         .map_err(map_err)?;
     let _ = app.emit("local-runtime-state", snapshot.clone());
     Ok(snapshot)
+}
+
+#[tauri::command]
+pub async fn show_local_model(
+    state: State<'_, AppState>,
+    model_id: String,
+) -> Result<OllamaModelDetails, ErrorPayload> {
+    let settings = state.settings();
+    state
+        .local_runtime_service
+        .show_model(&settings, &model_id)
+        .await
+        .map_err(map_err)
+}
+
+#[tauri::command]
+pub async fn test_local_model(
+    state: State<'_, AppState>,
+    model_id: String,
+) -> Result<ProviderRuntimeStatus, ErrorPayload> {
+    match state.local_runtime_service.test_model(&model_id).await {
+        Ok(()) => Ok(ProviderRuntimeStatus {
+            state: ProviderStatusState::Ready,
+            message: format!("Ollama respondeu ao teste curto de `{model_id}`."),
+            command: Some("POST http://127.0.0.1:11434/api/generate".to_owned()),
+            version: None,
+            checked_at: crate::models::now_iso(),
+        }),
+        Err(error) => Ok(ProviderRuntimeStatus {
+            state: ProviderStatusState::Error,
+            message: error.to_string(),
+            command: Some("POST http://127.0.0.1:11434/api/generate".to_owned()),
+            version: None,
+            checked_at: crate::models::now_iso(),
+        }),
+    }
 }
 
 #[tauri::command]
@@ -1910,6 +2155,73 @@ pub async fn send_temporary_order_to_agent(
     )
     .await
     .map_err(map_err)
+}
+
+#[tauri::command]
+pub async fn compare_models(
+    state: State<'_, AppState>,
+    input: ModelComparisonRequest,
+) -> Result<ModelComparisonResponse, ErrorPayload> {
+    let prompt = input.prompt.trim().to_owned();
+    if prompt.is_empty() {
+        return Err(map_err(AppError::Message(
+            "Prompt de comparação vazio.".to_owned(),
+        )));
+    }
+    if input.targets.len() < 2 {
+        return Err(map_err(AppError::Message(
+            "Escolha pelo menos dois modelos para comparar.".to_owned(),
+        )));
+    }
+
+    let settings = state.settings();
+    let mut results = Vec::new();
+    for target in input.targets.into_iter().take(6) {
+        let provider_id = target.provider_id.clone();
+        let model_id = target.model_id.clone();
+        let label = target.label.clone();
+        match state
+            .provider_registry
+            .generate_response(ProviderGenerateRequest {
+                provider_id: provider_id.clone(),
+                model_id: model_id.clone(),
+                prompt: prompt.clone(),
+                attachments: Vec::new(),
+                workspace_root: settings.workspace_root.clone(),
+                account_profile_id: target.account_profile_id.clone(),
+            })
+            .await
+        {
+            Ok(result) => results.push(ModelComparisonResult {
+                provider_id,
+                model_id,
+                label,
+                ok: true,
+                content: Some(result.content),
+                error: None,
+                command: result.command,
+            }),
+            Err(error) => results.push(ModelComparisonResult {
+                provider_id,
+                model_id,
+                label,
+                ok: false,
+                content: None,
+                error: Some(provider_chat_error_message(
+                    "provider",
+                    "modelo",
+                    &error.to_string(),
+                )),
+                command: None,
+            }),
+        }
+    }
+
+    Ok(ModelComparisonResponse {
+        prompt,
+        results,
+        completed_at: crate::models::now_iso(),
+    })
 }
 
 async fn run_agent_order(

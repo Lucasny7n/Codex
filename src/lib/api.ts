@@ -22,6 +22,7 @@ import type {
   ProviderRuntimeStatus,
   ProviderCredentialStatus,
   LocalRuntimeSnapshot,
+  OllamaModelDetails,
   LocalModelInstallProgress,
   SessionExportFormat,
   SessionExportResult,
@@ -30,6 +31,8 @@ import type {
   VoiceTranscriptionResult,
   LocalSttConfigSnapshot,
   ChatAttachment,
+  ModelComparisonRequest,
+  ModelComparisonResponse,
 } from '../types/domain';
 
 export async function bootstrapState(): Promise<BootstrapPayload> {
@@ -151,6 +154,10 @@ export async function sendTemporaryOrderToAgent(
   return invoke('send_temporary_order_to_agent', { messages, content, mode, attachments });
 }
 
+export async function compareModels(input: ModelComparisonRequest): Promise<ModelComparisonResponse> {
+  return invoke('compare_models', { input });
+}
+
 export async function requestExecution(input: ExecutionRequestInput): Promise<ExecutionResponse> {
   return invoke('request_execution', { input });
 }
@@ -219,6 +226,14 @@ export async function installLocalModel(modelId: string): Promise<LocalRuntimeSn
 
 export async function removeLocalModel(modelId: string): Promise<LocalRuntimeSnapshot> {
   return invoke('remove_local_model', { modelId });
+}
+
+export async function showLocalModel(modelId: string): Promise<OllamaModelDetails> {
+  return invoke('show_local_model', { modelId });
+}
+
+export async function testLocalModel(modelId: string): Promise<ProviderRuntimeStatus> {
+  return invoke('test_local_model', { modelId });
 }
 
 export async function listPrivilegedActions(): Promise<PrivilegedActionSpec[]> {

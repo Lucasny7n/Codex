@@ -42,23 +42,17 @@ Runtime ativo hoje:
 
 - Ollama
 
-Famílias no catálogo local:
+Ollama é a única fonte local ativa. A UI local sem busca mostra somente modelos instalados confirmados por `/api/tags` ou, como fallback diagnóstico, `ollama list`.
 
-- Qwen e Qwen Coder
-- Llama
-- Mistral e Mixtral
-- DeepSeek e DeepSeek Coder
-- Gemma
-- Phi
-- Yi
-- StarCoder
-- CodeLlama
-- Nous/Hermes
-- Dolphin
-- OpenChat
-- TinyLlama
+Com busca, o app não consulta uma lista fixa como fonte de verdade. Ele normaliza o texto (`gpt oss`, `gpt-oss`, `gpt_oss`, `gptoss`) e, se não houver modelo instalado correspondente, oferece uma ação explícita:
 
-Modelos locais não instalados aparecem com ação de download. O app não baixa nada automaticamente e não usa sudo sem confirmação.
+```text
+Baixar gpt-oss pelo Ollama
+```
+
+O teste remoto é o próprio `ollama pull <nome>`. Depois do pull, o app recarrega o snapshot do Ollama e só marca instalado se o modelo aparecer de verdade em `/api/tags` ou `ollama list`.
+
+O registry local pode continuar existindo para sugestões, recomendações e documentação de famílias, mas ele não limita a descoberta local nem decide instalação.
 
 ## Multimodal e Imagem
 
@@ -79,7 +73,26 @@ Diagnóstico esperado:
 ```bash
 command -v ollama
 systemctl is-active ollama
+curl -s http://127.0.0.1:11434/api/tags
 ollama list
 ```
 
-Para ficar pronto, um modelo precisa aparecer em `ollama list` e passar por geração curta via API local.
+Operações usadas pelo app:
+
+```bash
+ollama list
+ollama show <modelo>
+ollama pull <modelo>
+ollama rm <modelo>
+```
+
+Para ficar pronto, um modelo precisa aparecer em `/api/tags`/`ollama list` e passar por geração curta via API local.
+
+Erros de pull são classificados para a UI:
+
+- modelo não encontrado;
+- sem internet ou registry indisponível;
+- Ollama offline;
+- permissão;
+- disco insuficiente;
+- erro desconhecido.
