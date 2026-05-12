@@ -6,6 +6,9 @@ ICON_ROOT="$HOME/.local/share/icons/hicolor"
 DESKTOP_FILE="$APP_DIR/codex-command-center.desktop"
 
 mkdir -p "$APP_DIR"
+if command -v node >/dev/null 2>&1; then
+  node "$ROOT_DIR/scripts/validate-icon-alpha.mjs"
+fi
 sed "s#^Exec=.*#Exec=$ROOT_DIR/scripts/run-codex-command-center.sh#" \
   "$ROOT_DIR/assets/codex-command-center.desktop" > "$DESKTOP_FILE"
 chmod 0644 "$DESKTOP_FILE"

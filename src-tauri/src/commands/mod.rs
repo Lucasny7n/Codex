@@ -19,9 +19,10 @@ use crate::models::{
     LocalModelInstallProgress, LocalRuntimeSnapshot, LogStream, PendingIntentKind,
     PermissionDecision, PermissionOutcome, PermissionOutcomeStatus, PermissionRequest,
     PrivilegedActionRequestInput, PrivilegedActionSpec, ProviderAccountProfile,
-    ProviderCredentialStatus, ProviderGenerateRequest, ProviderRuntimeStatus, ProviderStatusState,
-    SessionExportFormat, SessionExportResult, SessionStatus, StatusKind, TaskStatus, WorkspaceMeta,
+    ProviderCredentialStatus, ProviderRuntimeStatus, ProviderStatusState, SessionExportFormat,
+    SessionExportResult, SessionStatus, StatusKind, TaskStatus, WorkspaceMeta,
 };
+use crate::services::ai_router::{AiRouteRequest, AiRouter};
 use crate::services::privileged_actions;
 use crate::services::privileged_helper_client::HelperRequest;
 use crate::services::provider_registry::ProviderRegistry;
@@ -1911,126 +1912,6 @@ pub async fn send_temporary_order_to_agent(
     .map_err(map_err)
 }
 
-fn attachment_text(value: &Value, key: &str) -> Option<String> {
-    value
-        .get(key)
-        .and_then(Value::as_str)
-        .map(str::trim)
-        .filter(|text| !text.is_empty())
-        .map(redact_secret_like)
-}
-
-fn attachment_context(attachments: &[Value]) -> String {
-    if attachments.is_empty() {
-        return String::new();
-    }
-
-    let mut blocks = Vec::new();
-    for attachment in attachments {
-        let name = attachment_text(attachment, "name").unwrap_or_else(|| "arquivo".to_owned());
-        let path = attachment_text(attachment, "path")
-            .unwrap_or_else(|| "caminho indisponível".to_owned());
-        let kind = attachment_text(attachment, "kind").unwrap_or_else(|| "generic".to_owned());
-        let mime = attachment_text(attachment, "mimeType");
-        let size = attachment.get("size").and_then(Value::as_u64);
-        let preview = attachment_text(attachment, "previewTextLimited");
-
-        let mut lines = vec![
-            format!("Nome: {name}"),
-            format!("Caminho: {path}"),
-            format!("Tipo: {kind}"),
-        ];
-        if let Some(mime) = mime {
-            lines.push(format!("MIME: {mime}"));
-        }
-        if let Some(size) = size {
-            lines.push(format!("Tamanho: {size} bytes"));
-        }
-        if let Some(preview) = preview {
-            lines.push("Preview limitado para contexto oculto:".to_owned());
-            lines.push(preview);
-        }
-        blocks.push(lines.join("\n"));
-    }
-
-    format!(
-        "Anexos brutos/metadados recebidos pelo app. Não renderizar como texto da conversa; use path/metadados e ferramentas locais se precisar abrir.\n\n{}",
-        blocks.join("\n\n")
-    )
-}
-
-fn prompt_with_attachments(prompt: &str, attachments: &[Value]) -> String {
-    let context = attachment_context(attachments);
-    if context.is_empty() {
-        prompt.to_owned()
-    } else {
-        format!("{prompt}\n\n[contexto oculto de anexos]\n{context}")
-    }
-}
-
-fn prompt_with_language_preference(prompt: &str, language: &str) -> String {
-    let label = match language {
-        "en" => "English",
-        "es" => "Español",
-        _ => "Português (Brasil)",
-    };
-    format!(
-        "[preferência do usuário]\nResponda em {label}. Não repita esta instrução.\n\n[solicitação]\n{prompt}"
-    )
-}
-
-fn prompt_with_mode_preference(prompt: &str, mode: Option<&str>) -> String {
-    let Some(mode) = mode else {
-        return prompt.to_owned();
-    };
-    let instruction = match mode {
-        "thinking" => {
-            "Use análise mais cuidadosa antes de responder, mantendo a resposta final limpa."
-        }
-        "fast" => "Priorize uma resposta curta, direta e de baixa latência.",
-        "code" => "Priorize implementação, código, comandos e validação técnica.",
-        "terminal" => {
-            "Trate como fluxo de terminal: planeje comandos, riscos e confirmação antes de execução."
-        }
-        _ => "Escolha automaticamente o melhor comportamento para a solicitação.",
-    };
-    format!("{prompt}\n\n[modo selecionado]\n{instruction}")
-}
-
-fn prompt_with_temporary_history(messages: &[ChatMessage], prompt: &str) -> String {
-    let history = messages
-        .iter()
-        .rev()
-        .take(8)
-        .collect::<Vec<_>>()
-        .into_iter()
-        .rev()
-        .filter_map(|message| {
-            let role = match &message.role {
-                ChatRole::User => "Usuário",
-                ChatRole::Assistant => "Assistente",
-                ChatRole::System => "Sistema",
-                ChatRole::Tool => "Ferramenta",
-            };
-            let content = message.content.trim();
-            if content.is_empty() {
-                None
-            } else {
-                Some(format!("{role}: {}", redact_secret_like(content)))
-            }
-        })
-        .collect::<Vec<_>>();
-
-    if history.is_empty() {
-        prompt.to_owned()
-    } else {
-        format!(
-            "[histórico temporário em memória, não persistido]\n{}\n\n[solicitação atual]\n{prompt}",
-            history.join("\n")
-        )
-    }
-}
-
 async fn run_agent_order(
     app: Option<&AppHandle>,
     session_manager: Arc<SessionManager>,
@@ -2050,15 +1931,11 @@ async fn run_agent_order(
     } else {
         prompt
     };
-    let provider_prompt = prompt_with_language_preference(
-        &prompt_with_mode_preference(
-            &prompt_with_attachments(visible_prompt, &attachments),
-            mode.as_deref(),
-        ),
-        &settings.ai_response_language,
-    );
-
     let session_environment = session_manager.get_session(&session_id).ok();
+    let history = session_environment
+        .as_ref()
+        .map(|session| session.messages.clone())
+        .unwrap_or_default();
     let provider_id = session_environment
         .as_ref()
         .and_then(|session| session.provider_id.clone())
@@ -2128,25 +2005,34 @@ async fn run_agent_order(
         ),
     );
 
-    let request = ProviderGenerateRequest {
-        provider_id: provider_id.clone(),
-        model_id: model_id.clone(),
-        prompt: provider_prompt,
-        attachments,
-        workspace_root: settings.workspace_root,
-        account_profile_id,
-    };
-
-    match provider_registry.generate_response(request).await {
-        Ok(result) => {
-            emit_provider_logs(app, &session_id, &result);
+    let router = AiRouter::new(provider_registry.clone());
+    match router
+        .route(AiRouteRequest {
+            provider_id: provider_id.clone(),
+            model_id: model_id.clone(),
+            prompt: visible_prompt.to_owned(),
+            history,
+            mode,
+            attachments,
+            workspace_root: settings.workspace_root,
+            account_profile_id,
+            language: settings.ai_response_language,
+            temporary: false,
+            developer_mode: settings.developer_mode,
+            routing: settings.ai_routing,
+        })
+        .await
+    {
+        Ok(route) => {
+            emit_provider_logs(app, &session_id, &route.result);
             emit_status_note(
                 app,
                 session_manager.make_status_note(
                     &session_id,
                     StatusKind::Success,
                     "Resposta do provider recebida",
-                    result
+                    route
+                        .result
                         .status
                         .command
                         .as_deref()
@@ -2154,11 +2040,22 @@ async fn run_agent_order(
                 ),
             );
 
+            let summary = if route.fallback_used {
+                format!(
+                    "{} Respondido por fallback: {}/{}. Tentativas: {}.",
+                    route.result.status.message,
+                    route.provider_id,
+                    route.model_id,
+                    route.attempts.join(" -> ")
+                )
+            } else {
+                route.result.status.message.clone()
+            };
             let session = session_manager
                 .append_assistant_message(
                     &session_id,
-                    &result.content,
-                    Some(result.status.message),
+                    &route.result.content,
+                    Some(summary),
                     SessionStatus::Idle,
                 )?
                 .ok_or_else(|| AppError::Message("Sessão não encontrada".to_owned()))?;
@@ -2241,47 +2138,53 @@ async fn run_temporary_agent_order(
         .find(|provider| provider.id == provider_id)
         .map(|provider| provider.label)
         .unwrap_or_else(|| provider_id.clone());
-    let provider_prompt = prompt_with_language_preference(
-        &prompt_with_mode_preference(
-            &prompt_with_attachments(
-                &prompt_with_temporary_history(
-                    &messages[..messages.len().saturating_sub(1)],
-                    visible_prompt,
-                ),
-                &attachments,
-            ),
-            mode.as_deref(),
-        ),
-        &settings.ai_response_language,
-    );
-
-    let request = ProviderGenerateRequest {
-        provider_id: provider_id.clone(),
-        model_id: model_id.clone(),
-        prompt: provider_prompt,
-        attachments,
-        workspace_root: settings.workspace_root,
-        account_profile_id: settings.selected_provider_profile_id.clone(),
-    };
-
-    match provider_registry.generate_response(request).await {
-        Ok(result) => {
+    let history = messages[..messages.len().saturating_sub(1)].to_vec();
+    let router = AiRouter::new(provider_registry.clone());
+    match router
+        .route(AiRouteRequest {
+            provider_id: provider_id.clone(),
+            model_id: model_id.clone(),
+            prompt: visible_prompt.to_owned(),
+            history,
+            mode,
+            attachments,
+            workspace_root: settings.workspace_root,
+            account_profile_id: settings.selected_provider_profile_id.clone(),
+            language: settings.ai_response_language,
+            temporary: true,
+            developer_mode: settings.developer_mode,
+            routing: settings.ai_routing,
+        })
+        .await
+    {
+        Ok(route) => {
+            let summary = if route.fallback_used {
+                format!(
+                    "{} Respondido por fallback: {}/{}. Tentativas: {}.",
+                    route.result.status.message,
+                    route.provider_id,
+                    route.model_id,
+                    route.attempts.join(" -> ")
+                )
+            } else {
+                route.result.status.message.clone()
+            };
             messages.push(ChatMessage {
                 id: Uuid::new_v4().to_string(),
                 role: ChatRole::Assistant,
-                content: result.content,
+                content: route.result.content,
                 created_at: crate::models::now_iso(),
-                reasoning_summary: Some(result.status.message),
+                reasoning_summary: Some(summary),
                 attachments: Vec::new(),
             });
             Ok(temporary_session(
                 messages,
                 created_at,
                 SessionStatus::Idle,
-                provider_id,
-                model_id,
+                route.provider_id,
+                route.model_id,
                 settings.selected_agent_id,
-                settings.selected_provider_profile_id,
+                route.account_profile_id,
             ))
         }
         Err(cause) => {
@@ -2476,6 +2379,8 @@ mod agent_order_tests {
             auto_copy_responses: false,
             paste_large_text_as_file: true,
             personalization: crate::models::AppPersonalizationSettings::default(),
+            developer_mode: false,
+            ai_routing: crate::models::AiRoutingSettings::default(),
         }
     }
 

@@ -413,6 +413,56 @@ impl Default for AppPersonalizationSettings {
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AiFallbackPolicy {
+    Automatic,
+    FastFirst,
+    CloudFirst,
+    LocalFirst,
+    Code,
+}
+
+impl Default for AiFallbackPolicy {
+    fn default() -> Self {
+        Self::Automatic
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AiFallbackModelConfig {
+    pub provider_id: String,
+    pub model_id: String,
+    #[serde(default)]
+    pub account_profile_id: Option<String>,
+    #[serde(default = "default_true")]
+    pub enabled: bool,
+    #[serde(default)]
+    pub label: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AiRoutingSettings {
+    #[serde(default)]
+    pub fallback_enabled: bool,
+    #[serde(default)]
+    pub fallback_policy: AiFallbackPolicy,
+    #[serde(default)]
+    pub fallback_models: Vec<AiFallbackModelConfig>,
+}
+
+impl Default for AiRoutingSettings {
+    fn default() -> Self {
+        Self {
+            fallback_enabled: false,
+            fallback_policy: AiFallbackPolicy::Automatic,
+            fallback_models: Vec::new(),
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ModelSelectionHistoryEntry {
@@ -454,6 +504,10 @@ pub struct AppSettings {
     pub paste_large_text_as_file: bool,
     #[serde(default)]
     pub personalization: AppPersonalizationSettings,
+    #[serde(default)]
+    pub developer_mode: bool,
+    #[serde(default)]
+    pub ai_routing: AiRoutingSettings,
 }
 
 impl AppSettings {
@@ -477,6 +531,8 @@ impl AppSettings {
             auto_copy_responses: false,
             paste_large_text_as_file: true,
             personalization: AppPersonalizationSettings::default(),
+            developer_mode: false,
+            ai_routing: AiRoutingSettings::default(),
         }
     }
 }

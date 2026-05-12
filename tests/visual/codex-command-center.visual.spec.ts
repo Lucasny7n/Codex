@@ -1,6 +1,7 @@
 import { expect, test, type Page } from '@playwright/test';
 
-const screenshotDir = '/home/lucas/Lucas-Workspace/Temp';
+const nodeProcess = (globalThis as { process?: { env?: Record<string, string | undefined> } }).process;
+const screenshotDir = nodeProcess?.env?.CODEX_SCREENSHOT_DIR ?? 'test-results/screenshots';
 
 declare global {
   interface Window {

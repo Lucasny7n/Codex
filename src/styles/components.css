@@ -5570,6 +5570,22 @@
   background: rgba(255, 255, 255, 0.032);
 }
 
+.settings-routing-block {
+  gap: 10px;
+}
+
+.settings-routing-list {
+  align-items: stretch;
+}
+
+.settings-routing-list textarea {
+  width: min(100%, 460px);
+  min-height: 104px;
+  resize: vertical;
+  font-family: var(--font-mono);
+  line-height: 1.45;
+}
+
 :root[data-theme='light'] .prompt-pill {
   background: rgba(255, 255, 255, 0.82);
   border-color: rgba(15, 23, 42, 0.10);

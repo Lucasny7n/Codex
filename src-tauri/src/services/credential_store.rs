@@ -1,5 +1,7 @@
 use std::collections::BTreeMap;
 use std::fs;
+#[cfg(unix)]
+use std::os::unix::fs::PermissionsExt;
 use std::path::PathBuf;
 
 use parking_lot::RwLock;
@@ -49,6 +51,9 @@ impl CredentialStore {
     pub fn new(path: PathBuf) -> AppResult<Self> {
         if let Some(parent) = path.parent() {
             fs::create_dir_all(parent)?;
+            if should_harden_directory(parent) {
+                secure_directory(parent)?;
+            }
         }
         let cache = if path.exists() {
             let raw = fs::read_to_string(&path)?;
@@ -56,11 +61,16 @@ impl CredentialStore {
         } else {
             CredentialFile::default()
         };
+        if path.exists() {
+            secure_file(&path)?;
+        }
 
-        Ok(Self {
+        let store = Self {
             path,
             cache: RwLock::new(cache),
-        })
+        };
+        store.flush()?;
+        Ok(store)
     }
 
     pub fn save(&self, provider_id: &str, key: &str) -> AppResult<ProviderCredentialStatus> {
@@ -416,8 +426,36 @@ impl CredentialStore {
     fn flush(&self) -> AppResult<()> {
         let body = serde_json::to_string_pretty(&*self.cache.read())?;
         fs::write(&self.path, body)?;
+        secure_file(&self.path)?;
         Ok(())
     }
+}
+
+fn secure_directory(path: &std::path::Path) -> AppResult<()> {
+    #[cfg(unix)]
+    {
+        fs::set_permissions(path, fs::Permissions::from_mode(0o700))?;
+    }
+    Ok(())
+}
+
+fn secure_file(path: &std::path::Path) -> AppResult<()> {
+    #[cfg(unix)]
+    {
+        fs::set_permissions(path, fs::Permissions::from_mode(0o600))?;
+    }
+    Ok(())
+}
+
+fn should_harden_directory(path: &std::path::Path) -> bool {
+    if path == std::env::temp_dir() {
+        return false;
+    }
+    if let Ok(home) = std::env::var("HOME") {
+        let home_path = std::path::PathBuf::from(home);
+        return path.starts_with(home_path.join(".codex"));
+    }
+    false
 }
 
 fn fallback_profile(
@@ -594,10 +632,12 @@ mod tests {
     use crate::models::ModelDescriptor;
 
     fn temp_store() -> CredentialStore {
-        let path = std::env::temp_dir().join(format!(
-            "codex-credential-store-test-{}.json",
+        let dir = std::env::temp_dir().join(format!(
+            "codex-credential-store-test-{}",
             uuid::Uuid::new_v4()
         ));
+        fs::create_dir_all(&dir).expect("diretório temporário deve existir");
+        let path = dir.join("credentials.json");
         CredentialStore::new(path).expect("credential store de teste deve iniciar")
     }
 
@@ -730,5 +770,43 @@ mod tests {
             profile.status == ProviderAccountStatus::Ready
                 && profile.masked_credential.as_deref() == Some("sk-w****6789")
         }));
+        let serialized = serde_json::to_string(&profiles).expect("profiles devem serializar");
+        assert!(!serialized.contains("sk-work-123456789"));
+    }
+
+    #[test]
+    fn fallback_file_uses_private_permissions() {
+        let dir = std::env::temp_dir().join(format!(
+            "codex-credential-permission-test-{}",
+            uuid::Uuid::new_v4()
+        ));
+        fs::create_dir_all(&dir).expect("diretório temporário deve existir");
+        let path = dir.join("credentials.json");
+        let store = CredentialStore::new(path.clone()).expect("store deve iniciar");
+        store
+            .save_profile(
+                "openai-api",
+                None,
+                "Principal",
+                "sk-private-123456789",
+                true,
+            )
+            .expect("profile deve salvar");
+
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let file_mode = fs::metadata(&path)
+                .expect("arquivo deve existir")
+                .permissions()
+                .mode()
+                & 0o777;
+            assert_eq!(file_mode, 0o600);
+        }
+
+        let status = store.status("openai-api");
+        let status_json = serde_json::to_string(&status).expect("status deve serializar");
+        assert!(!status_json.contains("sk-private-123456789"));
+        assert_eq!(status.masked_key.as_deref(), Some("sk-p****6789"));
     }
 }

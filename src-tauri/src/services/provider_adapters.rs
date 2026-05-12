@@ -1149,10 +1149,10 @@ impl LocalOllamaAdapter {
     fn list_models_sync(&self, path: &Path) -> Vec<ModelDescriptor> {
         let output = StdCommand::new(path).arg("list").output().ok();
         let Some(output) = output else {
-            return fallback_local_models();
+            return Vec::new();
         };
         if !output.status.success() {
-            return fallback_local_models();
+            return Vec::new();
         }
         let stdout = String::from_utf8_lossy(&output.stdout).to_string();
         let mut models = Vec::new();
@@ -1172,9 +1172,6 @@ impl LocalOllamaAdapter {
             }
         }
 
-        if models.is_empty() {
-            return fallback_local_models();
-        }
         models
     }
 
@@ -1209,7 +1206,7 @@ impl ProviderAdapter for LocalOllamaAdapter {
             .command_path()
             .as_deref()
             .map(|path| self.list_models_sync(path))
-            .unwrap_or_else(fallback_local_models);
+            .unwrap_or_default();
 
         ProviderDescriptor {
             id: Self::ID.to_owned(),
@@ -1278,9 +1275,25 @@ impl ProviderAdapter for LocalOllamaAdapter {
                 return Ok(status);
             }
 
+            let Some(model_id) = self.command_path().as_deref().and_then(|path| {
+                self.list_models_sync(path)
+                    .into_iter()
+                    .next()
+                    .map(|model| model.id)
+            }) else {
+                return Ok(provider_status(
+                    ProviderStatusState::ModelMissing,
+                    "Ollama está acessível, mas nenhum modelo instalado foi encontrado em `ollama list`.",
+                    Some("ollama list".to_owned()),
+                    self.command_path()
+                        .as_deref()
+                        .and_then(|path| self.version_for(path)),
+                ));
+            };
+
             let request = ProviderGenerateRequest {
                 provider_id: Self::ID.to_owned(),
-                model_id: fallback_local_model_id().to_owned(),
+                model_id,
                 prompt: "Responda apenas: ok".to_owned(),
                 attachments: Vec::new(),
                 workspace_root: env::current_dir()
@@ -1750,29 +1763,6 @@ fn optional_text(text: String) -> Option<String> {
     } else {
         Some(text)
     }
-}
-
-fn fallback_local_model_id() -> &'static str {
-    "qwen2.5-coder:7b"
-}
-
-fn fallback_local_models() -> Vec<ModelDescriptor> {
-    vec![
-        ModelDescriptor {
-            id: "qwen2.5-coder:7b".to_owned(),
-            label: "Qwen2.5 Coder 7B".to_owned(),
-            provider_id: "local-ollama".to_owned(),
-            context_window: Some(32_000),
-            supports_tools: false,
-        },
-        ModelDescriptor {
-            id: "llama3.1:8b".to_owned(),
-            label: "Llama 3.1 8B".to_owned(),
-            provider_id: "local-ollama".to_owned(),
-            context_window: Some(32_000),
-            supports_tools: false,
-        },
-    ]
 }
 
 #[cfg(test)]

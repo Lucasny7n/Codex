@@ -29,6 +29,7 @@ npm run test -- --run
 npm run build
 npm run screenshots
 npm run test:visual
+npm run icons:validate
 ```
 
 Backend:
@@ -52,7 +53,11 @@ cargo test
 
 ## Testes Visuais
 
-`npm run screenshots` e `npm run test:visual` usam Playwright. As capturas da Passada 13 são gravadas em `/home/lucas/Lucas-Workspace/Temp` para não poluir o repositório.
+`npm run screenshots` e `npm run test:visual` usam Playwright. Por padrão as capturas vão para `test-results/screenshots`; defina `CODEX_SCREENSHOT_DIR=/home/lucas/Lucas-Workspace/Temp` quando quiser comparar no host.
+
+## Ícones
+
+A fonte vetorial fica em `assets/icon-source.svg`. Gere os PNGs com `npm run icons:generate` e valide transparência real com `npm run icons:validate`.
 
 ## Checklist Antes de Commit
 
@@ -63,8 +68,9 @@ cargo test
 5. `npm run build`
 6. `npm run screenshots`
 7. `npm run test:visual`
-8. `git diff --check`
-9. `cd src-tauri && cargo fmt --check && cargo check && cargo test`
+8. `npm run icons:validate`
+9. `git diff --check`
+10. `cd src-tauri && cargo fmt --check && cargo check && cargo test`
 
 ## Organização
 

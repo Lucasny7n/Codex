@@ -31,6 +31,7 @@ import {
   requestPrivilegedAction,
   renameSession,
   restoreSession,
+  removeLocalModel,
   removeProviderProfile,
   renameProviderProfile,
   saveProviderProfileCredential,
@@ -51,6 +52,7 @@ import {
   buildCloudModelOptions,
   buildLocalModelOptions,
   isLocalModelInstalled,
+  normalizeOllamaModelId,
 } from './lib/modelCatalogService';
 import { translateError } from './lib/errorTranslator';
 import { applyAppTheme } from './lib/theme';
@@ -1239,6 +1241,9 @@ export default function App(): JSX.Element {
     try {
       const snapshot = await installLocalModel(model.modelId);
       setLocalRuntime(snapshot);
+      if (!isLocalModelInstalled(snapshot, model.modelId)) {
+        throw new Error(`Ollama terminou o download, mas ${model.modelId} ainda não aparece em /api/tags ou ollama list.`);
+      }
       const next = pushHistory(
         {
           ...settings,
@@ -1256,6 +1261,32 @@ export default function App(): JSX.Element {
       selectModel(model.id);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'Falha ao instalar modelo local.');
+      await refreshLocalRuntime();
+    } finally {
+      setModelActionBusyId(undefined);
+    }
+  }
+
+  async function handleRemoveLocalModelById(modelId: string): Promise<void> {
+    if (!settings) return;
+    setModelActionBusyId(modelId);
+    try {
+      const snapshot = await removeLocalModel(modelId);
+      setLocalRuntime(snapshot);
+      const removedSelected =
+        normalizeOllamaModelId(settings.selectedLocalModelId ?? '') === normalizeOllamaModelId(modelId) ||
+        normalizeOllamaModelId(settings.selectedModelId ?? '') === normalizeOllamaModelId(modelId);
+      if (removedSelected) {
+        const nextInstalled = snapshot.installedModels[0]?.id;
+        await applySettings({
+          ...settings,
+          selectedModelId: settings.executionMode === 'local' ? nextInstalled ?? '' : settings.selectedModelId,
+          selectedLocalModelId: nextInstalled,
+        });
+        if (nextInstalled) selectModel(nextInstalled);
+      }
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Falha ao remover modelo local.');
       await refreshLocalRuntime();
     } finally {
       setModelActionBusyId(undefined);
@@ -1592,6 +1623,7 @@ export default function App(): JSX.Element {
               onRemoveProviderProfile={handleRemoveProviderProfile}
               onTestProvider={handleTestProvider}
               onInstallLocalModel={handleInstallLocalModelById}
+              onRemoveLocalModel={handleRemoveLocalModelById}
               onTestLocalModel={handleTestLocalModelById}
               onStartTemporaryChat={startTemporaryChat}
               onExitTemporaryChat={exitTemporaryChat}

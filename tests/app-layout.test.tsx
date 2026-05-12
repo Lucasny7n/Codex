@@ -494,7 +494,7 @@ describe('App layout visibility', () => {
     expect(screen.getByRole('dialog', { name: 'GPT-5.5' })).toBeInTheDocument();
     expect(api.updateSettings).not.toHaveBeenCalledWith(expect.objectContaining({ selectedModelId: 'gpt-5.5' }));
     expect(screen.getByLabelText('API Key')).toBeInTheDocument();
-    expect(screen.getByText('Salvar API')).toBeInTheDocument();
+    expect(screen.getAllByRole('button', { name: 'Adicionar key' }).length).toBeGreaterThan(0);
     expect(screen.getByText('Testar API')).toBeInTheDocument();
     expect(screen.getByText(/Status: não testado/)).toBeInTheDocument();
 
@@ -619,7 +619,8 @@ describe('App layout visibility', () => {
 
     fireEvent.mouseEnter(screen.getByText(/Principal/).closest('.model-config-key-row') as HTMLElement);
     fireEvent.click(screen.getByLabelText('Ações da key Principal'));
-    fireEvent.click(screen.getByText('Excluir key'));
+    expect(screen.getByText('Usar como padrão')).toBeInTheDocument();
+    fireEvent.click(screen.getByText('Remover key'));
     await waitFor(() => {
       expect(api.removeProviderProfile).toHaveBeenCalledWith('openai-api:principal');
     });
@@ -628,7 +629,8 @@ describe('App layout visibility', () => {
     fireEvent.change(screen.getByLabelText('Nome da key'), { target: { value: 'Nova key' } });
     fireEvent.change(screen.getByLabelText('API Key'), { target: { value: 'sk-test-valid-abcdef123456' } });
     expect(screen.getByText('Mostrar')).toBeInTheDocument();
-    fireEvent.click(screen.getByText('Salvar API'));
+    const addKeyButtons = screen.getAllByRole('button', { name: 'Adicionar key' });
+    fireEvent.click(addKeyButtons[addKeyButtons.length - 1]);
 
     await waitFor(() => {
       expect(api.saveProviderProfileCredential).toHaveBeenCalledWith('openai-api', undefined, 'Nova key', 'sk-test-valid-abcdef123456', true);

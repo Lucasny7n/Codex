@@ -335,6 +335,22 @@ export interface AppPersonalizationSettings {
   localImageUpscaling: boolean;
 }
 
+export type AiFallbackPolicy = 'automatic' | 'fast_first' | 'cloud_first' | 'local_first' | 'code';
+
+export interface AiFallbackModelConfig {
+  providerId: string;
+  modelId: string;
+  accountProfileId?: string;
+  enabled: boolean;
+  label?: string;
+}
+
+export interface AiRoutingSettings {
+  fallbackEnabled: boolean;
+  fallbackPolicy: AiFallbackPolicy;
+  fallbackModels: AiFallbackModelConfig[];
+}
+
 export interface ModelSelectionHistoryEntry {
   mode: ExecutionMode;
   providerId: string;
@@ -361,6 +377,8 @@ export interface AppSettings {
   autoCopyResponses?: boolean;
   pasteLargeTextAsFile?: boolean;
   personalization?: AppPersonalizationSettings;
+  developerMode?: boolean;
+  aiRouting?: AiRoutingSettings;
 }
 
 export interface MemorySnapshot {

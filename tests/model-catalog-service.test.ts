@@ -118,8 +118,8 @@ describe('modelCatalogService', () => {
   it('Local vazio mostra só instalados reais e busca mostra downloads do catálogo', () => {
     const options = buildLocalModelOptions({
       localRuntime: localRuntime([
-        { id: 'qwen2.5-coder:1.5b', size: '986 MB' },
-        { id: 'custom-lab:latest', size: '4.2 GB' },
+        { id: 'qwen2.5-coder:1.5b', size: '986 MB', digest: 'sha256:qwen', modifiedAt: now },
+        { id: 'custom-lab:latest', size: '4.2 GB', digest: 'sha256:custom', modifiedAt: now },
       ]),
       installationProgress: {
         'deepseek-coder:6.7b': {
@@ -145,6 +145,23 @@ describe('modelCatalogService', () => {
     expect(deepSeekDownloads.some((option) => option.label === 'DeepSeek Coder 6.7B' && option.statusLabel === 'Baixando')).toBe(true);
     expect(deepSeekDownloads.some((option) => option.label.includes('DeepSeek') && option.statusLabel === 'Download')).toBe(true);
     expect(visibleModelOptions('local', options, 'GPT-5.5')).toHaveLength(0);
+
+    const installedQwen = visibleModelOptions('local', options, '').find((option) => option.modelId === 'qwen2.5-coder:1.5b');
+    expect(installedQwen?.digest).toBe('sha256:qwen');
+    expect(installedQwen?.modifiedAt).toBe(now);
+  });
+
+  it('normaliza IDs Ollama e mantém catálogo local pesquisável sem poluir padrão', () => {
+    const options = buildLocalModelOptions({
+      localRuntime: localRuntime([{ id: 'llama3.2:latest', size: '2 GB' }]),
+    });
+
+    expect(visibleModelOptions('local', options, '').map((option) => option.modelId)).toContain('llama3.2:latest');
+    expect(visibleModelOptions('local', options, 'Granite').some((option) => option.modelId === 'granite-code:8b')).toBe(true);
+    expect(visibleModelOptions('local', options, 'Devstral').some((option) => option.modelId === 'devstral:latest')).toBe(true);
+    expect(visibleModelOptions('local', options, 'TinyLlama').some((option) => option.modelId === 'tinyllama:1.1b')).toBe(true);
+    expect(visibleModelOptions('local', options, 'OpenChat').some((option) => option.modelId === 'openchat:latest')).toBe(true);
+    expect(visibleModelOptions('local', options, '').some((option) => option.modelId === 'granite-code:8b')).toBe(false);
   });
 
   it('filtra defensivamente opções misturadas pela origem explícita', () => {

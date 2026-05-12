@@ -9,8 +9,10 @@
     "preview": "vite preview",
     "lint": "eslint .",
     "test": "vitest run",
-    "test:visual": "playwright test",
-    "screenshots": "playwright test tests/visual/codex-command-center.visual.spec.ts",
+    "test:visual": "mkdir -p ${CODEX_SCREENSHOT_DIR:-test-results/screenshots} && playwright test",
+    "screenshots": "mkdir -p ${CODEX_SCREENSHOT_DIR:-test-results/screenshots} && playwright test tests/visual/codex-command-center.visual.spec.ts",
+    "icons:generate": "bash scripts/generate-icons.sh",
+    "icons:validate": "node scripts/validate-icon-alpha.mjs",
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit",
     "tauri": "tauri"

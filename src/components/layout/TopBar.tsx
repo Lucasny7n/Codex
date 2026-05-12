@@ -43,6 +43,7 @@ interface TopBarProps {
   onRemoveProviderProfile?: (profileId: string) => Promise<void>;
   onTestProvider?: (providerId: string) => Promise<ProviderRuntimeStatus>;
   onInstallLocalModel?: (modelId: string) => Promise<void>;
+  onRemoveLocalModel?: (modelId: string) => Promise<void>;
   onTestLocalModel?: (modelId: string) => Promise<boolean>;
   onStartTemporaryChat: () => void;
   onExitTemporaryChat: () => void;
@@ -213,6 +214,7 @@ export function TopBar({
   onRemoveProviderProfile,
   onTestProvider,
   onInstallLocalModel,
+  onRemoveLocalModel,
   onTestLocalModel,
   onStartTemporaryChat,
   onExitTemporaryChat,
@@ -466,6 +468,30 @@ export function TopBar({
     }
   }
 
+  async function removeLocalModelFromModal(): Promise<void> {
+    const target = configTarget;
+    const modelId = target?.option.modelId ?? target?.option.id;
+    if (!target || !modelId || !onRemoveLocalModel) return;
+    setConfigStatus('testing');
+    setConfigError(undefined);
+    try {
+      await onRemoveLocalModel(modelId);
+      setConfigTarget({
+        ...target,
+        option: {
+          ...target.option,
+          installed: false,
+          available: false,
+          statusLabel: 'Download',
+        },
+      });
+      setConfigStatus('idle');
+    } catch (cause) {
+      setConfigStatus('error');
+      setConfigError(cause instanceof Error ? cause.message : 'Falha ao remover modelo local.');
+    }
+  }
+
   return (
     <>
     <header className="topbar-clean">
@@ -638,6 +664,16 @@ export function TopBar({
                   <PopupMenu open={profileMenuId === profile.id} onClose={() => setProfileMenuId(undefined)} placement="auto" align="right">
                     <button
                       type="button"
+                      disabled={profile.source !== 'config_file' || profile.isDefault || profileActionBusyId === profile.id}
+                      onClick={() => {
+                        setProfileMenuId(undefined);
+                        void activateProfile(profile);
+                      }}
+                    >
+                      Usar como padrão
+                    </button>
+                    <button
+                      type="button"
                       onClick={() => {
                         setProfileMenuId(undefined);
                         setSelectedConfigProfileId(profile.id);
@@ -672,7 +708,7 @@ export function TopBar({
                       disabled={profile.source !== 'config_file' || profileActionBusyId === profile.id}
                       onClick={() => void removeProfile(profile)}
                     >
-                      Excluir key
+                      Remover key
                     </button>
                   </PopupMenu>
                 </div>
@@ -706,7 +742,7 @@ export function TopBar({
           {configError ? <div className="input-error-tip" role="alert">{configError}</div> : null}
           <div className="dialog-actions">
             <button type="button" className="btn-modern" disabled={!onSaveProviderProfileCredential || apiKey.trim().length < 12} onClick={() => void saveApiKey()}>
-              Salvar API
+              {configProfile?.source === 'config_file' ? 'Substituir key' : 'Adicionar key'}
             </button>
             <button
               type="button"
@@ -741,6 +777,18 @@ export function TopBar({
               <strong>Tamanho estimado</strong>
               {configTarget.option.estimatedSize ?? 'Não informado'}
             </span>
+            {configTarget.option.digest ? (
+              <span>
+                <strong>Digest</strong>
+                {configTarget.option.digest}
+              </span>
+            ) : null}
+            {configTarget.option.modifiedAt ? (
+              <span>
+                <strong>Atualizado</strong>
+                {configTarget.option.modifiedAt}
+              </span>
+            ) : null}
           </div>
           <div className="model-config-status">
             <StatusDot tone={configTarget.option.installed ? 'ready' : configStatus === 'error' ? 'error' : 'offline'} />
@@ -771,6 +819,16 @@ export function TopBar({
                 onClick={() => void installLocalModelFromModal()}
               >
                 Download{typeof localProgress?.progressPercent === 'number' ? ` ${localProgress.progressPercent}%` : ''}
+              </button>
+            ) : null}
+            {configTarget.option.installed ? (
+              <button
+                type="button"
+                className="btn-modern danger"
+                disabled={!onRemoveLocalModel || busyModelId === configTarget.option.id || configStatus === 'testing'}
+                onClick={() => void removeLocalModelFromModal()}
+              >
+                Remover modelo
               </button>
             ) : null}
             <button type="button" className="btn-modern" disabled={!onTestLocalModel || configStatus === 'testing'} onClick={() => void testLocalModel()}>

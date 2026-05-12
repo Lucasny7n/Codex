@@ -202,6 +202,8 @@ mod tests {
             auto_copy_responses: false,
             paste_large_text_as_file: true,
             personalization: crate::models::AppPersonalizationSettings::default(),
+            developer_mode: false,
+            ai_routing: crate::models::AiRoutingSettings::default(),
         }
     }
 

@@ -1,3 +1,4 @@
+pub mod ai_router;
 pub mod command_executor;
 pub mod config_manager;
 pub mod credential_store;

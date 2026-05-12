@@ -168,7 +168,48 @@ describe('SettingsPanel', () => {
     expect(screen.getByText('Geração automática de título')).toBeInTheDocument();
     expect(screen.getByText('Cópia automática da resposta')).toBeInTheDocument();
     expect(screen.getByText('Colar texto grande como arquivo')).toBeInTheDocument();
-    expect(screen.getAllByRole('switch').length).toBe(3);
+    expect(screen.getByText('Modo Desenvolvedor')).toBeInTheDocument();
+    expect(screen.getAllByRole('switch').length).toBe(4);
+  });
+
+  it('Modo Desenvolvedor libera roteamento e fallback configurável', async () => {
+    const onChange = vi.fn().mockResolvedValue(undefined);
+    renderSettings({
+      onChange,
+      settings: {
+        ...settings(),
+        developerMode: true,
+        aiRouting: {
+          fallbackEnabled: false,
+          fallbackPolicy: 'automatic',
+          fallbackModels: [],
+        },
+      },
+      initialTab: 'interface',
+    });
+
+    expect(screen.getByText('Roteamento avançado')).toBeInTheDocument();
+    fireEvent.click(screen.getByText('Fallback entre IAs'));
+    expect(onChange).toHaveBeenCalledWith(expect.objectContaining({
+      aiRouting: expect.objectContaining({ fallbackEnabled: true }),
+    }));
+
+    fireEvent.change(screen.getByLabelText('Política de fallback'), { target: { value: 'local_first' } });
+    expect(onChange).toHaveBeenCalledWith(expect.objectContaining({
+      aiRouting: expect.objectContaining({ fallbackPolicy: 'local_first' }),
+    }));
+
+    fireEvent.change(screen.getByPlaceholderText(/openai-api/), {
+      target: { value: 'local-ollama/qwen2.5-coder:7b' },
+    });
+    fireEvent.blur(screen.getByPlaceholderText(/openai-api/));
+    await waitFor(() => {
+      expect(onChange).toHaveBeenCalledWith(expect.objectContaining({
+        aiRouting: expect.objectContaining({
+          fallbackModels: [expect.objectContaining({ providerId: 'local-ollama', modelId: 'qwen2.5-coder:7b' })],
+        }),
+      }));
+    });
   });
 
   it('Modelos mostra accordions informativos sem configuração de credencial', () => {

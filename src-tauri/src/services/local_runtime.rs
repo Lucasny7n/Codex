@@ -294,6 +294,35 @@ impl LocalRuntimeService {
             ));
         }
 
+        let snapshot = self.snapshot(settings).await;
+        if !snapshot
+            .installed_models
+            .iter()
+            .any(|model| ollama_model_matches(&model.id, model_id))
+        {
+            emit_progress(LocalModelInstallProgress {
+                model_id: model_id.to_owned(),
+                state: LocalModelInstallState::Error,
+                progress_percent: None,
+                downloaded: None,
+                total: None,
+                speed: None,
+                message: format!(
+                    "Download finalizado, mas `{model_id}` não aparece em /api/tags nem em `ollama list`."
+                ),
+                at: now_iso(),
+            });
+            return Err(AppError::Message(format!(
+                "Modelo `{model_id}` não foi confirmado pelo Ollama após o download."
+            )));
+        }
+
+        test_generate(model_id).await.map_err(|cause| {
+            AppError::Message(format!(
+                "Modelo baixado, mas teste curto de geração falhou: {cause}"
+            ))
+        })?;
+
         emit_progress(LocalModelInstallProgress {
             model_id: model_id.to_owned(),
             state: LocalModelInstallState::Completed,
@@ -305,13 +334,7 @@ impl LocalRuntimeService {
             at: now_iso(),
         });
 
-        test_generate(model_id).await.map_err(|cause| {
-            AppError::Message(format!(
-                "Modelo baixado, mas teste curto de geração falhou: {cause}"
-            ))
-        })?;
-
-        Ok(self.snapshot(settings).await)
+        Ok(snapshot)
     }
 
     pub async fn remove_model(
@@ -449,11 +472,11 @@ fn parse_ollama_tags_json(body: &str) -> Result<Vec<LocalInstalledModel>, serde_
             items
                 .iter()
                 .filter_map(|item| {
-                    let id = item
-                        .get("name")
-                        .or_else(|| item.get("model"))
-                        .and_then(Value::as_str)?
-                        .to_owned();
+                    let id = normalize_ollama_model_id(
+                        item.get("name")
+                            .or_else(|| item.get("model"))
+                            .and_then(Value::as_str)?,
+                    );
                     let digest = item
                         .get("digest")
                         .and_then(Value::as_str)
@@ -556,7 +579,7 @@ fn parse_ollama_list(stdout: &str) -> Vec<LocalInstalledModel> {
             continue;
         }
 
-        let id = tokens[0].to_owned();
+        let id = normalize_ollama_model_id(tokens[0]);
         let digest = Some(tokens[1].to_owned());
         let size = Some(format!("{} {}", tokens[2], tokens[3]));
         let modified_at = if tokens.len() > 4 {
@@ -574,6 +597,19 @@ fn parse_ollama_list(stdout: &str) -> Vec<LocalInstalledModel> {
     }
 
     models
+}
+
+fn normalize_ollama_model_id(raw: &str) -> String {
+    let trimmed = raw.trim().to_ascii_lowercase();
+    if trimmed.is_empty() || trimmed.contains(':') {
+        trimmed
+    } else {
+        format!("{trimmed}:latest")
+    }
+}
+
+fn ollama_model_matches(installed_id: &str, requested_id: &str) -> bool {
+    normalize_ollama_model_id(installed_id) == normalize_ollama_model_id(requested_id)
 }
 
 fn parse_progress_percent(line: &str) -> Option<u8> {
@@ -637,6 +673,12 @@ mod tests {
         assert_eq!(parsed.len(), 1);
         assert_eq!(parsed[0].id, "llama3.2:latest");
         assert_eq!(parsed[0].size.as_deref(), Some("4.7 GB"));
+    }
+
+    #[test]
+    fn normalizes_ollama_model_ids() {
+        assert_eq!(normalize_ollama_model_id("Llama3.2"), "llama3.2:latest");
+        assert!(ollama_model_matches("llama3.2:latest", "llama3.2"));
     }
 
     #[test]

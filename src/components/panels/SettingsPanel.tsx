@@ -5,6 +5,8 @@ import type {
   AgentProfile,
   AgentSession,
   AiResponseLanguage,
+  AiFallbackPolicy,
+  AiRoutingSettings,
   AppPersonalizationSettings,
   AppSettings,
   LocalRuntimeSnapshot,
@@ -84,6 +86,14 @@ const ADVANCED_PERSONALIZATION: Array<{
   { key: 'localImageUpscaling', label: 'Ampliação local da imagem', description: 'Preferência para processamento local quando houver runtime.' },
 ];
 
+const ROUTING_POLICY_OPTIONS: Array<{ value: AiFallbackPolicy; label: string }> = [
+  { value: 'automatic', label: 'Automático' },
+  { value: 'fast_first', label: 'Rápido primeiro' },
+  { value: 'cloud_first', label: 'Cloud primeiro' },
+  { value: 'local_first', label: 'Local primeiro' },
+  { value: 'code', label: 'Código' },
+];
+
 const UNKNOWN_MODEL_VALUE = 'Não informado';
 
 function modelProviderLabel(model: ModelProfile): string {
@@ -130,6 +140,39 @@ function normalizeSettingsTab(tab?: SettingsTab): SettingsTab {
 
 function preference(settings: AppSettings): AppPersonalizationSettings {
   return { ...DEFAULT_PERSONALIZATION, ...settings.personalization };
+}
+
+function fallbackText(settings: AppSettings): string {
+  return (settings.aiRouting?.fallbackModels ?? [])
+    .map((item) => `${item.enabled === false ? '# ' : ''}${item.providerId}/${item.modelId}${item.accountProfileId ? ` @ ${item.accountProfileId}` : ''}`)
+    .join('\n');
+}
+
+function parseFallbackText(value: string): AiRoutingSettings {
+  return {
+    fallbackEnabled: true,
+    fallbackPolicy: 'automatic',
+    fallbackModels: value
+      .split('\n')
+      .map((line) => line.trim())
+      .filter(Boolean)
+      .map((line) => {
+        const enabled = !line.startsWith('#');
+        const clean = line.replace(/^#\s*/u, '');
+        const [identity, profile] = clean.split('@').map((part) => part.trim());
+        const slashIndex = identity.indexOf('/');
+        const providerId = slashIndex > 0 ? identity.slice(0, slashIndex) : identity;
+        const modelId = slashIndex > 0 ? identity.slice(slashIndex + 1) : '';
+        return {
+          providerId,
+          modelId,
+          accountProfileId: profile || undefined,
+          enabled,
+          label: undefined,
+        };
+      })
+      .filter((item) => item.providerId && item.modelId),
+  };
 }
 
 function SwitchRow({
@@ -203,6 +246,7 @@ export function SettingsPanel({
   const [importPickerOpen, setImportPickerOpen] = useState(false);
   const [inlineMessage, setInlineMessage] = useState<string>();
   const [inlineError, setInlineError] = useState<string>();
+  const [fallbackDraft, setFallbackDraft] = useState(() => settings ? fallbackText(settings) : '');
 
   const modelItems = useMemo(() => {
     const featured = new Set(FEATURED_MODEL_IDS);
@@ -228,6 +272,11 @@ export function SettingsPanel({
   }
 
   const personalization = preference(settings);
+  const routing = {
+    fallbackEnabled: settings.aiRouting?.fallbackEnabled ?? false,
+    fallbackPolicy: settings.aiRouting?.fallbackPolicy ?? 'automatic',
+    fallbackModels: settings.aiRouting?.fallbackModels ?? [],
+  };
   const selectedAgentLabel = profiles.find((profile) => profile.id === settings.selectedAgentId)?.label ?? 'Padrão';
   const installedLocalModels = new Set(localRuntime?.installedModels.map((model) => model.id) ?? []);
 
@@ -369,7 +418,61 @@ export function SettingsPanel({
                   checked={settings.pasteLargeTextAsFile ?? true}
                   onChange={(value) => void commit({ pasteLargeTextAsFile: value })}
                 />
+                <SwitchRow
+                  label="Modo Desenvolvedor"
+                  description="Mostra roteamento avançado e fallback. Desligado não gasta API extra."
+                  checked={settings.developerMode ?? false}
+                  onChange={(value) => void commit({ developerMode: value })}
+                />
               </section>
+              {settings.developerMode ? (
+                <section className="settings-block settings-routing-block">
+                  <div className="settings-section-label">Roteamento avançado</div>
+                  <SwitchRow
+                    label="Fallback entre IAs"
+                    description="Tenta o próximo modelo apenas quando o principal falhar por rede, cota, API, provider offline ou timeout."
+                    checked={routing.fallbackEnabled}
+                    onChange={(value) => void commit({ aiRouting: { ...routing, fallbackEnabled: value } })}
+                  />
+                  <label className="settings-line settings-select-row">
+                    <span>
+                      <strong>Política</strong>
+                      <small>Define a ordem dos modelos de fallback habilitados.</small>
+                    </span>
+                    <select
+                      aria-label="Política de fallback"
+                      value={routing.fallbackPolicy}
+                      onChange={(event) => void commit({ aiRouting: { ...routing, fallbackPolicy: event.target.value as AiFallbackPolicy } })}
+                    >
+                      {ROUTING_POLICY_OPTIONS.map((item) => (
+                        <option key={item.value} value={item.value}>{item.label}</option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="settings-line settings-routing-list">
+                    <span>
+                      <strong>Modelos habilitados</strong>
+                      <small>Um por linha: provider/modelo. Prefixe com # para manter salvo e desativado.</small>
+                    </span>
+                    <textarea
+                      className="input-modern"
+                      rows={4}
+                      value={fallbackDraft}
+                      placeholder={'openai-api/gpt-5.4-mini @ openai-api:principal\nlocal-ollama/qwen2.5-coder:7b'}
+                      onChange={(event) => setFallbackDraft(event.target.value)}
+                      onBlur={() => {
+                        const parsed = parseFallbackText(fallbackDraft);
+                        void commit({
+                          aiRouting: {
+                            ...routing,
+                            fallbackModels: parsed.fallbackModels,
+                          },
+                        });
+                      }}
+                    />
+                  </label>
+                </section>
+              ) : null}
             </div>
           ) : null}
 

@@ -53,6 +53,8 @@ export interface ModelCatalogOption {
   installed?: boolean;
   heavy?: boolean;
   estimatedSize?: string;
+  digest?: string;
+  modifiedAt?: string;
   runtimeLabel?: string;
   searchTerms?: string[];
   configured: boolean;
@@ -62,11 +64,18 @@ export interface ModelCatalogOption {
 
 export function isLocalModelInstalled(runtime: LocalRuntimeSnapshot | undefined, modelId: string): boolean {
   if (!runtime) return false;
-  return runtime.installedModels.some((model) => model.id === modelId);
+  const normalized = normalizeOllamaModelId(modelId);
+  return runtime.installedModels.some((model) => normalizeOllamaModelId(model.id) === normalized);
 }
 
 export function localFamilyLabel(model: LocalModelProfile): string {
   return localFamilyLabelFromText(`${model.family} ${model.displayName}`);
+}
+
+export function normalizeOllamaModelId(modelId: string): string {
+  const normalized = modelId.trim().toLowerCase();
+  if (!normalized) return normalized;
+  return normalized.includes(':') ? normalized : `${normalized}:latest`;
 }
 
 function localFamilyLabelFromText(text: string): string {
@@ -75,11 +84,18 @@ function localFamilyLabelFromText(text: string): string {
   if (value.includes('codellama') || value.includes('codegemma')) return value.includes('codegemma') ? 'CodeGemma' : 'CodeLlama';
   if (value.includes('llama')) return 'Llama';
   if (value.includes('deepseek')) return 'DeepSeek';
-  if (value.includes('mistral') || value.includes('mixtral') || value.includes('codestral')) return 'Mistral';
+  if (value.includes('mistral') || value.includes('mixtral') || value.includes('codestral') || value.includes('devstral')) return 'Mistral';
   if (value.includes('phi')) return 'Phi';
   if (value.includes('gemma')) return 'Gemma';
   if (value.includes('starcoder')) return 'StarCoder';
+  if (value.includes('granite')) return 'Granite Code';
+  if (value.includes('nous') || value.includes('hermes')) return 'Nous Hermes';
+  if (value.includes('dolphin')) return 'Dolphin';
   if (value.includes('yi')) return 'Yi';
+  if (value.includes('tinyllama')) return 'TinyLlama';
+  if (value.includes('smollm')) return 'SmolLM';
+  if (value.includes('openchat')) return 'OpenChat';
+  if (value.includes('wizardcoder')) return 'WizardCoder';
   return 'Outros locais';
 }
 
@@ -286,12 +302,17 @@ export function buildLocalModelOptions(input: {
   providerStatus?: ProviderRuntimeStatus;
   installationProgress?: Record<string, LocalModelInstallProgress>;
 }): ModelCatalogOption[] {
-  const installedIds = new Set(input.localRuntime?.installedModels.map((model) => model.id) ?? []);
+  const installedIds = new Set(input.localRuntime?.installedModels.map((model) => normalizeOllamaModelId(model.id)) ?? []);
+  const installedById = new Map(
+    (input.localRuntime?.installedModels ?? []).map((model) => [normalizeOllamaModelId(model.id), model] as const),
+  );
   const registryOptions = modelRegistry.byMode('local')
     .filter((model): model is LocalModelProfile => model.mode === 'local')
     .map((model) => {
       const progress = input.installationProgress?.[model.id] ?? input.installationProgress?.[model.modelId];
-      const installed = installedIds.has(model.modelId) || installedIds.has(model.id);
+      const normalizedModelId = normalizeOllamaModelId(model.modelId);
+      const installedModel = installedById.get(normalizedModelId) ?? installedById.get(normalizeOllamaModelId(model.id));
+      const installed = installedIds.has(normalizedModelId) || installedIds.has(normalizeOllamaModelId(model.id));
       const status = resolveModelStatus(model, input.providerStatus, input.localRuntime, progress);
       const ready = installed && canSelectModel(status);
       return {
@@ -310,7 +331,9 @@ export function buildLocalModelOptions(input: {
         configured: false,
         ready,
         heavy: localCompatibility(model) === 'heavy' || localCompatibility(model) === 'not_recommended',
-        estimatedSize: model.diskRequirement,
+        estimatedSize: installedModel?.size ?? model.diskRequirement,
+        digest: installedModel?.digest,
+        modifiedAt: installedModel?.modifiedAt,
         runtimeLabel: model.runtime === 'ollama' ? 'Ollama' : model.runtime,
         metadata: localMetadata(model),
         searchTerms: [
@@ -334,11 +357,11 @@ export function buildLocalModelOptions(input: {
   const catalogIds = new Set(
     modelRegistry.byMode('local')
       .filter((model): model is LocalModelProfile => model.mode === 'local')
-      .flatMap((model) => [model.id, model.modelId]),
+      .flatMap((model) => [normalizeOllamaModelId(model.id), normalizeOllamaModelId(model.modelId)]),
   );
   const runtimeStatus = localRuntimeStatus(input.localRuntime);
   const discoveredInstalled = (input.localRuntime?.installedModels ?? [])
-    .filter((model) => !catalogIds.has(model.id))
+    .filter((model) => !catalogIds.has(normalizeOllamaModelId(model.id)))
     .map((model) => localInstalledModelOption(model, runtimeStatus));
   return [...registryOptions, ...discoveredInstalled];
 }
@@ -361,6 +384,8 @@ function localInstalledModelOption(model: LocalInstalledModel, runtimeStatus: Pr
     configured: false,
     ready,
     estimatedSize: model.size,
+    digest: model.digest,
+    modifiedAt: model.modifiedAt,
     runtimeLabel: 'Ollama',
     metadata: installedLocalMetadata(model),
     searchTerms: [
