@@ -1332,7 +1332,7 @@ mod file_browser_tests {
 
     #[test]
     fn get_file_attachment_rejects_invalid_path() {
-        let result = get_file_attachment("/path/que/nao/existe/passada-06".to_owned());
+        let result = get_file_attachment("/path/que/nao/existe/arquivo".to_owned());
         assert!(result.is_err());
     }
 }

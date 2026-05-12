@@ -2,6 +2,29 @@
   "name": "codex-command-center",
   "private": true,
   "version": "0.1.0",
+  "description": "Premium desktop command center for local and cloud AI models, built with Tauri, Rust, React and TypeScript.",
+  "author": "Lucas",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Lucasny7n/Codex.git"
+  },
+  "bugs": {
+    "url": "https://github.com/Lucasny7n/Codex/issues"
+  },
+  "homepage": "https://github.com/Lucasny7n/Codex#readme",
+  "keywords": [
+    "tauri",
+    "rust",
+    "react",
+    "typescript",
+    "ai",
+    "ollama",
+    "desktop-app",
+    "llm",
+    "local-ai",
+    "command-center"
+  ],
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -12,7 +35,9 @@
     "test:visual": "mkdir -p ${CODEX_SCREENSHOT_DIR:-test-results/screenshots} && playwright test",
     "screenshots": "mkdir -p ${CODEX_SCREENSHOT_DIR:-test-results/screenshots} && playwright test tests/visual/codex-command-center.visual.spec.ts",
     "icons:generate": "bash scripts/generate-icons.sh",
-    "icons:validate": "node scripts/validate-icon-alpha.mjs",
+    "icons:validate": "bash scripts/validate-icons.sh",
+    "healthcheck": "bash scripts/healthcheck.sh",
+    "ci": "npm run lint && npm run typecheck && npm run test -- --run && npm run build",
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit",
     "tauri": "tauri"

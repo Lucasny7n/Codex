@@ -130,7 +130,7 @@ function AssistantTypingIndicator(): JSX.Element {
   );
 }
 
-export function ChatPanel({ session, emptyTitle = 'Pronto para criar algo?', onOpenEnvironment, isResponding = false }: ChatPanelProps): JSX.Element {
+export function ChatPanel({ session, emptyTitle = 'O que gostaria de explorar?', onOpenEnvironment, isResponding = false }: ChatPanelProps): JSX.Element {
   const [menuMessageId, setMenuMessageId] = useState<string>();
   const [copiedMessageId, setCopiedMessageId] = useState<string>();
 

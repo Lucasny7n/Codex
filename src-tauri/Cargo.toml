@@ -3,13 +3,22 @@ name = "codex_command_center"
 default-run = "codex_command_center"
 version = "0.1.0"
 edition = "2021"
-description = "Central desktop para operar agentes tipo Codex"
+description = "Premium desktop command center for local and cloud AI models"
 authors = ["Lucas"]
 license = "MIT"
+repository = "https://github.com/Lucasny7n/Codex"
+homepage = "https://github.com/Lucasny7n/Codex"
+readme = "../README.md"
+keywords = ["tauri", "rust", "ai", "ollama", "desktop"]
+categories = ["development-tools"]
 
 [lib]
 name = "codex_command_center_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
+
+[package.metadata.codex-command-center]
+product-name = "Codex Command Center"
+summary = "Premium desktop command center for local and cloud AI models."
 
 [build-dependencies]
 tauri-build = { version = "2.0.0", features = [] }

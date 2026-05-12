@@ -1,67 +1,61 @@
-# STT e Microfone
+# STT / Microfone
 
-## Objetivo
-
-O microfone grava áudio curto, transcreve localmente e coloca o texto no composer. O usuário decide quando enviar.
-
-## Fluxo
-
-1. WebView tenta usar Web Speech API quando disponível.
-2. Se não houver Web Speech, usa `navigator.mediaDevices.getUserMedia` com `MediaRecorder`.
-3. O backend recebe bytes de áudio.
-4. `ffmpeg` converte para WAV 16 kHz mono.
-5. O backend tenta transcrever com backend local configurado.
-6. O texto transcrito volta para o composer.
-
-## Backends Suportados
-
-- `whisper-cli` ou `whisper.cpp`
-- `whisper`
-- `faster-whisper`
-- `vosk-transcriber` ou `vosk`
+O suporte a voz é local e depende do ambiente real. O app não deve fingir transcrição quando permissão, captura, backend ou modelo estão ausentes.
 
 ## Dependências
 
-```bash
-command -v ffmpeg
-command -v whisper-cli
-command -v whisper
-command -v faster-whisper
-command -v vosk-transcriber
-```
+- WebView com `navigator.mediaDevices`.
+- Portal/pipe de áudio funcionando no Wayland quando aplicável.
+- Permissão de microfone concedida.
+- `ffmpeg` para conversão.
+- Um backend local: `whisper.cpp`, `whisper`, `faster-whisper` ou Vosk.
+- Modelo local compatível com o backend escolhido.
 
-O app também procura modelos em:
+## Fluxo
 
-```text
-~/.codex/models
-~/.local/share/codex/models
-~/.local/share/whisper.cpp
-~/.cache/whisper
-```
+1. Composer abre o fluxo do microfone.
+2. Frontend solicita permissão e grava áudio.
+3. Backend recebe bytes, valida dependências e converte quando necessário.
+4. Backend chama o backend local configurado.
+5. O texto volta para o composer ou erro acionável é exibido.
 
-## Diagnóstico no App
+## ffmpeg
 
-Use o botão de microfone no composer e depois `Configurar microfone`/`Configurar transcrição local`.
-
-O diagnóstico mostra:
-
-- suporte a `navigator.mediaDevices`/`MediaRecorder` no WebView;
-- mensagem clara quando a permissão do portal é negada;
-- estado de `ffmpeg`;
-- backends Whisper/Vosk detectados;
-- candidatos de modelo em `~/.codex/models` e pastas locais conhecidas;
-- comando sugerido quando faltar dependência.
-
-O painel `Settings > Saúde` também verifica PipeWire, WirePlumber e `xdg-desktop-portal`.
-
-Resultado esperado: o app só diz que STT está pronto quando áudio, conversão, backend e modelo local estiverem disponíveis. Caso contrário, mostra exatamente a dependência ausente.
-
-## Instalação Manual Sugerida no Arch
+Validação manual:
 
 ```bash
-sudo pacman -S --needed ffmpeg whisper.cpp
+ffmpeg -version
 ```
 
-Depois baixe/posicione um modelo Whisper em `~/.codex/models`, por exemplo `ggml-base.bin`, e configure o caminho no modal de STT do composer.
+Sem `ffmpeg`, o app deve informar que a conversão de áudio não está disponível.
 
-O app não executa esse comando automaticamente.
+## Backends
+
+Backends aceitos pelo diagnóstico:
+
+- `whisper-cli` ou binário compatível de `whisper.cpp`.
+- `whisper`.
+- `faster-whisper`.
+- Vosk.
+
+O app pode detectar caminhos candidatos, mas não baixa modelo automaticamente.
+
+## Permissão no WebView
+
+Falhas comuns:
+
+- `navigator.mediaDevices` ausente.
+- Permissão negada pelo usuário.
+- Portal de desktop indisponível.
+- PipeWire/WirePlumber sem captura.
+- WebView sem policy de microfone.
+
+Nesses casos, a UI deve separar erro de permissão de erro de backend.
+
+## Erros comuns
+
+- Sem permissão: conceder microfone no ambiente gráfico.
+- Sem backend: instalar/configurar Whisper ou Vosk.
+- Sem modelo: escolher caminho de modelo local.
+- Áudio vazio: verificar dispositivo de entrada.
+- Conversão falhou: validar `ffmpeg`.

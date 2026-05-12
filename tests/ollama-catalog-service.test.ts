@@ -4,7 +4,7 @@ import {
   pullOllamaModel,
   removeOllamaModel,
   showOllamaModel,
-} from '../src/lib/ollamaCatalogService';
+} from '../src/lib/ollama/catalogService';
 import type { LocalRuntimeSnapshot, OllamaModelDetails } from '../src/types/domain';
 
 vi.mock('../src/lib/api', () => ({

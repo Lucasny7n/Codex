@@ -1,4 +1,4 @@
-import { formatDateTime, shortPath } from '../../lib/format';
+import { formatDateTime, shortPath } from '../../lib/utils/format';
 import type { FileChangeEntry } from '../../types/domain';
 
 interface ChangedFilesPanelProps {

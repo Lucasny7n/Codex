@@ -1,7 +1,7 @@
 import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import { TopBar } from '../src/components/layout/TopBar';
-import type { ModelCatalogOption } from '../src/lib/modelCatalogService';
+import type { ModelCatalogOption } from '../src/lib/models/modelCatalogService';
 import type { LocalRuntimeSnapshot } from '../src/types/domain';
 
 const now = new Date().toISOString();

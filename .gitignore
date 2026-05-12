@@ -9,8 +9,11 @@ coverage/
 .pytest_cache/
 .env
 .env.*
+!.env.example
 *.log
 logs/
+*.bak
+*.backup
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
@@ -32,8 +35,8 @@ storage-state*.json
 *.pth
 *.ckpt
 *.bin
-.codex/models/
-models/
+/.codex/models/
+/models/
 playwright-report/
 test-results/
 screenshots/

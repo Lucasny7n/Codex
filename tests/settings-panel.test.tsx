@@ -2,7 +2,7 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import type { ComponentProps } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import * as api from '../src/lib/api';
-import { SettingsPanel } from '../src/components/panels/SettingsPanel';
+import { SettingsPanel } from '../src/components/settings/SettingsPanel';
 import type {
   AgentProfile,
   AppSettings,
@@ -54,7 +54,7 @@ function settings(): AppSettings {
     personalization: {
       memoriesStored: true,
       referenceChatHistory: true,
-      customizeCodexQwen: false,
+      customizeCodex: false,
       manageCookies: false,
       webPageExtraction: false,
       imageSearch: false,
@@ -389,7 +389,7 @@ describe('SettingsPanel', () => {
 
     expect(screen.getByText('Memórias guardadas')).toBeInTheDocument();
     expect(screen.getByText('Histórico de chat de referência')).toBeInTheDocument();
-    expect(screen.getByText('Personalizar o Codex/Qwen')).toBeInTheDocument();
+    expect(screen.getByText('Personalização avançada do Codex')).toBeInTheDocument();
     expect(screen.getByText('Gerenciar cookies')).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: /Avançado/ }));

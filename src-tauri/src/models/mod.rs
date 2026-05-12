@@ -369,8 +369,8 @@ pub struct AppPersonalizationSettings {
     pub memories_stored: bool,
     #[serde(default = "default_true")]
     pub reference_chat_history: bool,
-    #[serde(default)]
-    pub customize_codex_qwen: bool,
+    #[serde(default, alias = "customizeCodexQwen")]
+    pub customize_codex: bool,
     #[serde(default)]
     pub manage_cookies: bool,
     #[serde(default)]
@@ -398,7 +398,7 @@ impl Default for AppPersonalizationSettings {
         Self {
             memories_stored: true,
             reference_chat_history: true,
-            customize_codex_qwen: false,
+            customize_codex: false,
             manage_cookies: false,
             web_page_extraction: false,
             image_search: false,

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { getSttConfigState, transcribeAudio } from '../../lib/api';
+import { readStoredSttModelPath, writeStoredSttModelPath } from '../../lib/stt/modelPath';
 import type { PrivilegedActionSpec } from '../../types/domain';
 import type { ChatAttachment, LocalSttConfigSnapshot, SelectedFileAttachment } from '../../types/domain';
 import { UiIcon } from '../common/AppIcons';
@@ -64,28 +65,6 @@ const INPUT_MODES: InputModeOption[] = [
     description: 'Planeja comandos com aprovação para risco.',
   },
 ];
-
-const STT_MODEL_STORAGE_KEY = 'codex-command-center-stt-model-path';
-
-function readStoredSttModelPath(): string {
-  try {
-    return window.localStorage?.getItem(STT_MODEL_STORAGE_KEY) ?? '';
-  } catch {
-    return '';
-  }
-}
-
-function writeStoredSttModelPath(path: string): void {
-  try {
-    if (path.trim()) {
-      window.localStorage?.setItem(STT_MODEL_STORAGE_KEY, path.trim());
-    } else {
-      window.localStorage?.removeItem(STT_MODEL_STORAGE_KEY);
-    }
-  } catch {
-    // A configuração local de STT também funciona em memória se localStorage falhar.
-  }
-}
 
 type SpeechRecognitionEventLike = Event & {
   results: ArrayLike<ArrayLike<{ transcript: string }>>;

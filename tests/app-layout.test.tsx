@@ -1,6 +1,6 @@
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import App from '../src/App';
+import App from '../src/app/App';
 import * as api from '../src/lib/api';
 import { useAppStore } from '../src/stores/appStore';
 import type { AgentSession, BootstrapPayload } from '../src/types/domain';

@@ -5,7 +5,7 @@ import {
   readProjectMemory,
   setProjectMemoryEnabled,
   updateProjectMemoryFromExchange,
-} from '../src/lib/projectMemoryService';
+} from '../src/lib/memory/projectMemoryService';
 
 function installStorage(): void {
   const values = new Map<string, string>();

@@ -1,67 +1,92 @@
 # Arquitetura
 
-## Visão Geral
-
-Codex Command Center é um app desktop Tauri com frontend React e backend Rust. A UI controla sessões, composer, anexos, modelos, settings e drawers. O backend concentra estado persistido, providers, runtimes locais, permissões e execução.
+Codex Command Center é um app desktop Tauri v2 com frontend React/TypeScript e backend Rust. A arquitetura privilegia status honesto: provider, conta, modelo ou runtime só podem aparecer como prontos depois de validação real.
 
 ## Camadas
 
 ### Frontend
 
-- `src/App.tsx`: orquestra bootstrap, sessão ativa, Bate-papo Temporário, TopBar, Settings e drawers.
-- `src/components/panels/CommandInputPanel.tsx`: composer, modos, anexos e STT.
-- `src/components/panels/ChatPanel.tsx`: transcript, mensagens, anexos e erros de provider.
-- `src/components/layout/TopBar.tsx`: seletor `Nuvem | Local`, busca e configuração por modelo/provider.
-- `src/components/panels/SettingsPanel.tsx`: cinco abas permitidas e configuração limpa de preferências.
-- `src/lib/modelRegistry.ts`: catálogo estruturado de modelos cloud/local.
-- `src/lib/providerStatus.ts`: regra de seleção e ações por status.
-- `src/styles/*.css`: tokens, layout e componentes.
+- `src/app/App.tsx`: composição principal, bootstrap, seleção de sessão, chat normal, chat temporário e abertura de modais/drawers.
+- `src/components/layout/`: shell, topbar e abas de inspector.
+- `src/components/chat/`: transcript, composer, STT no fluxo do microfone e conversas arquivadas.
+- `src/components/settings/`: configurações, health check, modelos locais, conversas e personalização.
+- `src/components/models/`: tipos e superfícies do seletor de ambiente/modelo.
+- `src/components/file/`: browser de arquivos e formatação visual de anexos.
+- `src/components/common/`: modal, menu, toast, badges, ícones e controles compartilhados.
+- `src/lib/api/`: chamadas Tauri e listeners de eventos.
+- `src/lib/models/`: registry, opções do seletor, comparação e presets.
+- `src/lib/ollama/`: normalização, busca e candidatos de download para modelos Ollama.
+- `src/lib/providers/`: regras de status, seleção e ações por provider/modelo.
+- `src/lib/file/`, `src/lib/memory/`, `src/lib/theme/`, `src/lib/utils/`: serviços de frontend por domínio.
+- `src/types/domain.ts`: contratos TypeScript compartilhados.
 
 ### Backend
 
-- `src-tauri/src/commands/mod.rs`: comandos Tauri, file picker, STT, chat persistente e chat temporário.
-- `src-tauri/src/services/session_manager.rs`: sessões persistidas, export/import, arquivar/excluir.
-- `src-tauri/src/services/provider_adapters.rs`: adapters reais de providers cloud e local Ollama.
-- `src-tauri/src/services/provider_registry.rs`: catálogo runtime dos adapters.
-- `src-tauri/src/services/credential_store.rs`: credenciais mascaradas, profiles e estado testado.
-- `src-tauri/src/services/local_runtime.rs`: diagnóstico, instalação e teste de Ollama/modelos.
-- `src-tauri/src/services/command_executor.rs`: execução controlada de comandos.
-- `src-tauri/src/services/permission_manager.rs`: risco, aprovação e bloqueio de ações perigosas.
+- `src-tauri/src/commands/`: comandos Tauri. Deve atuar como ponte fina entre frontend e serviços.
+- `src-tauri/src/models/`: contratos Rust serializáveis.
+- `src-tauri/src/services/session_manager.rs`: persistência, arquivamento, exportação e importação de sessões.
+- `src-tauri/src/services/provider_adapters.rs`: adapters reais de providers cloud e local.
+- `src-tauri/src/services/provider_registry.rs`: catálogo runtime de providers e profiles.
+- `src-tauri/src/services/credential_store.rs`: credenciais mascaradas, profiles e último status testado.
+- `src-tauri/src/services/local_runtime.rs`: diagnóstico, download, remoção e teste de modelos Ollama.
+- `src-tauri/src/services/permission_manager.rs`: risco, aprovação e resolução de permissões.
+- `src-tauri/src/services/command_executor.rs`: execução controlada e logs de comandos.
 
-## Fluxo de Chat Persistente
+`src-tauri/src/commands/mod.rs` ainda concentra muitas pontes Tauri e é candidato a divisão por domínio. Essa separação deve ser feita em PR próprio para reduzir risco.
 
-1. UI chama `create_session` apenas quando necessário.
-2. UI chama `send_order_to_agent`.
-3. Backend adiciona mensagem do usuário em `SessionManager`.
-4. Backend monta prompt com anexos, modo e idioma.
-5. `ProviderRegistry` chama adapter real.
-6. Resposta ou erro controlado é persistido na sessão.
+## Fluxo de chat normal
 
-## Fluxo de Bate-papo Temporário
+1. Frontend garante uma sessão persistente ativa quando a primeira mensagem é enviada.
+2. `send_order_to_agent` recebe sessão, conteúdo, modo e anexos estruturados.
+3. Backend persiste a mensagem do usuário no `SessionManager`.
+4. O roteador monta o prompt com sessão, anexos e configuração de ambiente.
+5. `ProviderRegistry` escolhe adapter/profile/modelo já validados.
+6. O adapter retorna resposta real ou erro classificado.
+7. Backend persiste a resposta e retorna a sessão atualizada.
 
-1. UI ativa estado temporário em memória.
-2. UI chama `send_temporary_order_to_agent`.
-3. Backend usa o mesmo `ProviderRegistry`, mas não chama `SessionManager.persist_session`.
-4. Resposta volta como `AgentSession` efêmera com id `temporary-chat`.
-5. Ao sair do modo temporário, o frontend descarta as mensagens.
+## Fluxo de bate-papo temporário
 
-## Providers
+1. Frontend cria sessão efêmera em memória.
+2. `send_temporary_order_to_agent` recebe mensagens temporárias, conteúdo e anexos.
+3. Backend usa o mesmo `ProviderRegistry` e os mesmos adapters reais do chat normal.
+4. A resposta volta como sessão efêmera.
+5. Nada é salvo no histórico, nos arquivos de sessão ou em conversas arquivadas.
 
-Status possíveis incluem `ready`, `testing`, `requires_api_key`, `requires_login`, `requires_cli_auth`, `model_missing`, `service_offline`, `api_unreachable`, `experimental` e `unavailable`.
+## Fluxo de modelo local Ollama
 
-Regra: somente `ready` é selecionável. Credencial salva sem teste não vira `ready`.
+1. Frontend consulta `get_local_runtime_state`.
+2. Backend valida binário, serviço, API `127.0.0.1:11434`, modelos instalados e erros recentes.
+3. A busca local normaliza o nome digitado e cria candidato para baixar quando o modelo não está instalado.
+4. `install_local_model` executa download com progresso real.
+5. Depois do download, o app recarrega o snapshot e só libera uso se o modelo aparecer e passar no teste.
 
-## Anexos
+## Fluxo de modelo cloud
 
-O composer exibe chips com nome, tipo e tamanho. Prévia textual limitada pode ir no payload oculto para o provider, mas não é despejada no textarea.
+1. Provider declara método de autenticação e modelos suportados.
+2. UI coleta API key/profile ou direciona para login/CLI quando aplicável.
+3. `test_provider_connection` executa validação real.
+4. `CredentialStore` persiste credencial mascarada e último status.
+5. Apenas provider/profile/modelo `ready` fica selecionável.
 
-## STT
+## Fluxo de anexos
 
-O frontend grava via Web APIs quando disponíveis. O backend converte com `ffmpeg` e tenta backends locais em ordem: `whisper-cli`/`whisper.cpp`, `whisper`, `faster-whisper`, Vosk.
+1. Usuário seleciona arquivos pelo browser local.
+2. Backend retorna metadados e preview limitado quando seguro.
+3. Composer mostra chips e não despeja conteúdo no textarea.
+4. Envio inclui anexos como contexto estruturado para o provider.
 
-## Persistência
+## Fluxo de STT
 
-- Sessões: arquivos JSON sob o diretório gerenciado pelo app.
-- Exportações: `~/Downloads/Sessoes`.
-- Preferências: settings do backend e algumas preferências locais da UI.
-- Segredos: `CredentialStore`; chaves completas não devem ir para logs, screenshots ou commit.
+1. Composer solicita permissão de microfone pelo WebView.
+2. Frontend grava áudio quando `navigator.mediaDevices` está disponível.
+3. Backend valida `ffmpeg`, backend Whisper/Vosk e modelo configurado.
+4. Transcrição retorna texto ou erro acionável, sem fingir captura ou backend.
+
+## Princípios
+
+- Sem falso `ready`.
+- Sem provider ou modelo simulado em produção.
+- Sem `sudo` silencioso.
+- Sem segredo em log, screenshot, commit ou mensagem de erro.
+- Erro técnico deve virar mensagem curta com ação clara; detalhes ficam em área técnica.
+- Refatoração estrutural deve preservar imports, testes e comportamento.

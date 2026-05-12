@@ -17,4 +17,4 @@ for size in 32 128 256 512; do
 done
 
 magick -background none "$SOURCE" -resize "256x256" "$ICON_DIR/128x128@2x.png"
-node "$ROOT_DIR/scripts/validate-icon-alpha.mjs"
+bash "$ROOT_DIR/scripts/validate-icons.sh"

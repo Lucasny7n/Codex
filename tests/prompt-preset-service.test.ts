@@ -4,7 +4,7 @@ import {
   presetContextAttachment,
   removeCustomPromptPreset,
   saveCustomPromptPreset,
-} from '../src/lib/promptPresetService';
+} from '../src/lib/models/promptPresetService';
 
 function installStorage(): void {
   const values = new Map<string, string>();

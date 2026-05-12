@@ -9,20 +9,20 @@ import {
   showLocalModel,
   testLocalModel,
 } from '../../lib/api';
-import { parseComparisonTargets } from '../../lib/modelComparisonService';
+import { parseComparisonTargets } from '../../lib/models/modelComparisonService';
 import {
   buildPullCandidateFromQuery,
   normalizeOllamaModelId,
   normalizeOllamaQuery,
-} from '../../lib/ollamaCatalogService';
+} from '../../lib/ollama/catalogService';
 import {
   readCustomPromptPresets,
   removeCustomPromptPreset,
   saveCustomPromptPreset,
   type PromptPreset,
-} from '../../lib/promptPresetService';
-import { modelRegistry, type ModelProfile } from '../../lib/modelRegistry';
-import { resolveModelStatus } from '../../lib/providerStatus';
+} from '../../lib/models/promptPresetService';
+import { modelRegistry, type ModelProfile } from '../../lib/models/modelRegistry';
+import { resolveModelStatus } from '../../lib/providers/status';
 import type {
   AgentProfile,
   AgentSession,
@@ -85,7 +85,7 @@ const FEATURED_MODEL_IDS = [
 const DEFAULT_PERSONALIZATION: AppPersonalizationSettings = {
   memoriesStored: true,
   referenceChatHistory: true,
-  customizeCodexQwen: false,
+  customizeCodex: false,
   manageCookies: false,
   webPageExtraction: false,
   imageSearch: false,
@@ -971,10 +971,10 @@ export function SettingsPanel({
 
               <section className="settings-block">
                 <SwitchRow
-                  label="Personalizar o Codex/Qwen"
+                  label="Personalização avançada do Codex"
                   description={`Mantém preferências de comportamento para o perfil ${selectedAgentLabel}.`}
-                  checked={personalization.customizeCodexQwen}
-                  onChange={(value) => updatePersonalization('customizeCodexQwen', value)}
+                  checked={personalization.customizeCodex}
+                  onChange={(value) => updatePersonalization('customizeCodex', value)}
                 />
                 <SwitchRow
                   label="Gerenciar cookies"

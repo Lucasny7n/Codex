@@ -3,7 +3,7 @@ import {
   bestCopyFromComparison,
   comparisonHasPartialFailure,
   parseComparisonTargets,
-} from '../src/lib/modelComparisonService';
+} from '../src/lib/models/modelComparisonService';
 
 describe('modelComparisonService', () => {
   it('parseia alvos de comparação sem iniciar chamada automática', () => {

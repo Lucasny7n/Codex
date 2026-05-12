@@ -1,98 +1,60 @@
-# Modelos e Providers
+# Modelos
 
-## Regra Principal
+O app trabalha com dois modos explícitos: `Nuvem` e `Local`. Eles não compartilham status nem escondem falhas um do outro.
 
-Catálogo não é suporte ativo. Um modelo só fica selecionável quando o provider/runtime está configurado e testado.
+## Nuvem
 
-## Estados
+Providers cloud vêm de adapters reais. Um provider só fica utilizável quando o método de autenticação exigido está completo e a conexão foi testada.
 
-- `ready`: testado e selecionável.
-- `testing`: credencial salva, mas conexão ainda precisa ser testada.
+Estados comuns:
+
+- `ready`: provider/profile/modelo testado e selecionável.
+- `testing`: credencial salva ou validação em andamento; ainda não é pronto.
 - `requires_api_key`: falta API key.
-- `requires_login` / `requires_cli_auth`: falta login ou auth CLI.
-- `model_missing`: runtime existe, mas o modelo local não está instalado.
-- `service_offline`: runtime instalado, mas serviço parado.
-- `api_unreachable`: serviço existe, mas API local não respondeu.
-- `experimental`: catalogado, mas adapter ainda não deve executar.
-- `unavailable`: provider/runtime indisponível no build atual.
+- `requires_login`, `requires_oauth`, `requires_cli_auth`: falta autenticação externa.
+- `quota_exceeded` ou `rate_limited`: limite atingido.
+- `provider_unavailable`: erro temporário do serviço.
+- `misconfigured`: adapter ou configuração incompleta.
+- `unavailable`: indisponível para uso.
 
-## Cloud
-
-Providers organizados no catálogo:
-
-- OpenAI
-- OpenRouter
-- Google/Gemini
-- Anthropic
-- Groq
-- Mistral
-- Together AI
-- Fireworks AI
-- Cerebras
-- DeepSeek
-- xAI
-- Perplexity
-- Cohere como experimental quando o adapter dedicado não estiver validado
-
-API key fica no modal do modelo/provider específico aberto pelo botão `...` do seletor. Salvar chave não marca o provider como pronto; o teste de conexão precisa retornar sucesso.
+Credencial salva sem teste não vira `ready`.
 
 ## Local
 
-Runtime ativo hoje:
+O modo Local usa Ollama real. O registry local serve para metadata, compatibilidade e sugestões, mas a fonte de verdade é o runtime Ollama.
 
-- Ollama
+Um modelo local só fica utilizável quando:
 
-Ollama é a única fonte local ativa. A UI local sem busca mostra somente modelos instalados confirmados por `/api/tags` ou, como fallback diagnóstico, `ollama list`.
+1. Ollama está instalado ou acessível.
+2. A API local responde em `127.0.0.1:11434`.
+3. O modelo aparece em `/api/tags` ou `ollama list`.
+4. O teste curto de geração passa.
 
-Com busca, o app não consulta uma lista fixa como fonte de verdade. Ele normaliza o texto (`gpt oss`, `gpt-oss`, `gpt_oss`, `gptoss`) e, se não houver modelo instalado correspondente, oferece uma ação explícita:
+## Busca local
 
-```text
-Baixar gpt-oss pelo Ollama
-```
+A busca aceita nomes livres como `gpt oss`, `llama3.2` e `qwen2.5-coder:7b`. Quando o modelo não está instalado, a UI cria um candidato para baixar. Esse candidato não é `ready`.
 
-O teste remoto é o próprio `ollama pull <nome>`. Depois do pull, o app recarrega o snapshot do Ollama e só marca instalado se o modelo aparecer de verdade em `/api/tags` ou `ollama list`.
+## Download e remoção
 
-O registry local pode continuar existindo para sugestões, recomendações e documentação de famílias, mas ele não limita a descoberta local nem decide instalação.
-
-## Multimodal e Imagem
-
-O catálogo já possui campo de modalidade:
-
-- `text`
-- `code`
-- `vision`
-- `image_generation`
-- `audio_transcription`
-
-Geração de imagem não está ativada nesta passada. Esses campos existem para preparar UI, filtros e adapters futuros sem poluir a tela atual.
-
-## Ollama
-
-Diagnóstico esperado:
+Comandos manuais equivalentes:
 
 ```bash
-command -v ollama
-systemctl is-active ollama
-curl -s http://127.0.0.1:11434/api/tags
-ollama list
-```
-
-Operações usadas pelo app:
-
-```bash
-ollama list
-ollama show <modelo>
 ollama pull <modelo>
+ollama show <modelo>
 ollama rm <modelo>
 ```
 
-Para ficar pronto, um modelo precisa aparecer em `/api/tags`/`ollama list` e passar por geração curta via API local.
+O app exibe progresso quando o backend recebe progresso real. Depois do download, o snapshot é recarregado; se o modelo não aparecer, a operação falha com erro claro.
 
-Erros de pull são classificados para a UI:
+## Regras de UI
 
-- modelo não encontrado;
-- sem internet ou registry indisponível;
-- Ollama offline;
-- permissão;
-- disco insuficiente;
-- erro desconhecido.
+- Instalado e testado: selecionável.
+- Instalado sem teste: ação de testar.
+- Baixando: progresso e ação bloqueada.
+- Não instalado: candidato para baixar.
+- Ollama offline: ação para iniciar/diagnosticar runtime.
+- Provider cloud sem autenticação: ação para configurar credencial/login.
+
+## Capacidades planejadas
+
+Campos de metadata para multimodalidade e geração de imagem podem existir no código para preparar evolução futura. Isso não significa que geração de imagem esteja implementada no app.

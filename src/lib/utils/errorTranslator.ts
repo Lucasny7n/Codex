@@ -1,4 +1,4 @@
-import type { ActionableError, ProviderStatusState } from '../types/domain';
+import type { ActionableError, ProviderStatusState } from '../../types/domain';
 
 const ERROR_MAP: Record<string, Omit<ActionableError, 'technicalDetails'>> = {
   testing: {

@@ -94,7 +94,7 @@ async function installTauriMock(page: Page): Promise<void> {
       personalization: {
         memoriesStored: true,
         referenceChatHistory: true,
-        customizeCodexQwen: false,
+        customizeCodex: false,
         manageCookies: false,
         webPageExtraction: false,
         imageSearch: false,

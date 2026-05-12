@@ -8386,7 +8386,7 @@ body,
   background: rgba(15, 23, 42, 0.035);
 }
 
-/* Passada 15: composer e controles sem foco interno roxo ou estados fake. */
+/* Composer e controles sem foco interno roxo. */
 .prompt-pill {
   transition: border-color 150ms ease, box-shadow 150ms ease, background-color 150ms ease;
 }

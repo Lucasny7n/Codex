@@ -1,7 +1,7 @@
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import * as api from '../src/lib/api';
-import { CommandInputPanel } from '../src/components/panels/CommandInputPanel';
+import { CommandInputPanel } from '../src/components/chat/CommandInputPanel';
 
 vi.mock('../src/lib/api', () => ({
   getFileAttachment: vi.fn(),

@@ -1,4 +1,4 @@
-import { formatDateTime } from '../../lib/format';
+import { formatDateTime } from '../../lib/utils/format';
 import type { CommandLogChunk } from '../../types/domain';
 
 interface TerminalPanelProps {

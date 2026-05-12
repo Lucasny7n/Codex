@@ -1,6 +1,6 @@
 import { render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
-import { ChatPanel } from '../src/components/panels/ChatPanel';
+import { ChatPanel } from '../src/components/chat/ChatPanel';
 import type { AgentSession } from '../src/types/domain';
 
 function chat(content: string, reasoningSummary?: string): AgentSession {

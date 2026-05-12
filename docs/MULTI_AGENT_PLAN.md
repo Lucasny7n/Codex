@@ -1,58 +1,29 @@
-# Multi-Agent Architecture Plan — Codex Squad
+# Multi-Agent Plan
 
-## 1. Visão Geral
-Transformar o Codex Command Center de um operador mono-agente para uma central de coordenação de um "Squad IA". Cada agente terá um papel (Role) específico, capacidades distintas e memórias compartilhadas.
+Este documento descreve uma direção futura. Nada aqui deve ser apresentado como funcional até existir implementação e validação.
 
-## 2. Papéis (AgentRoles)
-- **Architect:** Focado em design de sistemas, planejamento de alto nível e análise de impacto.
-- **Builder (Developer):** Focado em implementação de código, refatoração e resolução de bugs.
-- **Reviewer:** Focado em auditoria de segurança, qualidade de código e conformidade com padrões.
-- **Tester:** Focado em criação e execução de testes unitários, integração e E2E.
-- **Orchestrator:** O agente principal (você) que delega tarefas para os outros sub-agentes.
+## Objetivo
 
-## 3. Interfaces de Domínio (Proposta)
+Preparar o Codex Command Center para coordenar perfis especializados de trabalho, mantendo a regra de provider/modelo real e status honesto.
 
-```typescript
-export interface AgentRole {
-  id: string;
-  name: string;
-  description: string;
-  icon: string;
-  capabilities: string[]; // ex: ['fs_read', 'code_edit', 'test_run']
-}
+## Possíveis papéis
 
-export interface SquadMember {
-  id: string;
-  role: AgentRole;
-  provider: string;
-  model: string;
-  status: 'idle' | 'busy' | 'offline';
-}
+- Architect: planejamento e análise de impacto.
+- Builder: implementação.
+- Reviewer: revisão técnica e segurança.
+- Tester: validação e cobertura.
 
-export interface TaskDelegation {
-  taskId: string;
-  assigneeId: string;
-  instruction: string;
-  dependencies: string[];
-}
-```
+## Requisitos antes de implementar
 
-## 4. Integração de Modelos
-- **Codex (Local):** Operações rápidas de sistema e arquivos.
-- **Gemini CLI:** Pesquisa web profunda e análise de grandes contextos.
-- **OpenCode/Aider:** Edição de código guiada por chat.
-- **Ollama:** Modelos locais para tarefas privadas ou offline.
+- Provider/profile/modelo validado para cada papel.
+- Sessões e histórico separados por papel quando necessário.
+- UI clara para mostrar quem executou cada etapa.
+- Sem delegação automática para provider indisponível.
+- Sem execução de comandos sem permissão explícita.
 
-## 5. Fluxo de Trabalho do Squad
-1. **User** envia ordem para o **Orchestrator**.
-2. **Orchestrator** usa o **Architect** para criar um plano.
-3. **Orchestrator** delega partes do plano para **Builders**.
-4. **Builders** executam e pedem revisão para o **Reviewer**.
-5. **Reviewer** aprova ou solicita ajustes.
-6. **Tester** valida a entrega final.
-7. **Orchestrator** consolida e reporta ao **User**.
+## Próximos passos possíveis
 
-## 6. Próximos Passos
-- Implementar `ModelSelector` melhorado na UI.
-- Criar serviço de `SquadManager` no Rust.
-- Adicionar suporte a múltiplos históricos de conversa por sessão (um por sub-agente).
+- Extrair roteamento de agente para serviço dedicado.
+- Definir contratos de tarefa e resultado.
+- Criar testes para persistência de múltiplos papéis.
+- Validar UI com screenshots antes de habilitar o fluxo.

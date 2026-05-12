@@ -4,8 +4,8 @@ import type {
   ProviderDescriptor,
   ProviderRuntimeStatus,
   ProviderStatusState,
-} from '../types/domain';
-import type { ModelProfile } from './modelRegistry';
+} from '../../types/domain';
+import type { ModelProfile } from '../models/modelRegistry';
 
 export type ModelAction =
   | 'Usar'

@@ -1,4 +1,4 @@
-import type { ChatAttachment } from '../types/domain';
+import type { ChatAttachment } from '../../types/domain';
 
 export interface ProjectMemoryRecord {
   project: string;

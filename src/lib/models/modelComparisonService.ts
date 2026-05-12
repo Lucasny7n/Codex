@@ -1,4 +1,4 @@
-import type { ModelComparisonResult, ModelComparisonTarget } from '../types/domain';
+import type { ModelComparisonResult, ModelComparisonTarget } from '../../types/domain';
 
 export function parseComparisonTargets(text: string): ModelComparisonTarget[] {
   return text

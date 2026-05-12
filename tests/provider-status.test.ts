@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { translateError } from '../src/lib/errorTranslator';
-import { canSelectModel, resolvePrimaryAction } from '../src/lib/providerStatus';
+import { translateError } from '../src/lib/utils/errorTranslator';
+import { canSelectModel, resolvePrimaryAction } from '../src/lib/providers/status';
 
 describe('provider status engine', () => {
   it('bloqueia status sem ready e deriva acao centralizada', () => {

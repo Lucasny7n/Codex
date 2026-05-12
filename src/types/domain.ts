@@ -325,7 +325,7 @@ export type AiResponseLanguage = 'pt-BR' | 'en' | 'es';
 export interface AppPersonalizationSettings {
   memoriesStored: boolean;
   referenceChatHistory: boolean;
-  customizeCodexQwen: boolean;
+  customizeCodex: boolean;
   manageCookies: boolean;
   webPageExtraction: boolean;
   imageSearch: boolean;

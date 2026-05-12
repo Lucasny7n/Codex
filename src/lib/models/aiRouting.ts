@@ -1,4 +1,4 @@
-import type { AiFallbackModelConfig, AiFallbackPolicy } from '../types/domain';
+import type { AiFallbackModelConfig, AiFallbackPolicy } from '../../types/domain';
 
 export interface AiRouteCandidate {
   providerId: string;

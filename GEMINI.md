@@ -1,41 +1,46 @@
-# Projeto: Codex Command Center
+# Gemini Review Guide
 
-Este projeto vive em /home/lucas/Codex-Codex.
+Use this file as a short handoff for external AI review tools.
 
-Antes de alterar código:
-- Leia README.md.
-- Leia docs/GUIA_DE_USO.md.
-- Leia docs/ARCHITECTURE.md.
-- Leia docs/PERMISSIONS.md.
-- Rode git status.
-- Faça backup ou trabalhe com Git diff limpo.
+## Project
 
-Stack esperada:
-- Tauri v2
-- Rust backend
-- React + TypeScript frontend
-- Vite
-- Zustand
-- Helper privilegiado com allowlist
-- Integração com VS Code
-- Config/memórias em ~/.codex
+Codex Command Center is a Tauri v2 desktop app built with Rust, React and TypeScript. It operates local Ollama models and authenticated cloud AI providers with honest readiness status.
 
-Comandos úteis:
+## Before changing code
 
-- npm run tauri dev
-- npm run lint
-- npm run typecheck
-- npm run test
-- cargo check
-- cargo test
+- Read `README.md`.
+- Read `docs/ARCHITECTURE.md`.
+- Read `docs/DEVELOPMENT.md`.
+- Run `git status`.
+- Work only from the current checkout.
+- Do not add secrets, model weights, logs or generated screenshots.
 
-Problema recente conhecido:
-O projeto tem dois binários Rust:
-- codex_command_center
-- codex-privileged-helper
+## Validation
 
-Se npm run tauri dev falhar com cargo run sem saber o binário, corrigir src-tauri/Cargo.toml com:
-default-run = "codex_command_center"
+```bash
+npm run lint
+npm run typecheck
+npm run test -- --run
+npm run build
+npm run icons:validate
+git diff --check
+cd src-tauri
+cargo fmt --check
+cargo check
+cargo test
+```
 
-Não usar sudo.
-Não instalar helper sem confirmação.
+Run visual tests when UI changes:
+
+```bash
+npm run screenshots
+npm run test:visual
+```
+
+## Review focus
+
+- Providers cloud without validated auth must not be selectable.
+- Local models must come from real Ollama state.
+- Temporary chat must not persist sessions or attachments.
+- API keys must remain masked and out of logs.
+- Commands Rust should remain a bridge to services, not collect new business logic.

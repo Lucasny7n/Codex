@@ -1,5 +1,5 @@
 import { Badge } from '../common/Badge';
-import { formatDateTime, shortPath } from '../../lib/format';
+import { formatDateTime, shortPath } from '../../lib/utils/format';
 import type { PermissionOutcome, PermissionRequest } from '../../types/domain';
 
 interface PermissionsPanelProps {

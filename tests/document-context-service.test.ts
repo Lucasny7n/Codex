@@ -4,7 +4,7 @@ import {
   indexDocumentChunks,
   redactDocumentSecrets,
   searchDocumentChunks,
-} from '../src/lib/documentContextService';
+} from '../src/lib/file/documentContextService';
 import type { ChatAttachment } from '../src/types/domain';
 
 function attachment(text: string): ChatAttachment {

@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 import { UiIcon } from '../common/AppIcons';
 import { PopupMenu } from '../common/PremiumUI';
 import type { AgentSession } from '../../types/domain';
-import type { SettingsTab } from './SettingsPanel';
+import type { SettingsTab } from '../settings/SettingsPanel';
 import appLogo from '../../assets/app-logo.svg';
 
 type SessionMenuAction =

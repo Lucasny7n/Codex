@@ -1,56 +1,74 @@
 # Codex Command Center
 
-AI Command Center desktop para controlar conversas, modelos locais/cloud, anexos e fluxos de execução com uma interface limpa estilo Qwen/End4.
+[![CI](https://github.com/Lucasny7n/Codex/actions/workflows/ci.yml/badge.svg)](https://github.com/Lucasny7n/Codex/actions/workflows/ci.yml)
+![Tauri](https://img.shields.io/badge/Tauri-2.x-24c8db)
+![React](https://img.shields.io/badge/React-18-61dafb)
+![Rust](https://img.shields.io/badge/Rust-stable-f46623)
+![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178c6)
+![License](https://img.shields.io/badge/license-MIT-blue)
 
-O projeto usa Tauri v2, Rust, React, TypeScript e Vite. A regra central é simples: nenhum provider, modelo ou runtime aparece como pronto sem configuração e teste real.
+Codex Command Center é um app desktop premium para operar modelos de IA locais e na nuvem com sessões, anexos, permissões explícitas e diagnóstico honesto. Ele é construído com Tauri, Rust, React e TypeScript.
 
-## Screenshots
+## Visão geral
 
-As capturas oficiais de validação visual são geradas por Playwright:
+O projeto separa o uso local via Ollama dos providers na nuvem. Nenhum provider, conta, runtime ou modelo é marcado como pronto sem configuração e teste real. Quando algo ainda não está configurado, a interface deve indicar o estado correto e encaminhar o usuário para a ação necessária.
+
+## Principais recursos
+
+- Chat persistente com sessões, renomeação, duplicação, arquivamento, exportação e importação.
+- Bate-papo temporário em memória, usando o mesmo pipeline real de provider/modelo sem persistir histórico.
+- Seletor único `Nuvem | Local`, com status real e ações distintas para providers cloud e Ollama.
+- Model Manager local para listar, buscar, baixar, testar, detalhar e remover modelos Ollama.
+- Providers cloud com API key/profile, teste de conexão e bloqueio explícito quando credencial ou login faltam.
+- Composer com anexos como chips, contexto oculto e preview limitado, sem despejar arquivos no campo de texto.
+- STT/microfone preparado para backends locais, com diagnóstico de dependência e permissão.
+- Health Check para provider, Ollama, permissões, storage, WebView e dependências do host.
+- Ações privilegiadas com aprovação, risco e rollback, sem `sudo` silencioso.
+- UI escura, limpa e responsiva, com sidebar, área central de chat e superfícies auxiliares em modal/drawer.
+
+## Modelos locais com Ollama
+
+O modo Local usa Ollama real. O app consulta o runtime local, lista modelos instalados, permite baixar modelos pelo nome aceito pelo Ollama e só marca um modelo como utilizável quando ele aparece no snapshot do runtime e passa no teste curto.
+
+Comandos equivalentes para diagnóstico manual:
 
 ```bash
-npm run screenshots
+ollama list
+curl -s http://127.0.0.1:11434/api/tags
+ollama pull <modelo>
+ollama show <modelo>
+ollama rm <modelo>
 ```
 
-Por padrão, os arquivos são gravados em:
+Modelos encontrados em busca local mas ainda não instalados aparecem como candidatos para baixar, não como prontos.
 
-```text
-test-results/screenshots
-```
+## Modelos na nuvem
 
-## Recursos
+Providers cloud exigem API key, login, OAuth ou autenticação CLI conforme o adapter. Credencial salva sem teste fica em estado de configuração/teste. Apenas providers e profiles testados com sucesso podem ser usados no chat.
 
-- Chat persistente com sessões, exportação e arquivamento.
-- Bate-papo temporário em memória, sem aparecer no histórico.
-- Composer com anexos como chips, sem despejar TXT no campo de texto.
-- Seletor único `Nuvem | Local` com status honesto e sem mistura entre providers cloud e Ollama.
-- Aba Local baseada no Ollama real: `/api/tags`, `ollama list`, `ollama show`, `ollama pull` e `ollama rm`.
-- Busca local aceita nomes livres como `gpt oss`, `llama3.2` e `qwen2.5-coder:7b`; modelo não instalado aparece como candidato de pull, não como pronto.
-- Model Manager local com instalados, download, remoção, teste, detalhes, progresso e refresh.
-- Chat com anexos como contexto oculto, chunks lexicais simples e metadados sem despejar arquivo no composer.
-- Presets/personas, memória curta por projeto, comparação manual entre modelos e fallback avançado só no Modo Desenvolvedor.
-- Configurações limpas com seis abas: Geral, Interface, Modelos, Conversas, Personalização e Saúde.
-- STT local preparado para `ffmpeg`, `whisper.cpp`, `whisper`, `faster-whisper` ou Vosk.
-- Terminal e ações privilegiadas via fluxo controlado, sem `sudo` silencioso.
-- Tema claro/escuro/sistema com tokens centralizados.
+Estados relevantes incluem `ready`, `testing`, `requires_api_key`, `requires_login`, `requires_cli_auth`, `quota_exceeded`, `rate_limited`, `provider_unavailable`, `misconfigured` e `unavailable`.
 
-## Stack
+## Bate-papo temporário
 
-- Frontend: React 18, TypeScript, Zustand, Vite.
-- Desktop: Tauri v2.
-- Backend: Rust, Tokio, Reqwest.
-- Testes: Vitest, Testing Library, Playwright.
-- Modelos locais: Ollama é a única fonte local ativa.
+O bate-papo temporário usa o mesmo provider, profile e modelo selecionados no chat normal. A diferença é persistência: a conversa temporária não cria sessão, não entra no histórico e descarta mensagens/anexos quando o modo é encerrado.
 
-## Requisitos
+## Anexos e arquivos
+
+Anexos são tratados como contexto estruturado. O composer exibe nome, tipo e tamanho; previews textuais são limitados e enviados como contexto oculto quando aplicável. O app não deve enviar diretórios inteiros, binários grandes ou arquivos fora do limite sem indicação clara.
+
+## STT / microfone
+
+O fluxo de microfone depende de três partes reais: permissão do WebView/portal, captura de áudio no frontend e backend local de transcrição. O app verifica `ffmpeg` e backends como `whisper.cpp`, `whisper`, `faster-whisper` ou Vosk, mas não instala modelos nem pacotes automaticamente.
+
+## Instalação
+
+Requisitos:
 
 - Node.js e npm.
 - Rust stable e Cargo.
 - Dependências nativas do Tauri/WebKitGTK para Linux.
 - Opcional: Ollama para modelos locais.
-- Opcional: `ffmpeg` e backend Whisper/Vosk para transcrição local.
-
-## Instalação
+- Opcional: `ffmpeg` e backend Whisper/Vosk para STT.
 
 ```bash
 npm install
@@ -64,16 +82,29 @@ Frontend Vite:
 npm run dev
 ```
 
-App Tauri:
+App desktop Tauri:
 
 ```bash
 npm run tauri dev
 ```
 
+Health check local:
+
+```bash
+npm run healthcheck
+```
+
 ## Build
+
+Frontend:
 
 ```bash
 npm run build
+```
+
+Bundle Tauri:
+
+```bash
 npm run tauri build
 ```
 
@@ -86,6 +117,7 @@ npm run test -- --run
 npm run build
 npm run screenshots
 npm run test:visual
+npm run icons:validate
 git diff --check
 ```
 
@@ -98,58 +130,43 @@ cargo check
 cargo test
 ```
 
-## Estrutura
+## Estrutura do projeto
 
 ```text
-src/                    Frontend React
-src/components/          UI, painéis, composer, chat e settings
-src/lib/                 API Tauri, catálogo de modelos e status
-src/stores/              Estado global Zustand
-src/styles/              Tokens, layout e componentes
-src-tauri/src/           Backend Rust, commands e services
-src-tauri/icons/         Ícones do app
-docs/                    Arquitetura, desenvolvimento, modelos, STT e roadmap
-tests/                   Testes unitários e visuais
-scripts/                 Scripts de ambiente e instalação local
+src/
+  app/                 Composição principal do app React
+  components/          UI por domínio: chat, settings, models, file, layout e common
+  lib/                 API Tauri, modelos, Ollama, providers, STT, tema e utilitários
+  stores/              Estado global Zustand
+  styles/              Tokens, layout e componentes CSS
+  types/               Contratos TypeScript compartilhados
+src-tauri/src/
+  commands/            Ponte Tauri entre frontend e serviços
+  models/              Contratos Rust serializáveis
+  services/            Sessões, providers, Ollama, credenciais, permissões e execução
+docs/                  Arquitetura, desenvolvimento, modelos, segurança e troubleshooting
+tests/                 Testes unitários, integração leve e visual
+scripts/               Instalação local, health check e validação de ícones
 ```
 
-## Providers e Modelos
+## Segurança
 
-Providers cloud precisam de API key/login e teste real antes de ficarem selecionáveis. Credencial salva sem teste fica em estado de configuração/teste, não `ready`.
+- API keys não entram em log, screenshot, commit ou mensagem de erro.
+- Credenciais devem passar por `CredentialStore` e aparecer sempre mascaradas na UI.
+- `sudo -S` é proibido; ações privilegiadas exigem aprovação explícita.
+- Arquivos pesados, modelos e segredos ficam fora do Git por `.gitignore`.
+- Modo temporário não persiste conversa, histórico ou anexos.
 
-Modelos locais só ficam selecionáveis quando o runtime está ativo, o modelo aparece em `/api/tags`/`ollama list` e o teste curto de geração confirma funcionamento. O registry local existe apenas como sugestão/documentação, nunca como limite da busca local.
+Veja [docs/SECURITY.md](docs/SECURITY.md).
 
-Fluxo manual equivalente:
+## Roadmap
 
-```bash
-ollama list
-curl -s http://127.0.0.1:11434/api/tags
-ollama pull gpt-oss
-ollama show gpt-oss
-ollama rm gpt-oss
-```
+O roadmap prioriza estabilização do pipeline real, diagnóstico guiado e manutenção da experiência premium sem prometer capacidades que ainda não estão implementadas. Veja [docs/ROADMAP.md](docs/ROADMAP.md).
 
-Veja [docs/MODELS.md](docs/MODELS.md).
+## Contribuição
 
-## STT
+Leia [docs/CONTRIBUTING.md](docs/CONTRIBUTING.md) antes de abrir PR. A validação mínima inclui lint, typecheck, testes, build frontend, checks Rust e `git diff --check`.
 
-O microfone depende do WebView conseguir gravar áudio e de um backend local configurado. O app não instala pacotes nem baixa modelos automaticamente.
+## Licença
 
-Veja [docs/STT.md](docs/STT.md).
-
-## Troubleshooting
-
-- Provider sem chave: abra o seletor de modelos e configure o provider específico.
-- Ollama offline: valide `command -v ollama`, `systemctl is-active ollama`, `ollama list` e `curl -s http://127.0.0.1:11434/api/tags`.
-- STT sem transcrição: valide `ffmpeg`, backend Whisper/Vosk e modelo local.
-- Screenshot visual falhando: rode `npx playwright install chromium`.
-- Tauri dev na porta ocupada: verifique a porta `5173`.
-
-## Roadmap Curto
-
-- Consolidar chat e temporário como fluxos equivalentes com persistência diferente.
-- Endurecer STT local com diagnóstico guiado.
-- Evoluir catálogo multimodal sem ativar imagem antes da base estar sólida.
-- Adicionar runtimes locais além de Ollama quando houver integração segura.
-
-Veja [docs/ROADMAP.md](docs/ROADMAP.md).
+Distribuído sob a licença MIT. Veja [LICENSE](LICENSE).

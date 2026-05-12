@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildFallbackPlan } from '../src/lib/aiRouting';
+import { buildFallbackPlan } from '../src/lib/models/aiRouting';
 import type { AiFallbackModelConfig } from '../src/types/domain';
 
 const fallbacks: AiFallbackModelConfig[] = [

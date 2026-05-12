@@ -1,0 +1,68 @@
+name: Bug report
+description: Report a reproducible problem in Codex Command Center.
+title: "fix: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Include enough detail to reproduce the issue without exposing API keys, tokens or private files.
+  - type: textarea
+    id: summary
+    attributes:
+      label: Summary
+      description: What failed?
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: List the smallest sequence that triggers the problem.
+      placeholder: |
+        1. Open ...
+        2. Select ...
+        3. Observe ...
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Chat
+        - Temporary chat
+        - Cloud provider
+        - Ollama/local model
+        - STT/microphone
+        - Attachments/files
+        - Settings/Health Check
+        - Desktop/Tauri
+        - Other
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Commit or version
+      placeholder: "git rev-parse --short HEAD"
+  - type: textarea
+    id: validation
+    attributes:
+      label: Validation already run
+      description: Commands, screenshots or logs. Redact secrets.
+      placeholder: |
+        npm run test -- --run
+        cd src-tauri && cargo test

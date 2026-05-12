@@ -34,6 +34,12 @@
   "bundle": {
     "active": true,
     "targets": ["deb", "rpm"],
+    "publisher": "Lucas",
+    "category": "DeveloperTool",
+    "shortDescription": "Premium desktop command center for local and cloud AI models.",
+    "longDescription": "Codex Command Center is a Tauri desktop app for operating local Ollama models and authenticated cloud AI providers with sessions, attachments, explicit permissions and honest runtime status.",
+    "homepage": "https://github.com/Lucasny7n/Codex",
+    "license": "MIT",
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",

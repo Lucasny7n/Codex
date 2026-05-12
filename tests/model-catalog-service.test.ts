@@ -3,11 +3,11 @@ import {
   buildCloudModelOptions,
   buildLocalModelOptions,
   visibleModelOptions,
-} from '../src/lib/modelCatalogService';
+} from '../src/lib/models/modelCatalogService';
 import {
   buildPullCandidateFromQuery,
   normalizeOllamaQuery,
-} from '../src/lib/ollamaCatalogService';
+} from '../src/lib/ollama/catalogService';
 import type {
   LocalRuntimeSnapshot,
   ProviderAccountProfile,

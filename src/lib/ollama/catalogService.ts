@@ -3,8 +3,8 @@ import type {
   LocalModelInstallProgress,
   LocalRuntimeSnapshot,
   OllamaModelDetails,
-} from '../types/domain';
-import type { ModelCatalogOption } from './modelCatalogService';
+} from '../../types/domain';
+import type { ModelCatalogOption } from '../models/modelCatalogService';
 
 export interface OllamaPullCandidate {
   id: string;
@@ -153,12 +153,12 @@ export function buildPullCandidateOption(
 }
 
 export async function refreshOllamaSnapshot(): Promise<LocalRuntimeSnapshot> {
-  const { getLocalRuntimeState } = await import('./api');
+  const { getLocalRuntimeState } = await import('../api');
   return getLocalRuntimeState();
 }
 
 export async function pullOllamaModel(modelId: string): Promise<LocalRuntimeSnapshot> {
-  const { installLocalModel } = await import('./api');
+  const { installLocalModel } = await import('../api');
   const snapshot = await installLocalModel(normalizeOllamaQuery(modelId));
   if (!isInstalledOllamaModel(snapshot, modelId)) {
     throw new Error(`Ollama concluiu o download, mas ${modelId} ainda não apareceu em /api/tags.`);
@@ -167,14 +167,14 @@ export async function pullOllamaModel(modelId: string): Promise<LocalRuntimeSnap
 }
 
 export async function removeOllamaModel(modelId: string): Promise<LocalRuntimeSnapshot> {
-  const { removeLocalModel: removeLocalModelApi } = await import('./api');
+  const { removeLocalModel: removeLocalModelApi } = await import('../api');
   return removeLocalModelApi(modelId);
 }
 
 export async function showOllamaModel(
   modelId: string,
 ): Promise<OllamaModelDetails> {
-  const { showLocalModel } = await import('./api');
+  const { showLocalModel } = await import('../api');
   return showLocalModel(modelId);
 }
 

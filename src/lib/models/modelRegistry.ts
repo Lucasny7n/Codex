@@ -1,4 +1,4 @@
-import type { ExecutionMode, ProviderStatusState } from '../types/domain';
+import type { ExecutionMode, ProviderStatusState } from '../../types/domain';
 
 export type PricingType = 'free' | 'freemium' | 'paid' | 'open-source';
 export type LimitType = 'unknown' | 'daily' | 'monthly' | 'plan' | 'unlimited';

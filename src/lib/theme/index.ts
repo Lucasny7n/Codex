@@ -1,4 +1,4 @@
-import type { SystemTheme, ThemePreference } from '../types/domain';
+import type { SystemTheme, ThemePreference } from '../../types/domain';
 
 export type ResolvedTheme = 'light' | 'dark';
 

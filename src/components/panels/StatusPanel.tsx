@@ -1,5 +1,5 @@
 import { Badge } from '../common/Badge';
-import { formatDateTime } from '../../lib/format';
+import { formatDateTime } from '../../lib/utils/format';
 import type { StatusNote } from '../../types/domain';
 
 interface StatusPanelProps {

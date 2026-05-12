@@ -1,7 +1,7 @@
 import { render, screen } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
-import { ModelSelector } from '../src/components/panels/ModelSelector';
-import { localCompatibility, modelRegistry } from '../src/lib/modelRegistry';
+import { ModelSelector } from '../src/components/models/ModelSelector';
+import { localCompatibility, modelRegistry } from '../src/lib/models/modelRegistry';
 
 describe('ModelSelector legado', () => {
   it('não renderiza a tela global antiga de modelos', () => {

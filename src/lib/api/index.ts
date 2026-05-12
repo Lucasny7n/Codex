@@ -33,7 +33,7 @@ import type {
   ChatAttachment,
   ModelComparisonRequest,
   ModelComparisonResponse,
-} from '../types/domain';
+} from '../../types/domain';
 
 export async function bootstrapState(): Promise<BootstrapPayload> {
   return invoke('bootstrap_state');

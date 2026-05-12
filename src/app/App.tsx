@@ -41,29 +41,29 @@ import {
   startLocalRuntime,
   testProviderConnection,
   updateSettings,
-} from './lib/api';
-import { shellQuote, trimMultiline } from './lib/format';
+} from '../lib/api';
+import { shellQuote, trimMultiline } from '../lib/utils/format';
 import {
   modelRegistry,
   type CloudModelProfile,
   type LocalModelProfile,
-} from './lib/modelRegistry';
+} from '../lib/models/modelRegistry';
 import {
   buildCloudModelOptions,
   buildLocalModelOptions,
   isLocalModelInstalled,
   normalizeOllamaModelId,
-} from './lib/modelCatalogService';
-import { translateError } from './lib/errorTranslator';
+} from '../lib/models/modelCatalogService';
+import { translateError } from '../lib/utils/errorTranslator';
 import {
   buildProjectMemoryAttachment,
   updateProjectMemoryFromExchange,
-} from './lib/projectMemoryService';
-import { applyAppTheme } from './lib/theme';
+} from '../lib/memory/projectMemoryService';
+import { applyAppTheme } from '../lib/theme';
 import {
   canSelectModel,
   resolveModelStatus,
-} from './lib/providerStatus';
+} from '../lib/providers/status';
 import type {
   AppSettings,
   ExecutionMode,
@@ -79,21 +79,21 @@ import type {
   EnvironmentSelectionInput,
   SelectedFileAttachment,
   ChatAttachment,
-} from './types/domain';
-import { useAppStore } from './stores/appStore';
+} from '../types/domain';
+import { useAppStore } from '../stores/appStore';
 
-import { AppShell } from './components/layout/AppShell';
-import { TopBar, type TopBarModelOption } from './components/layout/TopBar';
-import { SessionsPanel } from './components/panels/SessionsPanel';
-import { ChatPanel } from './components/panels/ChatPanel';
-import { SettingsPanel, type SettingsTab } from './components/panels/SettingsPanel';
-import { CommandInputPanel, type InputModeId } from './components/panels/CommandInputPanel';
-import { ArchivedConversationsModal } from './components/panels/ArchivedConversationsModal';
-import { TerminalDrawer } from './components/panels/TerminalDrawer';
-import { HelpDrawer } from './components/panels/HelpDrawer';
-import type { EnvironmentTab } from './components/panels/ModelSelector';
-import { FileManagerModal } from './components/file/FileManagerModal';
-import { UiIcon, type UiIconName } from './components/common/AppIcons';
+import { AppShell } from '../components/layout/AppShell';
+import { TopBar, type TopBarModelOption } from '../components/layout/TopBar';
+import { SessionsPanel } from '../components/panels/SessionsPanel';
+import { ChatPanel } from '../components/chat/ChatPanel';
+import { SettingsPanel, type SettingsTab } from '../components/settings/SettingsPanel';
+import { CommandInputPanel, type InputModeId } from '../components/chat/CommandInputPanel';
+import { ArchivedConversationsModal } from '../components/chat/ArchivedConversationsModal';
+import { TerminalDrawer } from '../components/panels/TerminalDrawer';
+import { HelpDrawer } from '../components/panels/HelpDrawer';
+import type { EnvironmentTab } from '../components/models/ModelSelector';
+import { FileManagerModal } from '../components/file/FileManagerModal';
+import { UiIcon, type UiIconName } from '../components/common/AppIcons';
 import {
   ConfirmDialog,
   ExportDialog,
@@ -101,7 +101,7 @@ import {
   PopupMenu,
   ToastViewport,
   type ToastMessage,
-} from './components/common/PremiumUI';
+} from '../components/common/PremiumUI';
 
 function homeFromCodexRoot(settings?: AppSettings): string | undefined {
   if (!settings?.codexRoot) return undefined;

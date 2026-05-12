@@ -10,13 +10,13 @@ import {
   normalizeOllamaModelId,
   ollamaIdentityTerms,
   searchInstalledOllamaModels,
-} from './ollamaCatalogService';
+} from '../ollama/catalogService';
 import {
   canSelectModel,
   normalizeProviderStatus,
   resolveModelStatus,
   type ProviderStatus,
-} from './providerStatus';
+} from '../providers/status';
 import type {
   ExecutionMode,
   LocalInstalledModel,
@@ -26,7 +26,7 @@ import type {
   ProviderAccountProfile,
   ProviderDescriptor,
   ProviderRuntimeStatus,
-} from '../types/domain';
+} from '../../types/domain';
 
 export type ModelCatalogSource = 'cloud' | 'local';
 export type ModelProviderType = 'cloud' | 'local';

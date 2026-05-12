@@ -9,11 +9,11 @@ import type {
   ProviderCredentialStatus,
   ProviderRuntimeStatus,
 } from '../../types/domain';
-import { normalizeProviderStatus, type ProviderStatus } from '../../lib/providerStatus';
+import { normalizeProviderStatus, type ProviderStatus } from '../../lib/providers/status';
 import {
   visibleModelOptions,
   type ModelCatalogOption,
-} from '../../lib/modelCatalogService';
+} from '../../lib/models/modelCatalogService';
 
 export type TopBarModelOption = ModelCatalogOption;
 
