@@ -133,6 +133,10 @@ export async function transcribeAudio(audioBytes: number[], mimeType?: string, m
   return invoke('transcribe_audio', { audioBytes, mimeType, modelPath });
 }
 
+export async function recordAndTranscribeShortTest(modelPath?: string): Promise<VoiceTranscriptionResult> {
+  return invoke('record_and_transcribe_short_test', { modelPath });
+}
+
 export async function appendUserMessage(sessionId: string, content: string): Promise<AgentSession> {
   return invoke('append_user_message', { sessionId, content });
 }

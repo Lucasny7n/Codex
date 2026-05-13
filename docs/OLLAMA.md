@@ -1,8 +1,8 @@
 # Ollama
 
-Ollama é a única fonte local ativa do Ailu AI Studio nesta versão.
+Ollama is the only active local model runtime in Ailu AI Studio.
 
-## Diagnóstico rápido
+## Diagnose Ollama
 
 ```bash
 command -v ollama
@@ -11,54 +11,47 @@ ollama list
 curl -s http://127.0.0.1:11434/api/tags
 ```
 
-Se `ollama list` funciona, mas a API não responde, verifique o serviço local e a porta `11434`.
+If `ollama list` works but `/api/tags` fails, check the service and port `11434`.
 
-## Listar modelos
+## Local picker behavior
 
-```bash
-ollama list
-```
+- Local without search shows installed Ollama models only.
+- Local search checks installed models, Ollama discovery and curated fallback candidates.
+- `gpt oss`, `gpt-oss`, `gpt_oss` and `gptoss` normalize to `gpt-oss`.
+- Human searches such as `qwen coder`, `llama`, `deepseek r1` and `gemma` should find useful Ollama candidates.
+- A candidate shows `Download`, not `Installed`.
+- A model is installed only if it appears in `ollama list` or `/api/tags`.
 
-O app também consulta `/api/tags` para montar o snapshot de modelos instalados.
-
-## Buscar modelo
-
-Digite o nome no seletor Local ou no Model Manager. O app normaliza o texto e cria candidato para baixar quando o nome é aceito como entrada possível do Ollama.
-
-## Baixar modelo
+## Pull a model manually
 
 ```bash
-ollama pull <modelo>
+ollama pull <model>
 ```
 
-No app, o download deve exibir progresso quando disponível. O modelo só fica instalado depois de novo snapshot confirmar a presença dele.
+Large downloads should be intentional. Ailu does not silently pull large models.
 
-## Testar modelo
+## Test a model
 
 ```bash
 curl -s http://127.0.0.1:11434/api/generate \
-  -d '{"model":"<modelo>","prompt":"ping","stream":false}'
+  -d '{"model":"<model>","prompt":"ping","stream":false}'
 ```
 
-O app usa teste curto para confirmar que o modelo responde antes de liberar seleção.
+The app uses a short runtime test before treating a local model as usable.
 
-## Remover modelo
+## Remove a model
 
 ```bash
-ollama rm <modelo>
+ollama rm <model>
 ```
 
-Depois da remoção, o app recarrega o snapshot local.
+Refresh the app snapshot after removal.
 
-## Estados
+## Common states
 
-- `not_installed`: Ollama ausente.
-- `service_offline`: serviço não responde.
-- `api_unreachable`: API local indisponível.
-- `model_missing`: modelo ainda não instalado.
-- `downloading`: download em andamento.
-- `ready`: runtime e modelo testados.
-
-## Regras de segurança
-
-O app não instala Ollama, runtime ou modelo sem confirmação. Downloads dependem de rede e disco local; erros devem mostrar causa provável e ação clara.
+- `not_installed`: Ollama is missing.
+- `service_offline`: the service is not active.
+- `api_unreachable`: local API is not responding.
+- `model_missing`: the requested model is not installed.
+- `pulling`: download is in progress.
+- `ready`: runtime and selected model are usable.

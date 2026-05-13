@@ -1,61 +1,61 @@
-# STT / Microfone
+# STT and Microphone
 
-O suporte a voz é local e depende do ambiente real. O app não deve fingir transcrição quando permissão, captura, backend ou modelo estão ausentes.
+Voice input has two separate layers.
 
-## Dependências
+## Backend STT
 
-- WebView com `navigator.mediaDevices`.
-- Portal/pipe de áudio funcionando no Wayland quando aplicável.
-- Permissão de microfone concedida.
-- `ffmpeg` para conversão.
-- Um backend local: `whisper.cpp`, `whisper`, `faster-whisper` ou Vosk.
-- Modelo local compatível com o backend escolhido.
+Backend STT needs:
 
-## Fluxo
+- `ffmpeg`.
+- A local backend such as `whisper-cli`, `whisper.cpp`, `whisper`, `faster-whisper` or Vosk.
+- A local model path, commonly `~/.codex/models/ggml-base.bin`.
 
-1. Composer abre o fluxo do microfone.
-2. Frontend solicita permissão e grava áudio.
-3. Backend recebe bytes, valida dependências e converte quando necessário.
-4. Backend chama o backend local configurado.
-5. O texto volta para o composer ou erro acionável é exibido.
-
-## ffmpeg
-
-Validação manual:
+Check:
 
 ```bash
 ffmpeg -version
+command -v whisper-cli
+ls -lh ~/.codex/models/ggml-base.bin
 ```
 
-Sem `ffmpeg`, o app deve informar que a conversão de áudio não está disponível.
+If backend STT is ready, the app should not report STT as broken just because WebView microphone capture failed.
 
-## Backends
+## Microphone capture
 
-Backends aceitos pelo diagnóstico:
+Ailu tries capture in this order after the user clicks the microphone:
 
-- `whisper-cli` ou binário compatível de `whisper.cpp`.
-- `whisper`.
-- `faster-whisper`.
-- Vosk.
+1. WebView capture with `getUserMedia` and `MediaRecorder`.
+2. Native short capture fallback when WebView capture is denied, aborted, missing or blocked by portal policy.
 
-O app pode detectar caminhos candidatos, mas não baixa modelo automaticamente.
+Native fallback tries available tools in this order:
 
-## Permissão no WebView
+1. `pw-record`
+2. `parecord`
+3. `arecord`
+4. `ffmpeg` using the Pulse/PipeWire default input
 
-Falhas comuns:
+Temporary WAV files are stored under the system temp directory and deleted after transcription.
 
-- `navigator.mediaDevices` ausente.
-- Permissão negada pelo usuário.
-- Portal de desktop indisponível.
-- PipeWire/WirePlumber sem captura.
-- WebView sem policy de microfone.
+## User-facing failure
 
-Nesses casos, a UI deve separar erro de permissão de erro de backend.
+If capture fails, the UI should show:
 
-## Erros comuns
+```text
+Não consegui acessar o microfone. Verifique PipeWire/WirePlumber ou selecione outro dispositivo.
+```
 
-- Sem permissão: conceder microfone no ambiente gráfico.
-- Sem backend: instalar/configurar Whisper ou Vosk.
-- Sem modelo: escolher caminho de modelo local.
-- Áudio vazio: verificar dispositivo de entrada.
-- Conversão falhou: validar `ffmpeg`.
+Raw backend errors, stack traces and JSON payloads should not be shown in the normal UI.
+
+## Wayland checks
+
+```bash
+systemctl --user status pipewire
+systemctl --user status wireplumber
+systemctl --user status xdg-desktop-portal
+```
+
+For a direct native capture test:
+
+```bash
+pw-record --channels=1 --rate=16000 /tmp/ailu-mic-test.wav
+```

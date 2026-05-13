@@ -222,6 +222,13 @@ async function installTauriMock(page: Page): Promise<void> {
             checkedAt: now,
           };
         }
+        if (cmd === 'record_and_transcribe_short_test') {
+          return {
+            status: 'error',
+            message: 'Não consegui acessar o microfone. Verifique PipeWire/WirePlumber ou selecione outro dispositivo.',
+            backend: 'native-capture',
+          };
+        }
         if (cmd === 'get_app_health_check') {
           return {
             baseDir: '/tmp/workspace',
@@ -238,7 +245,9 @@ async function installTauriMock(page: Page): Promise<void> {
             items: [
               { id: 'ollama-installed', label: 'Ollama instalado', status: 'ok', detail: 'Runtime encontrado no PATH.' },
               { id: 'ollama-api', label: 'Ollama API ativa', status: 'ok', detail: 'http://127.0.0.1:11434' },
-              { id: 'stt-backend', label: 'STT local', status: 'warning', detail: 'Backend Whisper/Vosk ausente.', action: 'Configurar transcrição local', command: 'sudo pacman -S --needed ffmpeg whisper.cpp' },
+              { id: 'stt-backend', label: 'Backend STT', status: 'warning', detail: 'Backend Whisper/Vosk ausente.', action: 'Configurar transcrição local', command: 'sudo pacman -S --needed ffmpeg whisper.cpp' },
+              { id: 'microphone-webview', label: 'Captura WebView', status: 'warning', detail: 'Captura ainda não testada no WebView.', action: 'Testar microfone' },
+              { id: 'microphone-native', label: 'Captura nativa', status: 'ok', detail: 'Fallback nativo disponível via pw-record.', action: 'Gravar teste curto' },
               { id: 'api-keys', label: 'API keys', status: 'warning', detail: 'Credencial salva exige teste antes de ficar pronta.', action: 'Testar conexão' },
               { id: 'git-workspace', label: 'Git/workspace', status: 'ok', detail: '/tmp/workspace · main' },
             ],
@@ -534,10 +543,10 @@ test('captura estado de configuração STT', async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   await openApp(page, 'dark');
   await page.getByLabel('Entrada por voz').click();
-  await expect(page.getByText(/Backend local não configurado|Microfone indisponível|Permissão negada|Nenhum microfone/)).toBeVisible();
+  await expect(page.getByText(/Não consegui acessar o microfone|Backend local não configurado|Microfone indisponível/)).toBeVisible();
   await screenshot(page, 'pass-15-mic-permission-flow');
   await page.getByText(/Configurar microfone|Configurar transcrição local/).click();
-  await expect(page.getByRole('dialog', { name: 'Configurar transcrição local' })).toBeVisible();
+  await expect(page.getByRole('dialog', { name: 'Transcrição e microfone' })).toBeVisible();
   await screenshot(page, 'pass-15-mic-state');
   await screenshot(page, 'pass-15-mic-config');
   await screenshot(page, 'pass-21-mic-diagnostic');

@@ -137,6 +137,9 @@ function renderSettings(overrides: Partial<ComponentProps<typeof SettingsPanel>>
     credentialsEncrypted: false,
     items: [
       { id: 'ollama-api', label: 'Ollama API ativa', status: 'ok', detail: 'http://127.0.0.1:11434' },
+      { id: 'stt-backend', label: 'Backend STT', status: 'ok', detail: 'Transcrição local pronta. Modelo: /home/lucas/.codex/models/ggml-base.bin' },
+      { id: 'microphone-webview', label: 'Captura WebView', status: 'warning', detail: 'Captura ainda não testada.' },
+      { id: 'microphone-native', label: 'Captura nativa', status: 'ok', detail: 'Fallback nativo disponível via pw-record.' },
     ],
     recentErrors: [],
     overallStatus: 'ok',
@@ -418,8 +421,12 @@ describe('SettingsPanel', () => {
     await waitFor(() => {
       expect(api.getAppHealthCheck).toHaveBeenCalled();
       expect(screen.getByText('Ollama API ativa')).toBeInTheDocument();
-      expect(screen.getByText('OK')).toBeInTheDocument();
+      expect(screen.getByText('Backend STT')).toBeInTheDocument();
+      expect(screen.getByText('Captura WebView')).toBeInTheDocument();
+      expect(screen.getByText('Captura nativa')).toBeInTheDocument();
+      expect(screen.getAllByText('OK').length).toBeGreaterThanOrEqual(1);
       expect(screen.getByText('http://127.0.0.1:11434')).toBeInTheDocument();
+      expect(screen.queryByText(/CODEX_CONTEXT_BOOTSTRAP/)).not.toBeInTheDocument();
     });
   });
 });

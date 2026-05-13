@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import * as api from '../src/lib/api';
 import { CommandInputPanel } from '../src/components/chat/CommandInputPanel';
@@ -7,6 +7,7 @@ vi.mock('../src/lib/api', () => ({
   getFileAttachment: vi.fn(),
   listFileDirectory: vi.fn(),
   getSttConfigState: vi.fn(),
+  recordAndTranscribeShortTest: vi.fn(),
   transcribeAudio: vi.fn(),
 }));
 
@@ -51,23 +52,6 @@ describe('CommandInputPanel', () => {
     }
   }
 
-  class MockSpeechRecognition {
-    lang = '';
-    interimResults = false;
-    continuous = false;
-    onstart: (() => void) | null = null;
-    onresult: ((event: Event & { results: ArrayLike<ArrayLike<{ transcript: string }>> }) => void) | null = null;
-    onerror: ((event: Event & { error?: string }) => void) | null = null;
-    onend: (() => void) | null = null;
-    start = vi.fn(() => {
-      this.onstart?.();
-    });
-    stop = vi.fn(() => {
-      this.onend?.();
-    });
-    abort = vi.fn();
-  }
-
   beforeEach(() => {
     vi.clearAllMocks();
     Reflect.deleteProperty(window, 'SpeechRecognition');
@@ -101,6 +85,11 @@ describe('CommandInputPanel', () => {
       installCommand: 'sudo pacman -S ffmpeg whisper.cpp',
       message: 'Nenhum backend STT local encontrado.',
       checkedAt: new Date().toISOString(),
+    });
+    vi.mocked(api.recordAndTranscribeShortTest).mockResolvedValue({
+      status: 'error',
+      message: 'Não consegui acessar o microfone. Verifique PipeWire/WirePlumber ou selecione outro dispositivo.',
+      backend: 'native-capture',
     });
   });
 
@@ -273,13 +262,23 @@ describe('CommandInputPanel', () => {
     resolveSend?.();
   });
 
-  it('transcreve voz quando SpeechRecognition existe', async () => {
-    let instance: MockSpeechRecognition | undefined;
-    const SpeechRecognitionMock = function SpeechRecognitionMock(): MockSpeechRecognition {
-      instance = new MockSpeechRecognition();
-      return instance;
-    } as unknown as typeof MockSpeechRecognition;
-    vi.stubGlobal('SpeechRecognition', SpeechRecognitionMock);
+  it('usa captura WebView antes do fallback nativo', async () => {
+    const stop = vi.fn();
+    Object.defineProperty(window.navigator, 'mediaDevices', {
+      configurable: true,
+      value: {
+        getUserMedia: vi.fn().mockResolvedValue({
+          getTracks: () => [{ stop }],
+        }),
+      },
+    });
+    vi.stubGlobal('MediaRecorder', MockMediaRecorder);
+    vi.mocked(api.transcribeAudio).mockResolvedValue({
+      status: 'done',
+      text: 'texto falado',
+      message: 'ok',
+      backend: 'whisper-cli',
+    });
 
     render(
       <CommandInputPanel
@@ -294,16 +293,11 @@ describe('CommandInputPanel', () => {
 
     fireEvent.click(screen.getByLabelText('Entrada por voz'));
     expect(await screen.findByRole('status')).toHaveTextContent('Ouvindo...');
-
-    act(() => {
-      instance?.onresult?.({
-        type: 'result',
-        results: [[{ transcript: 'texto falado' }]],
-      } as unknown as Event & { results: ArrayLike<ArrayLike<{ transcript: string }>> });
-      instance?.onend?.();
-    });
+    fireEvent.click(screen.getByLabelText('Parar transcrição de voz'));
 
     await waitFor(() => {
+      expect(api.transcribeAudio).toHaveBeenCalled();
+      expect(api.recordAndTranscribeShortTest).not.toHaveBeenCalled();
       expect(screen.getByDisplayValue('texto falado')).toBeInTheDocument();
     });
   });
@@ -382,8 +376,11 @@ describe('CommandInputPanel', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent('sudo pacman -S ffmpeg whisper.cpp');
 
     fireEvent.click(screen.getByText('Configurar transcrição local'));
-    expect(await screen.findByRole('dialog', { name: 'Configurar transcrição local' })).toBeInTheDocument();
+    expect(await screen.findByRole('dialog', { name: 'Transcrição e microfone' })).toBeInTheDocument();
     expect(api.getSttConfigState).toHaveBeenCalled();
+    expect(screen.getByText('Backend STT')).toBeInTheDocument();
+    expect(screen.getByText('Captura WebView')).toBeInTheDocument();
+    expect(screen.getByText('Captura nativa')).toBeInTheDocument();
     expect(screen.getByText('Comando Arch sugerido')).toBeInTheDocument();
     expect(screen.getByText('sudo pacman -S ffmpeg whisper.cpp')).toBeInTheDocument();
   });
@@ -419,7 +416,7 @@ describe('CommandInputPanel', () => {
     expect(screen.queryByText(/Stack trace/i)).not.toBeInTheDocument();
   });
 
-  it('orienta configuração quando a permissão do microfone é negada', async () => {
+  it('tenta fallback nativo quando a permissão do WebView é negada', async () => {
     Object.defineProperty(window.navigator, 'mediaDevices', {
       configurable: true,
       value: {
@@ -441,10 +438,45 @@ describe('CommandInputPanel', () => {
 
     fireEvent.click(screen.getByLabelText('Entrada por voz'));
 
-    expect(await screen.findByRole('alert')).toHaveTextContent('Permissão negada');
-    fireEvent.click(screen.getByText('Configurar microfone'));
-    expect(await screen.findByRole('dialog', { name: 'Configurar transcrição local' })).toBeInTheDocument();
+    expect(await screen.findByRole('alert')).toHaveTextContent('Não consegui acessar o microfone');
+    expect(api.recordAndTranscribeShortTest).toHaveBeenCalled();
+    fireEvent.click(screen.getByText('Configurar transcrição local'));
+    expect(await screen.findByRole('dialog', { name: 'Transcrição e microfone' })).toBeInTheDocument();
     expect(screen.getByText('Permissão no Linux/Hyprland')).toBeInTheDocument();
+  });
+
+  it('fallback nativo mockado adiciona texto transcrito ao composer', async () => {
+    Object.defineProperty(window.navigator, 'mediaDevices', {
+      configurable: true,
+      value: {
+        getUserMedia: vi.fn().mockRejectedValue(new DOMException('portal denied', 'NotAllowedError')),
+      },
+    });
+    vi.stubGlobal('MediaRecorder', MockMediaRecorder);
+    vi.mocked(api.recordAndTranscribeShortTest).mockResolvedValueOnce({
+      status: 'done',
+      text: 'texto nativo reconhecido',
+      message: 'ok',
+      backend: 'whisper-cli',
+    });
+
+    render(
+      <CommandInputPanel
+        busy={false}
+        privilegedActions={[]}
+        actionJsonExamples={{}}
+        onSendOrder={vi.fn()}
+        onExecuteCommand={vi.fn()}
+        onRequestPrivilegedAction={vi.fn()}
+      />,
+    );
+
+    fireEvent.click(screen.getByLabelText('Entrada por voz'));
+
+    await waitFor(() => {
+      expect(api.recordAndTranscribeShortTest).toHaveBeenCalled();
+      expect(screen.getByDisplayValue('texto nativo reconhecido')).toBeInTheDocument();
+    });
   });
 
   it('abre seletor interno, adiciona chip de arquivo e remove o chip', async () => {

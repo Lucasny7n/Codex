@@ -1,21 +1,26 @@
 # Roadmap
 
-Roadmap curto e honesto. Itens aqui não devem ser apresentados como implementados.
+This roadmap is intentionally honest. Items here are not implemented until the app, tests and docs prove them.
 
-## Próximos passos
+## Near term
 
-- Reduzir `src/app/App.tsx` em hooks e módulos de fluxo testáveis.
-- Dividir `src-tauri/src/commands/mod.rs` por domínio mantendo commands como ponte fina.
-- Integrar keyring nativo para credenciais por profile.
-- Melhorar diagnóstico guiado para Ollama offline, porta ocupada e modelo ausente.
-- Endurecer STT com seleção explícita de backend/modelo e teste local.
-- Ampliar cobertura visual de chat temporário, seletor e Settings.
-- Preparar adapters adicionais apenas quando houver autenticação e teste reais.
+- Keep hard Cloud/Local model separation covered by tests.
+- Improve guided recovery for Ollama offline, missing model and API unreachable states.
+- Keep STT backend status separate from microphone capture status.
+- Add more visual smoke coverage for home, chat, model selector, settings, health and STT modal.
+- Reduce `src/app/App.tsx` into smaller hooks and domain modules without changing behavior.
 
-## Fora de escopo nesta versão
+## Mid term
 
-- Geração de imagem.
-- Instalação silenciosa de runtimes ou modelos.
-- Provider marcado como pronto sem teste.
-- Execução root arbitrária.
-- Runtimes locais além de Ollama como fonte ativa.
+- Native keyring integration for provider profile secrets.
+- Stronger provider adapter matrix with real auth checks.
+- Better model comparison workflow with explicit user action and clear cost boundaries.
+- Release packaging for common Linux formats.
+
+## Out of scope until explicitly implemented
+
+- Silent model downloads.
+- Local runtimes other than Ollama as active model sources.
+- Fake providers or fake chat responses in production flow.
+- Root command execution without a reviewed privileged helper path.
+- Public claims that cloud/STT features work without validation evidence.

@@ -2,8 +2,10 @@ use std::{
     env, fs,
     io::Read,
     path::{Path, PathBuf},
-    process::Command,
+    process::{Child, Command, Stdio},
     sync::Arc,
+    thread,
+    time::{Duration, Instant},
 };
 
 use serde::Serialize;
@@ -129,6 +131,24 @@ fn health_item(
         id: id.to_owned(),
         label: label.to_owned(),
         status: if ok { "ok" } else { "warning" }.to_owned(),
+        detail,
+        action: action.map(str::to_owned),
+        command: command.map(str::to_owned),
+    }
+}
+
+fn health_item_with_status(
+    id: &str,
+    label: &str,
+    status: &str,
+    detail: String,
+    action: Option<&str>,
+    command: Option<&str>,
+) -> SystemHealthItem {
+    SystemHealthItem {
+        id: id.to_owned(),
+        label: label.to_owned(),
+        status: status.to_owned(),
         detail,
         action: action.map(str::to_owned),
         command: command.map(str::to_owned),
@@ -472,6 +492,8 @@ fn zip_preview(path: &Path) -> (Option<String>, FilePreviewKind, bool) {
 }
 
 const STT_INSTALL_COMMAND: &str = "sudo pacman -S --needed ffmpeg whisper.cpp";
+const MIC_CAPTURE_FAILURE_MESSAGE: &str =
+    "Não consegui acessar o microfone. Verifique PipeWire/WirePlumber ou selecione outro dispositivo.";
 
 fn command_in_path(program: &str) -> Option<PathBuf> {
     let path = Path::new(program);
@@ -551,6 +573,138 @@ fn ffmpeg_convert_to_wav(input: &Path, temp_dir: &Path) -> Result<PathBuf, Strin
     } else {
         stderr
     })
+}
+
+fn recorded_file_ok(path: &Path) -> bool {
+    fs::metadata(path)
+        .ok()
+        .is_some_and(|metadata| metadata.is_file() && metadata.len() > 128)
+}
+
+fn wait_child_with_timeout(child: &mut Child, timeout: Duration) -> Result<(), String> {
+    let deadline = Instant::now() + timeout;
+    loop {
+        if let Some(status) = child
+            .try_wait()
+            .map_err(|error| format!("falha ao aguardar captura nativa: {error}"))?
+        {
+            return status
+                .success()
+                .then_some(())
+                .ok_or_else(|| format!("captura nativa saiu com status {status}"));
+        }
+
+        if Instant::now() >= deadline {
+            child
+                .kill()
+                .map_err(|error| format!("falha ao encerrar captura nativa: {error}"))?;
+            let _ = child.wait();
+            return Ok(());
+        }
+
+        thread::sleep(Duration::from_millis(80));
+    }
+}
+
+fn run_native_capture_program(
+    program: &str,
+    args: &[String],
+    output_path: &Path,
+    timeout: Duration,
+) -> Result<(), String> {
+    let binary = command_in_path(program).ok_or_else(|| format!("{program} não encontrado"))?;
+    let mut child = Command::new(binary)
+        .args(args)
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
+        .map_err(|error| format!("falha ao iniciar {program}: {error}"))?;
+    wait_child_with_timeout(&mut child, timeout)?;
+    if recorded_file_ok(output_path) {
+        Ok(())
+    } else {
+        Err(format!("{program} não gerou WAV utilizável"))
+    }
+}
+
+fn record_short_native_wav(temp_dir: &Path) -> Result<(PathBuf, String), Vec<String>> {
+    let mut diagnostics = Vec::new();
+    let attempts: Vec<(&str, Vec<String>, Duration)> = vec![
+        (
+            "pw-record",
+            vec![
+                "--rate".to_owned(),
+                "16000".to_owned(),
+                "--channels".to_owned(),
+                "1".to_owned(),
+                temp_dir.join("pw-record.wav").to_string_lossy().to_string(),
+            ],
+            Duration::from_millis(2300),
+        ),
+        (
+            "parecord",
+            vec![
+                "--file-format=wav".to_owned(),
+                "--rate=16000".to_owned(),
+                "--channels=1".to_owned(),
+                temp_dir.join("parecord.wav").to_string_lossy().to_string(),
+            ],
+            Duration::from_millis(2300),
+        ),
+        (
+            "arecord",
+            vec![
+                "-q".to_owned(),
+                "-f".to_owned(),
+                "S16_LE".to_owned(),
+                "-r".to_owned(),
+                "16000".to_owned(),
+                "-c".to_owned(),
+                "1".to_owned(),
+                "-d".to_owned(),
+                "2".to_owned(),
+                temp_dir.join("arecord.wav").to_string_lossy().to_string(),
+            ],
+            Duration::from_millis(4200),
+        ),
+        (
+            "ffmpeg",
+            vec![
+                "-hide_banner".to_owned(),
+                "-loglevel".to_owned(),
+                "error".to_owned(),
+                "-y".to_owned(),
+                "-f".to_owned(),
+                "pulse".to_owned(),
+                "-i".to_owned(),
+                "default".to_owned(),
+                "-t".to_owned(),
+                "2".to_owned(),
+                "-ac".to_owned(),
+                "1".to_owned(),
+                "-ar".to_owned(),
+                "16000".to_owned(),
+                temp_dir.join("ffmpeg.wav").to_string_lossy().to_string(),
+            ],
+            Duration::from_millis(5200),
+        ),
+    ];
+
+    for (program, args, timeout) in attempts {
+        let Some(output) = args.last().map(PathBuf::from) else {
+            continue;
+        };
+        match run_native_capture_program(program, &args, &output, timeout) {
+            Ok(()) => return Ok((output, program.to_owned())),
+            Err(error) => {
+                diagnostics.push(error);
+                let _ = fs::remove_file(output);
+            }
+        }
+    }
+
+    Err(diagnostics)
 }
 
 fn configured_model_path(raw: Option<&str>) -> Option<PathBuf> {
@@ -1177,6 +1331,67 @@ pub fn transcribe_audio(
 }
 
 #[tauri::command]
+pub fn record_and_transcribe_short_test(
+    model_path: Option<String>,
+) -> Result<VoiceTranscriptionResult, ErrorPayload> {
+    let temp_dir = env::temp_dir().join(format!("ailu-native-voice-{}", Uuid::new_v4()));
+    if let Err(error) = fs::create_dir_all(&temp_dir) {
+        return Ok(voice_result(
+            VoiceTranscriptionResultStatus::Error,
+            None,
+            MIC_CAPTURE_FAILURE_MESSAGE,
+            Some("native-capture"),
+            None,
+            Some(error.to_string()),
+        ));
+    }
+
+    let result = match record_short_native_wav(&temp_dir) {
+        Ok((audio_path, capture_backend)) => match fs::read(&audio_path) {
+            Ok(bytes) => match transcribe_audio(bytes, Some("audio/wav".to_owned()), model_path) {
+                Ok(mut transcription) => {
+                    let capture_note = format!("captura nativa: {capture_backend}");
+                    transcription.technical_details = Some(
+                        transcription
+                            .technical_details
+                            .map(|details| format!("{capture_note}\n{details}"))
+                            .unwrap_or(capture_note),
+                    );
+                    Ok(transcription)
+                }
+                Err(error) => Ok(voice_result(
+                    VoiceTranscriptionResultStatus::Error,
+                    None,
+                    MIC_CAPTURE_FAILURE_MESSAGE,
+                    Some("native-capture"),
+                    None,
+                    Some(error.message),
+                )),
+            },
+            Err(error) => Ok(voice_result(
+                VoiceTranscriptionResultStatus::Error,
+                None,
+                MIC_CAPTURE_FAILURE_MESSAGE,
+                Some("native-capture"),
+                None,
+                Some(error.to_string()),
+            )),
+        },
+        Err(diagnostics) => Ok(voice_result(
+            VoiceTranscriptionResultStatus::Error,
+            None,
+            MIC_CAPTURE_FAILURE_MESSAGE,
+            Some("native-capture"),
+            None,
+            Some(diagnostics.join("\n")),
+        )),
+    };
+
+    let _ = fs::remove_dir_all(&temp_dir);
+    result
+}
+
+#[tauri::command]
 pub fn list_file_directory(path: Option<String>) -> Result<FileDirectoryListing, ErrorPayload> {
     let directory = resolve_existing_path(path.as_deref()).map_err(map_err)?;
     let metadata = fs::metadata(&directory)
@@ -1580,6 +1795,53 @@ pub async fn get_app_health_check(
     let icon_exists = Path::new(&base_dir)
         .join("src-tauri/icons/512x512.png")
         .is_file();
+    let pipewire_active = systemctl_user_active("pipewire.service");
+    let wireplumber_active = systemctl_user_active("wireplumber.service");
+    let portal_active = systemctl_user_active("xdg-desktop-portal.service");
+    let native_capture_tools = ["pw-record", "parecord", "arecord", "ffmpeg"]
+        .into_iter()
+        .filter(|program| command_in_path(program).is_some())
+        .collect::<Vec<_>>();
+    let stt_backend_status = match stt.as_ref() {
+        Some(snapshot) if snapshot.ready => "ok",
+        Some(snapshot) if !snapshot.ffmpeg.installed => "error",
+        Some(_) => "warning",
+        None => "warning",
+    };
+    let stt_backend_detail = stt
+        .as_ref()
+        .map(|snapshot| {
+            let model = snapshot
+                .model_path
+                .clone()
+                .unwrap_or_else(|| "modelo não selecionado".to_owned());
+            format!("{} Modelo: {model}", snapshot.message)
+        })
+        .unwrap_or_else(|| "Diagnóstico STT indisponível.".to_owned());
+    let webview_capture_status = if pipewire_active && wireplumber_active && portal_active {
+        "ok"
+    } else {
+        "warning"
+    };
+    let webview_capture_detail = if pipewire_active && wireplumber_active && portal_active {
+        "PipeWire, WirePlumber e portal ativos; teste real acontece ao clicar no microfone."
+            .to_owned()
+    } else {
+        "Captura WebView pode falhar até PipeWire, WirePlumber e portal estarem ativos.".to_owned()
+    };
+    let native_capture_status = if native_capture_tools.is_empty() {
+        "warning"
+    } else {
+        "ok"
+    };
+    let native_capture_detail = if native_capture_tools.is_empty() {
+        "Nenhum fallback nativo encontrado: pw-record, parecord, arecord ou ffmpeg.".to_owned()
+    } else {
+        format!(
+            "Fallback nativo disponível via {}.",
+            native_capture_tools.join(", ")
+        )
+    };
 
     let mut items = vec![
         health_item(
@@ -1628,7 +1890,7 @@ pub async fn get_app_health_check(
         health_item(
             "pipewire",
             "PipeWire",
-            systemctl_user_active("pipewire.service"),
+            pipewire_active,
             "Serviço de áudio do usuário.".to_owned(),
             Some("Verificar PipeWire"),
             Some("systemctl --user status pipewire"),
@@ -1636,7 +1898,7 @@ pub async fn get_app_health_check(
         health_item(
             "wireplumber",
             "WirePlumber",
-            systemctl_user_active("wireplumber.service"),
+            wireplumber_active,
             "Gerenciador PipeWire.".to_owned(),
             Some("Verificar WirePlumber"),
             Some("systemctl --user status wireplumber"),
@@ -1644,7 +1906,7 @@ pub async fn get_app_health_check(
         health_item(
             "portal",
             "xdg-desktop-portal",
-            systemctl_user_active("xdg-desktop-portal.service"),
+            portal_active,
             "Portal necessário para permissões do WebView.".to_owned(),
             Some("Verificar portal"),
             Some("systemctl --user status xdg-desktop-portal"),
@@ -1657,16 +1919,30 @@ pub async fn get_app_health_check(
             Some("Instalar ffmpeg"),
             Some("sudo pacman -S --needed ffmpeg"),
         ),
-        health_item(
-            "stt",
-            "STT local",
-            stt.as_ref().is_some_and(|snapshot| snapshot.ready),
-            stt.as_ref()
-                .map(|snapshot| snapshot.message.clone())
-                .unwrap_or_else(|| "Diagnóstico STT indisponível.".to_owned()),
-            Some("Configurar microfone no composer"),
+        health_item_with_status(
+            "stt-backend",
+            "Backend STT",
+            stt_backend_status,
+            stt_backend_detail,
+            Some("Configurar transcrição local"),
             stt.as_ref()
                 .map(|snapshot| snapshot.install_command.as_str()),
+        ),
+        health_item_with_status(
+            "microphone-webview",
+            "Captura WebView",
+            webview_capture_status,
+            webview_capture_detail,
+            Some("Testar microfone no composer"),
+            Some("systemctl --user status pipewire wireplumber xdg-desktop-portal"),
+        ),
+        health_item_with_status(
+            "microphone-native",
+            "Captura nativa",
+            native_capture_status,
+            native_capture_detail,
+            Some("Gravar teste curto"),
+            Some("pw-record / parecord / arecord / ffmpeg"),
         ),
         health_item(
             "api-keys",

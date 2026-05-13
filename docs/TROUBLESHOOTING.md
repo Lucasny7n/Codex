@@ -1,8 +1,13 @@
 # Troubleshooting
 
-## Ollama offline
+Start with:
 
-Valide:
+```bash
+npm run doctor
+npm run healthcheck
+```
+
+## Ollama offline
 
 ```bash
 command -v ollama
@@ -11,45 +16,64 @@ ollama list
 curl -s http://127.0.0.1:11434/api/tags
 ```
 
-Se a CLI existe mas a API não responde, verifique o serviço local e a porta `11434`.
+If the CLI works but the API fails, check the Ollama service and port `11434`.
 
-## Modelo local não aparece
+## Local model does not appear
 
-- Confirme o nome em `ollama list`.
-- Rode `curl -s http://127.0.0.1:11434/api/tags`.
-- Use o nome completo com tag quando necessário, por exemplo `qwen2.5-coder:7b`.
-- Depois de baixar, atualize o snapshot no app.
+- Confirm the exact name in `ollama list`.
+- Check `/api/tags`.
+- Include the tag when needed, for example `qwen2.5-coder:7b`.
+- Refresh the local runtime snapshot in the app.
 
-## STT sem permissão
+## Cloud provider is not selectable
 
-- Verifique se o WebView expõe `navigator.mediaDevices`.
-- Conceda permissão de microfone.
-- Confirme PipeWire/WirePlumber/portal no host.
-- Valide `ffmpeg -version`.
-- Configure backend Whisper/Vosk e modelo local.
+- Add or replace the provider API key/profile.
+- Run the provider connection test.
+- Check whether the failure is key, quota, provider outage or model access.
+- Do not force selection when status is not ready.
 
-## Ícone não aparece no Hyprland
+## STT backend is ready but microphone fails
 
-Rode:
+This means transcription dependencies are available but capture is blocked.
+
+Check:
+
+```bash
+systemctl --user status pipewire
+systemctl --user status wireplumber
+systemctl --user status xdg-desktop-portal
+```
+
+Then use the STT modal button `Record short test`. Ailu will try WebView capture first and native short capture fallback if the WebView path fails.
+
+## Icon or desktop entry missing
 
 ```bash
 npm run icons:validate
 bash scripts/install-desktop-entry.sh
 ```
 
-Confirme que o desktop entry aponta para `Icon=ailu-ai-studio` e que os PNGs existem em `~/.local/share/icons/hicolor`.
+The desktop entry should use:
 
-## Porta Vite ocupada
+```text
+Name=Ailu AI Studio
+Icon=ailu-ai-studio
+StartupWMClass=ailu-ai-studio
+```
 
-O Vite usa `5173` com `strictPort`. Verifique o processo antes de concluir falha do app:
+## Vite port already in use
 
 ```bash
 lsof -n -P -iTCP:5173 -sTCP:LISTEN
 ```
 
-## Provider com API inválida
+Stop the process or run the frontend on another port before starting Tauri.
 
-- Reconfigure a API key no provider/profile correto.
-- Use `Testar conexão`.
-- Verifique status HTTP: `401` indica chave inválida; `403` indica acesso negado; `429` indica cota ou limite; `5xx` indica falha temporária do provider.
-- Não force seleção quando o status não for `ready`.
+## Raw technical error in UI
+
+This is a bug. Open an issue and include:
+
+- Area of the app.
+- User-facing message shown.
+- Redacted technical detail.
+- Commands/tests run.

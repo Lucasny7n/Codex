@@ -1,27 +1,28 @@
-# Contribuição
+# Contributing
 
-Contribuições devem preservar a regra central do projeto: funcionalidade real antes de aparência e nenhum status pronto sem validação.
+Contributions are welcome when they preserve the core product rule: real functionality before visual polish, and no ready state without validation.
 
-## Fluxo recomendado
+## Workflow
 
-1. Abra uma issue ou descreva claramente o objetivo.
-2. Rode `git status` e trabalhe em branch pequena.
-3. Faça mudanças por domínio.
-4. Atualize testes e docs quando o comportamento mudar.
-5. Rode a validação antes do PR.
+1. Start from an issue or a clear problem statement.
+2. Pull latest `main`.
+3. Work in a focused branch.
+4. Keep changes scoped by domain.
+5. Add or update tests for behavior changes.
+6. Run validation before opening a PR.
 
-## Estilo de commit
+## Commit style
 
 Use Conventional Commits:
 
 ```text
-feat: add provider profile validation
+feat: add provider validation
 fix: keep temporary chat out of persisted sessions
 docs: clarify ollama setup
-chore: reorganize repository structure
+chore: prepare release checklist
 ```
 
-## Validação mínima
+## Validation
 
 ```bash
 npm run lint
@@ -36,32 +37,29 @@ cargo check
 cargo test
 ```
 
-Rode `npm run screenshots` e `npm run test:visual` para mudanças de UI.
+Run visual checks for UI work:
 
-## Padrão visual
+```bash
+npm run screenshots
+npm run test:visual
+```
 
-- Base escura e contraste alto.
-- Acento azul consistente.
-- Ações secundárias atrás de menu quando apropriado.
-- Sem cards aninhados desnecessários.
-- Sem texto técnico bruto na superfície principal.
-- Estados de hover/focus acessíveis e discretos.
+## Functional rules
 
-## Regras funcionais
+- Local means Ollama only.
+- Cloud means cloud providers only.
+- Saved API key without a successful test is not ready.
+- Temporary chat uses the real provider pipeline and does not persist.
+- STT backend readiness and microphone capture readiness are separate.
+- UI errors are short, human and sanitized.
 
-- Provider cloud sem credencial ou login não é selecionável.
-- Credencial salva sem teste não é `ready`.
-- Local significa Ollama real.
-- Modelo não instalado é candidato para baixar, não modelo pronto.
-- Chat temporário usa provider real e não persiste.
-- STT depende de permissão, captura e backend local.
+## PR expectations
 
-## PR
+Include:
 
-Inclua no PR:
-
-- Resumo.
-- Arquivos principais alterados.
-- Evidência de validação.
-- Screenshots quando houver UI.
-- Riscos e rollback.
+- What changed.
+- Why it changed.
+- Main files touched.
+- Validation evidence.
+- Screenshots for UI changes.
+- Known risk and rollback.

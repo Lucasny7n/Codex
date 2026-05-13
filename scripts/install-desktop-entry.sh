@@ -5,6 +5,10 @@ APP_DIR="$HOME/.local/share/applications"
 ICON_ROOT="$HOME/.local/share/icons/hicolor"
 DESKTOP_FILE="$APP_DIR/ailu-ai-studio.desktop"
 
+echo "Installing Ailu AI Studio desktop entry for the current user."
+echo "Application dir: $APP_DIR"
+echo "Icon root: $ICON_ROOT"
+
 mkdir -p "$APP_DIR"
 if command -v node >/dev/null 2>&1; then
   node "$ROOT_DIR/scripts/validate-icon-alpha.mjs"
@@ -32,4 +36,5 @@ if command -v gtk-update-icon-cache >/dev/null 2>&1; then
   gtk-update-icon-cache -q "$ICON_ROOT" >/dev/null 2>&1 || true
 fi
 
-echo "Desktop entry instalada em $DESKTOP_FILE"
+echo "Desktop entry installed at $DESKTOP_FILE"
+echo "If your launcher keeps an old icon, log out/in or refresh the desktop cache."

@@ -38,10 +38,13 @@
     "icons:generate": "bash scripts/generate-icons.sh",
     "icons:validate": "bash scripts/validate-icons.sh",
     "healthcheck": "bash scripts/healthcheck.sh",
+    "doctor": "bash scripts/doctor.sh",
     "ci": "npm run lint && npm run typecheck && npm run test -- --run && npm run build",
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit",
-    "tauri": "tauri"
+    "tauri": "tauri",
+    "tauri:dev": "tauri dev",
+    "tauri:build": "tauri build"
   },
   "dependencies": {
     "@tauri-apps/api": "^2.0.0",

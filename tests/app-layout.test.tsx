@@ -44,6 +44,7 @@ vi.mock('../src/lib/api', () => ({
   removeLocalModel: vi.fn(),
   removeProviderCredential: vi.fn(),
   removeProviderProfile: vi.fn(),
+  recordAndTranscribeShortTest: vi.fn(),
   requestPrivilegedAction: vi.fn(),
   requestExecution: vi.fn(),
   renameSession: vi.fn(),

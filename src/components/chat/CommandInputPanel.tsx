@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
-import { getSttConfigState, transcribeAudio } from '../../lib/api';
+import { getSttConfigState, recordAndTranscribeShortTest, transcribeAudio } from '../../lib/api';
 import { readStoredSttModelPath, writeStoredSttModelPath } from '../../lib/stt/modelPath';
 import type { PrivilegedActionSpec } from '../../types/domain';
-import type { ChatAttachment, LocalSttConfigSnapshot, SelectedFileAttachment } from '../../types/domain';
+import type { ChatAttachment, LocalSttConfigSnapshot, SelectedFileAttachment, VoiceTranscriptionResult } from '../../types/domain';
 import { UiIcon } from '../common/AppIcons';
 import { FileManagerModal } from '../file/FileManagerModal';
 import { fileIconNameForKind, formatFileSize } from '../file/fileDisplay';
@@ -66,34 +66,6 @@ const INPUT_MODES: InputModeOption[] = [
   },
 ];
 
-type SpeechRecognitionEventLike = Event & {
-  results: ArrayLike<ArrayLike<{ transcript: string }>>;
-};
-
-type SpeechRecognitionErrorEventLike = Event & {
-  error?: string;
-};
-
-interface SpeechRecognitionLike {
-  lang: string;
-  interimResults: boolean;
-  continuous: boolean;
-  onstart: (() => void) | null;
-  onresult: ((event: SpeechRecognitionEventLike) => void) | null;
-  onerror: ((event: SpeechRecognitionErrorEventLike) => void) | null;
-  onend: (() => void) | null;
-  start: () => void;
-  stop: () => void;
-  abort: () => void;
-}
-
-type SpeechRecognitionConstructor = new () => SpeechRecognitionLike;
-
-type SpeechWindow = Window & {
-  SpeechRecognition?: SpeechRecognitionConstructor;
-  webkitSpeechRecognition?: SpeechRecognitionConstructor;
-};
-
 type VoiceState =
   | 'idle'
   | 'recording'
@@ -102,6 +74,53 @@ type VoiceState =
   | 'error'
   | 'missing-backend'
   | 'permission-denied';
+
+type CaptureStatus = 'not_tested' | 'ok' | 'denied' | 'error';
+
+const MIC_CAPTURE_FAILURE_MESSAGE = 'Não consegui acessar o microfone. Verifique PipeWire/WirePlumber ou selecione outro dispositivo.';
+
+function captureStatusLabel(status: CaptureStatus, webview = false): string {
+  if (status === 'ok') return 'OK';
+  if (status === 'denied') return webview ? 'Negada' : 'Erro';
+  if (status === 'error') return 'Erro';
+  return 'Não testada';
+}
+
+function captureStatusTone(status: CaptureStatus): 'ready' | 'warning' | 'error' | 'offline' {
+  if (status === 'ok') return 'ready';
+  if (status === 'denied' || status === 'error') return 'error';
+  return 'offline';
+}
+
+function sttBackendTone(snapshot: LocalSttConfigSnapshot | undefined): 'ready' | 'warning' | 'error' | 'offline' {
+  if (!snapshot) return 'offline';
+  if (snapshot.ready) return 'ready';
+  if (!snapshot.ffmpeg.installed) return 'error';
+  return 'warning';
+}
+
+function sttBackendLabel(snapshot: LocalSttConfigSnapshot | undefined): string {
+  if (!snapshot) return 'Não testada';
+  if (snapshot.ready) return 'OK';
+  if (!snapshot.ffmpeg.installed) return 'Erro';
+  return 'Atenção';
+}
+
+function isCapturePermissionIssue(cause: unknown): boolean {
+  if (cause instanceof DOMException) {
+    return [
+      'NotAllowedError',
+      'PermissionDeniedError',
+      'AbortError',
+      'SecurityError',
+      'NotReadableError',
+      'NotFoundError',
+      'DevicesNotFoundError',
+    ].includes(cause.name);
+  }
+  const message = cause instanceof Error ? cause.message.toLowerCase() : String(cause ?? '').toLowerCase();
+  return /permission|denied|notallowed|abort|portal|mediadevices|capture|microphone|device/u.test(message);
+}
 
 function localTranscriptionMessage(message?: string, command?: string): string {
   const normalized = message?.toLowerCase() ?? '';
@@ -175,8 +194,10 @@ export function CommandInputPanel({
   const [sttSetupLoading, setSttSetupLoading] = useState(false);
   const [sttSetupError, setSttSetupError] = useState<string>();
   const [sttMicMessage, setSttMicMessage] = useState<string>();
+  const [sttRecognizedText, setSttRecognizedText] = useState<string>();
+  const [webViewCaptureStatus, setWebViewCaptureStatus] = useState<CaptureStatus>('not_tested');
+  const [nativeCaptureStatus, setNativeCaptureStatus] = useState<CaptureStatus>('not_tested');
   const [sttTestRecording, setSttTestRecording] = useState(false);
-  const recognitionRef = useRef<SpeechRecognitionLike>();
   const mediaRecorderRef = useRef<MediaRecorder>();
   const recordingStreamRef = useRef<MediaStream>();
   const recordedChunksRef = useRef<Blob[]>([]);
@@ -193,7 +214,6 @@ export function CommandInputPanel({
   }
 
   useEffect(() => () => {
-    recognitionRef.current?.abort();
     const recorder = mediaRecorderRef.current;
     if (recorder && recorder.state !== 'inactive') recorder.stop();
     stopRecordingTracks();
@@ -219,6 +239,7 @@ export function CommandInputPanel({
     setSttSetupOpen(true);
     setSttSetupError(undefined);
     setSttMicMessage(undefined);
+    setSttRecognizedText(undefined);
     void refreshSttConfig(sttModelPath);
   }
 
@@ -231,22 +252,63 @@ export function CommandInputPanel({
   async function testMicrophone(): Promise<void> {
     setSttMicMessage(undefined);
     if (!navigator.mediaDevices?.getUserMedia) {
+      setWebViewCaptureStatus('denied');
       setSttMicMessage('Microfone indisponível no WebView atual.');
       return;
     }
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       stream.getTracks().forEach((track) => track.stop());
+      setWebViewCaptureStatus('ok');
       setSttMicMessage('getUserMedia liberou acesso ao microfone. Grave um teste curto para validar a transcrição local.');
     } catch (cause) {
       const name = cause instanceof DOMException ? cause.name : '';
+      setWebViewCaptureStatus(name === 'NotAllowedError' || isCapturePermissionIssue(cause) ? 'denied' : 'error');
       setSttMicMessage(name === 'NotAllowedError' ? 'Permissão negada pelo WebView/portal de microfone.' : 'Não foi possível abrir o microfone.');
+    }
+  }
+
+  async function runNativeCaptureFallback(): Promise<boolean> {
+    setNativeCaptureStatus('not_tested');
+    setVoiceState('transcribing');
+    setVoiceMessage('Tentando captura nativa curta...');
+    setSttMicMessage('Tentando captura nativa curta...');
+    try {
+      const result = await recordAndTranscribeShortTest(sttModelPath.trim() || undefined);
+      if (result.status === 'done' && result.text?.trim()) {
+        appendTranscript(result.text);
+        setSttRecognizedText(result.text);
+        setNativeCaptureStatus('ok');
+        setVoiceState('done');
+        setVoiceMessage('Transcrição adicionada.');
+        setSttMicMessage('Captura nativa funcionou e o texto foi reconhecido.');
+        return true;
+      }
+      if (result.status === 'missing_backend') {
+        setNativeCaptureStatus('error');
+        setVoiceState('missing-backend');
+        setVoiceMessage(localTranscriptionMessage(result.message, result.command));
+        setSttMicMessage('Captura nativa disponível, mas o backend STT ainda precisa ser configurado.');
+        return false;
+      }
+      setNativeCaptureStatus('error');
+      setVoiceState('error');
+      setVoiceMessage(MIC_CAPTURE_FAILURE_MESSAGE);
+      setSttMicMessage(MIC_CAPTURE_FAILURE_MESSAGE);
+      return false;
+    } catch {
+      setNativeCaptureStatus('error');
+      setVoiceState('error');
+      setVoiceMessage(MIC_CAPTURE_FAILURE_MESSAGE);
+      setSttMicMessage(MIC_CAPTURE_FAILURE_MESSAGE);
+      return false;
     }
   }
 
   async function recordShortSttTest(): Promise<void> {
     if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === 'undefined') {
-      setSttMicMessage('Gravação local indisponível neste WebView.');
+      setWebViewCaptureStatus('denied');
+      await runNativeCaptureFallback();
       return;
     }
     setSttTestRecording(true);
@@ -273,11 +335,18 @@ export function CommandInputPanel({
         }, 1800);
       });
       stream.getTracks().forEach((track) => track.stop());
+      setWebViewCaptureStatus('ok');
       setSttMicMessage('Transcrevendo teste...');
-      await transcribeBlob(new Blob(chunks, { type: recorder.mimeType || 'audio/webm' }));
-      setSttMicMessage('Teste concluído. Se houve fala, ela foi adicionada ao composer.');
+      const result = await transcribeBlob(new Blob(chunks, { type: recorder.mimeType || 'audio/webm' }));
+      if (result?.status === 'done' && result.text?.trim()) {
+        setSttRecognizedText(result.text);
+        setSttMicMessage('Teste concluído. O texto reconhecido foi adicionado ao composer.');
+      } else {
+        setSttMicMessage('Teste concluído, mas nenhuma fala foi reconhecida.');
+      }
     } catch (cause) {
-      setSttMicMessage(cleanInlineErrorMessage(cause instanceof Error ? cause.message : undefined, 'Teste de transcrição não concluído.'));
+      setWebViewCaptureStatus(isCapturePermissionIssue(cause) ? 'denied' : 'error');
+      await runNativeCaptureFallback();
     } finally {
       setSttTestRecording(false);
     }
@@ -339,7 +408,7 @@ export function CommandInputPanel({
     return Array.from(new Uint8Array(buffer));
   }
 
-  async function transcribeBlob(blob: Blob): Promise<void> {
+  async function transcribeBlob(blob: Blob): Promise<VoiceTranscriptionResult | undefined> {
     if (blob.size === 0) {
       setVoiceState('error');
       setVoiceMessage('Nenhum áudio foi capturado. Verifique o microfone e tente novamente.');
@@ -358,15 +427,16 @@ export function CommandInputPanel({
         appendTranscript(result.text);
         setVoiceState('done');
         setVoiceMessage('Transcrição adicionada.');
-        return;
+        return result;
       }
       if (result.status === 'missing_backend') {
         setVoiceState('missing-backend');
         setVoiceMessage(localTranscriptionMessage(result.message, result.command));
-        return;
+        return result;
       }
       setVoiceState('error');
       setVoiceMessage(result.message || 'Não foi possível transcrever o áudio local.');
+      return result;
     } catch (cause) {
       setVoiceState('error');
       setVoiceMessage(cleanInlineErrorMessage(cause instanceof Error ? cause.message : undefined, 'Falha ao transcrever áudio local.'));
@@ -375,8 +445,8 @@ export function CommandInputPanel({
 
   async function startBackendRecording(): Promise<void> {
     if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === 'undefined') {
-      setVoiceState('missing-backend');
-      setVoiceMessage('Gravação local indisponível neste WebView. Configure WebKit/portal de microfone ou use um backend STT local com ffmpeg e whisper.cpp.');
+      setWebViewCaptureStatus('denied');
+      await runNativeCaptureFallback();
       return;
     }
 
@@ -411,85 +481,25 @@ export function CommandInputPanel({
       };
 
       recorder.start();
+      setWebViewCaptureStatus('ok');
       setVoiceState('recording');
       setVoiceMessage('Ouvindo... clique novamente para transcrever.');
     } catch (cause) {
       stopRecordingTracks();
-      const name = cause instanceof DOMException ? cause.name : '';
-      if (name === 'NotAllowedError' || name === 'SecurityError') {
-        setVoiceState('permission-denied');
-        setVoiceMessage('Permissão negada pelo WebView/portal. Revise a política de microfone do Tauri e confirme PipeWire/WirePlumber antes de tentar novamente.');
-        return;
-      }
-      if (name === 'NotFoundError' || name === 'DevicesNotFoundError') {
-        setVoiceState('error');
-        setVoiceMessage('Nenhum microfone foi encontrado.');
-        return;
-      }
-      setVoiceState('error');
-      setVoiceMessage('Não foi possível iniciar a gravação local.');
+      setWebViewCaptureStatus(isCapturePermissionIssue(cause) ? 'denied' : 'error');
+      await runNativeCaptureFallback();
     }
   }
 
   function startVoiceInput(): void {
     if (voiceState === 'recording') {
-      recognitionRef.current?.stop();
       const recorder = mediaRecorderRef.current;
       if (recorder && recorder.state !== 'inactive') recorder.stop();
       setVoiceState('transcribing');
       return;
     }
     if (voiceState === 'transcribing') return;
-
-    const SpeechRecognition = (window as SpeechWindow).SpeechRecognition ?? (window as SpeechWindow).webkitSpeechRecognition;
-    if (!SpeechRecognition) {
-      void startBackendRecording();
-      return;
-    }
-
-    const recognition = new SpeechRecognition();
-    let transcriptReceived = false;
-    recognition.lang = 'pt-BR';
-    recognition.interimResults = false;
-    recognition.continuous = false;
-    recognition.onstart = () => {
-      setVoiceState('recording');
-      setVoiceMessage('Ouvindo...');
-    };
-    recognition.onresult = (event) => {
-      transcriptReceived = true;
-      setVoiceState('transcribing');
-      const transcript = Array.from(event.results)
-        .map((result) => result[0]?.transcript ?? '')
-        .join(' ')
-        .trim();
-      appendTranscript(transcript);
-      setVoiceState('done');
-      setVoiceMessage(transcript ? 'Transcrição adicionada.' : 'Nenhuma fala reconhecida.');
-    };
-    recognition.onerror = (event) => {
-      if (event.error === 'not-allowed' || event.error === 'service-not-allowed') {
-        setVoiceState('permission-denied');
-        setVoiceMessage('Permissão negada. Revise a permissão do WebView e confirme PipeWire/WirePlumber.');
-        return;
-      }
-      setVoiceState('error');
-      setVoiceMessage('Não foi possível transcrever a voz.');
-    };
-    recognition.onend = () => {
-      setVoiceState((current) => {
-        if (current !== 'recording' && current !== 'transcribing') return current;
-        return transcriptReceived ? 'done' : 'idle';
-      });
-    };
-    recognitionRef.current = recognition;
-
-    try {
-      recognition.start();
-    } catch {
-      setVoiceState('error');
-      setVoiceMessage('Não foi possível iniciar o microfone.');
-    }
+    void startBackendRecording();
   }
 
   const placeholder = mode === 'code'
@@ -619,15 +629,45 @@ export function CommandInputPanel({
       ) : null}
       <PremiumModal
         open={sttSetupOpen}
-        title="Configurar transcrição local"
-        description="STT local com ffmpeg, whisper.cpp, faster-whisper ou Vosk. Nada é instalado sem confirmação externa."
+        title="Transcrição e microfone"
+        description="Backend STT e captura de microfone são estados separados. Nada é instalado sem confirmação externa."
         onClose={() => setSttSetupOpen(false)}
         className="stt-config-modal"
       >
         <section className="stt-config-shell">
           <div className="stt-config-summary">
-            <StatusDot tone={sttSnapshot?.ready ? 'ready' : 'warning'} />
+            <StatusDot tone={sttBackendTone(sttSnapshot)} />
             <span>{sttSnapshot?.message ?? (sttSetupLoading ? 'Detectando backends locais...' : 'Abra a detecção para configurar.')}</span>
+          </div>
+          <div className="stt-status-grid" aria-label="Status de transcrição e captura">
+            <div className="stt-status-card">
+              <StatusDot tone={sttBackendTone(sttSnapshot)} />
+              <span>
+                <strong>Backend STT</strong>
+                <small>{sttBackendLabel(sttSnapshot)}</small>
+              </span>
+            </div>
+            <div className="stt-status-card">
+              <StatusDot tone={sttSnapshot?.modelExists ? 'ready' : 'warning'} />
+              <span>
+                <strong>Modelo</strong>
+                <small title={sttSnapshot?.modelPath ?? sttModelPath}>{(sttSnapshot?.modelPath ?? sttModelPath) || '~/.codex/models/ggml-base.bin'}</small>
+              </span>
+            </div>
+            <div className="stt-status-card">
+              <StatusDot tone={captureStatusTone(webViewCaptureStatus)} />
+              <span>
+                <strong>Captura WebView</strong>
+                <small>{captureStatusLabel(webViewCaptureStatus, true)}</small>
+              </span>
+            </div>
+            <div className="stt-status-card">
+              <StatusDot tone={captureStatusTone(nativeCaptureStatus)} />
+              <span>
+                <strong>Captura nativa</strong>
+                <small>{captureStatusLabel(nativeCaptureStatus)}</small>
+              </span>
+            </div>
           </div>
           {sttSetupError ? <div className="input-error-tip" role="alert">{sttSetupError}</div> : null}
           {sttSnapshot && !sttSnapshot.ready ? (
@@ -689,6 +729,12 @@ export function CommandInputPanel({
           ) : null}
 
           {sttMicMessage ? <div className="stt-mic-status" role="status">{sttMicMessage}</div> : null}
+          {sttRecognizedText ? (
+            <div className="stt-mic-status stt-recognized-text" role="status">
+              <strong>Texto reconhecido</strong>
+              <span>{sttRecognizedText}</span>
+            </div>
+          ) : null}
 
           <div className="dialog-actions">
             <button type="button" className="btn-modern" disabled={sttSetupLoading} onClick={() => void saveSttModelPath()}>

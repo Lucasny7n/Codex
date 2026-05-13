@@ -1,47 +1,44 @@
-# Segurança
+# Security
 
-Ailu AI Studio opera providers, arquivos locais, comandos e credenciais. Segurança e rastreabilidade têm prioridade sobre automação.
+Ailu AI Studio touches local files, provider credentials, AI runtimes and desktop services. Safety is part of the product, not a later cleanup.
 
-## API keys
+## Secrets
 
-- Nunca commitar API key, token, segredo ou arquivo `.env`.
-- Nunca mostrar segredo completo na UI, log, screenshot ou mensagem de erro.
-- API keys devem passar por `CredentialStore`.
-- Credencial salva sem teste não significa provider pronto.
+- Never commit API keys, tokens, `.env` files or private local databases.
+- Never print API keys in logs, screenshots, tests or UI errors.
+- Store provider secrets through the credential store path, not raw JSON files in the repo.
+- Display credentials only as masked labels.
 
-## Armazenamento de credenciais
+## Provider readiness
 
-O store atual mascara credenciais na UI e preserva status por provider/profile. Integração com keyring nativo permanece como evolução recomendada quando disponível.
+- A saved key is not `ready`.
+- A provider is `ready` only after a real connection test.
+- Cloud models stay cloud-only.
+- Ollama models stay local-only.
 
-## Git
+## Local files
 
-Arquivos ignorados incluem:
+Ignored by default:
 
-- `.env`, `.env.*`.
-- chaves e tokens.
-- logs.
-- bancos locais.
-- modelos e pesos (`.gguf`, `.safetensors`, `.onnx`, `.pt`, `.pth`, `.ckpt`, `.bin`).
-- screenshots e resultados temporários.
+- `node_modules/`
+- `dist/`
+- `src-tauri/target/`
+- logs and temp test output
+- screenshots from temp folders
+- databases
+- model weights and checkpoints
 
-## Privilégio
+## Privilege
 
-- `sudo -S` é proibido.
-- Nenhuma instalação ou ação root deve acontecer silenciosamente.
-- Ações privilegiadas exigem aprovação explícita, risco, alvo e rollback.
-- O helper privilegiado deve usar allowlist, não shell root arbitrário.
+- `sudo -S` is forbidden.
+- Scripts must not install packages with sudo silently.
+- Setup scripts must print the command and ask before privileged install steps.
+- Privileged app actions need explicit approval, risk and rollback.
 
-## Arquivos e anexos
+## STT and audio
 
-- Preview de arquivo deve ter limite de tamanho.
-- Diretórios e binários não devem ser enviados como texto bruto.
-- Caminhos inacessíveis devem falhar com erro curto.
-- Dados de anexo em modo temporário não devem persistir.
+Microphone capture starts only after the user clicks the microphone or test recording button. Temporary audio must be deleted after transcription.
 
-## Modo temporário
+## Reporting issues
 
-O modo temporário usa provider real, mas não grava sessão, histórico ou anexos. Ele não é modo anônimo de sistema; providers externos ainda podem processar o conteúdo enviado.
-
-## Reportar falha de segurança
-
-Abra uma issue privada ou entre em contato com o mantenedor antes de publicar detalhes exploráveis. Inclua impacto, passos mínimos, ambiente e evidência sem segredo.
+Open a security report without public exploit details. Include impact, environment, reproduction steps and redacted evidence.

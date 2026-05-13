@@ -43,3 +43,4 @@ screenshots/
 docs/screenshots/*.png
 docs/screenshots/*.jpg
 docs/screenshots/*.webp
+CODEX_CONTEXT_BOOTSTRAP.md

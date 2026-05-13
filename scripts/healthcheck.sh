@@ -3,4 +3,4 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
-bash "$ROOT_DIR/scripts/check-environment.sh"
+bash "$ROOT_DIR/scripts/doctor.sh"

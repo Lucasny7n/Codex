@@ -49,6 +49,7 @@ pub fn run() {
             commands::get_file_attachment,
             commands::get_stt_config_state,
             commands::transcribe_audio,
+            commands::record_and_transcribe_short_test,
             commands::request_execution,
             commands::request_privileged_action,
             commands::test_provider_connection,
