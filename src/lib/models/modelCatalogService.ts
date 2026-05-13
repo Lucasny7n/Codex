@@ -5,12 +5,14 @@ import {
   type ModelModality,
 } from './modelRegistry';
 import {
-  buildPullCandidateOption,
   isInstalledOllamaModel,
   normalizeOllamaModelId,
   ollamaIdentityTerms,
-  searchInstalledOllamaModels,
 } from '../ollama/catalogService';
+import {
+  searchOllamaModels,
+  type OllamaSearchItem,
+} from '../ollama/searchService';
 import {
   canSelectModel,
   normalizeProviderStatus,
@@ -23,6 +25,7 @@ import type {
   LocalModelInstallProgress,
   LocalRuntimeSnapshot,
   ModelDescriptor,
+  OllamaLibrarySearchResult,
   ProviderAccountProfile,
   ProviderDescriptor,
   ProviderRuntimeStatus,
@@ -286,43 +289,95 @@ export function buildLocalModelOptions(input: {
   providerStatus?: ProviderRuntimeStatus;
   installationProgress?: Record<string, LocalModelInstallProgress>;
 }): ModelCatalogOption[] {
-  const runtimeStatus = localRuntimeStatus(input.localRuntime);
-  return (input.localRuntime?.installedModels ?? []).map((model) => localInstalledModelOption(model, runtimeStatus));
+  return searchOllamaModels('', input.localRuntime, {
+    installationProgress: input.installationProgress,
+    includeFallback: false,
+  }).map((item) => localSearchItemOption(item, localRuntimeStatus(input.localRuntime)));
 }
 
-function localInstalledModelOption(model: LocalInstalledModel, runtimeStatus: ProviderStatus): ModelCatalogOption {
-  const ready = canSelectModel(runtimeStatus);
+function localSearchItemOption(item: OllamaSearchItem, runtimeStatus: ProviderStatus): ModelCatalogOption {
+  const runtimeReady = canSelectModel(runtimeStatus);
+  const ready = item.installed && runtimeReady;
+  const status: ProviderStatus = item.installed ? runtimeStatus : item.statusLabel === 'Baixando' ? 'pulling' : 'model_missing';
   return {
-    id: model.id,
+    id: item.id,
     source: 'local',
     providerType: 'local',
-    modelId: model.id,
+    modelId: item.modelId,
     providerId: 'local-ollama',
-    label: model.id,
-    providerLabel: 'Local Ollama',
-    family: localFamilyLabelFromText(model.id),
-    status: runtimeStatus,
-    statusLabel: runtimeStatus === 'ready' ? 'Instalado' : statusLabelFromState(runtimeStatus, 'local'),
+    label: item.label,
+    providerLabel: 'Ollama',
+    family: item.family,
+    status,
+    statusLabel: item.installed && runtimeStatus !== 'ready' ? statusLabelFromState(runtimeStatus, 'local') : item.statusLabel,
     available: ready,
-    installed: true,
-    configured: false,
+    installed: item.installed,
+    configured: item.installed,
     ready,
-    estimatedSize: model.size,
-    digest: model.digest,
-    modifiedAt: model.modifiedAt,
+    estimatedSize: item.sizeLabel,
+    digest: item.digest,
+    modifiedAt: item.modifiedAt,
     runtimeLabel: 'Ollama',
-    metadata: installedLocalMetadata(model),
+    metadata: item.installed
+      ? installedLocalMetadata({
+        id: item.modelId,
+        size: item.sizeLabel,
+        modifiedAt: item.modifiedAt,
+        digest: item.digest,
+      })
+      : {
+        provider: 'local-ollama',
+        type: 'local',
+        capabilities: ['text', item.family],
+        multimodal: false,
+        promptPresetIds: ['local:ollama:default'],
+        contextFragmentScopes: ['session', 'workspace'],
+        technicalLogScope: 'runtime',
+        ragReady: true,
+        toolPermissionScopes: ['workspace-read'],
+      },
     searchTerms: [
-      model.id,
-      ...ollamaIdentityTerms(model.id),
-      model.digest ?? '',
-      model.modifiedAt ?? '',
-      model.size ?? '',
+      item.modelId,
+      item.label,
+      item.family,
+      ...ollamaIdentityTerms(item.modelId),
+      item.digest ?? '',
+      item.modifiedAt ?? '',
+      item.sizeLabel ?? '',
+      ...item.searchTerms,
       'ollama',
       'local',
-      localFamilyLabelFromText(model.id),
-      'instalado',
+      item.installed ? 'instalado' : 'download baixar não instalado',
     ],
+  };
+}
+
+function localRuntimeFromOptions(options: ModelCatalogOption[]): LocalRuntimeSnapshot {
+  const installedModels = options
+    .filter((option) => option.installed)
+    .map((option) => ({
+      id: option.modelId ?? option.id,
+      size: option.estimatedSize,
+      modifiedAt: option.modifiedAt,
+      digest: option.digest,
+    }));
+
+  return {
+    state: installedModels.length > 0 ? 'ready' : 'not_configured',
+    message: installedModels.length > 0 ? 'Runtime inferred from installed Ollama options.' : 'No installed Ollama models inferred.',
+    modelsDir: '',
+    installedModels,
+    installed: installedModels.length > 0,
+    serviceActive: installedModels.length > 0,
+    apiReachable: installedModels.length > 0,
+    apiUrl: 'http://127.0.0.1:11434',
+    canUsePacman: false,
+    hasPkexec: false,
+    hasSudo: false,
+    diskOk: undefined,
+    problems: [],
+    repairActions: [],
+    at: new Date(0).toISOString(),
   };
 }
 
@@ -366,6 +421,7 @@ export interface VisibleModelOptionsInput {
   query: string;
   localRuntime?: LocalRuntimeSnapshot;
   installationProgress?: Record<string, LocalModelInstallProgress>;
+  ollamaSearchResults?: OllamaLibrarySearchResult[];
 }
 
 export function visibleModelOptions({
@@ -374,6 +430,7 @@ export function visibleModelOptions({
   query,
   localRuntime,
   installationProgress,
+  ollamaSearchResults,
 }: VisibleModelOptionsInput): ModelCatalogOption[] {
   const trimmed = query.trim();
   const sourceOptions = options.filter((option) => {
@@ -385,22 +442,11 @@ export function visibleModelOptions({
   const matched = sourceOptions.filter((option) => modelOptionMatches(option, trimmed));
   if (trimmed) {
     if (mode !== 'local') return matched;
-    const runtime = localRuntime ?? ({
-      installedModels: sourceOptions
-        .filter((option) => option.installed)
-        .map((option) => ({
-          id: option.modelId ?? option.id,
-          size: option.estimatedSize,
-          modifiedAt: option.modifiedAt,
-          digest: option.digest,
-        })),
-    } as LocalRuntimeSnapshot);
-    const installedMatches = searchInstalledOllamaModels(runtime, trimmed);
-    const hasInstalledMatch = installedMatches.length > 0 || matched.some((option) => option.installed);
-    const candidate = hasInstalledMatch
-      ? undefined
-      : buildPullCandidateOption(trimmed, runtime, installationProgress);
-    return candidate ? [...matched, candidate] : matched;
+    const runtime = localRuntime ?? localRuntimeFromOptions(sourceOptions);
+    return searchOllamaModels(trimmed, runtime, {
+      remoteResults: ollamaSearchResults,
+      installationProgress,
+    }).map((item) => localSearchItemOption(item, localRuntimeStatus(runtime)));
   }
   if (mode === 'cloud') return matched.filter((option) => option.configured && option.ready);
   return matched.filter((option) => option.installed && option.ready);

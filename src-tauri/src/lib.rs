@@ -68,6 +68,7 @@ pub fn run() {
             commands::install_local_model,
             commands::remove_local_model,
             commands::show_local_model,
+            commands::search_ollama_library,
             commands::test_local_model,
             commands::decide_permission,
             commands::list_privileged_actions,

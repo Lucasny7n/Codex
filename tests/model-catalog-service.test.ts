@@ -119,7 +119,7 @@ describe('modelCatalogService', () => {
     expect(visibleModelOptions({ mode: 'cloud', options: ready, query: '' }).map((option) => option.label)).toContain('GPT-5.5');
   });
 
-  it('Local vazio mostra só instalados reais e busca cria candidato Ollama sem catálogo fixo', () => {
+  it('Local vazio mostra só instalados reais e busca usa candidatos Ollama sem catálogo inteiro', () => {
     const options = buildLocalModelOptions({
       localRuntime: localRuntime([
         { id: 'qwen2.5-coder:1.5b', size: '986 MB', digest: 'sha256:qwen', modifiedAt: now },
@@ -176,7 +176,7 @@ describe('modelCatalogService', () => {
     expect(installedQwen?.modifiedAt).toBe(now);
   });
 
-  it('normaliza IDs Ollama e cria pull candidate para gpt oss sem marcar instalado', () => {
+  it('normaliza IDs Ollama e mostra variantes GPT-OSS para download sem marcar instalado', () => {
     const options = buildLocalModelOptions({
       localRuntime: localRuntime([{ id: 'llama3.2:latest', size: '2 GB' }]),
     });
@@ -187,17 +187,16 @@ describe('modelCatalogService', () => {
     expect(normalizeOllamaQuery('gptoss')).toBe('gpt-oss');
 
     const gptOss = visibleModelOptions({ mode: 'local', options, query: 'gpt oss' });
-    expect(gptOss).toHaveLength(1);
+    expect(gptOss.map((option) => option.modelId)).toEqual(['gpt-oss:120b', 'gpt-oss:20b']);
     expect(gptOss[0]).toMatchObject({
-      label: 'gpt-oss',
-      modelId: 'gpt-oss',
       providerLabel: 'Ollama',
-      statusLabel: 'Disponível para baixar',
+      statusLabel: 'Download',
       installed: false,
       ready: false,
     });
-    expect(visibleModelOptions({ mode: 'local', options, query: 'gpt_oss' })[0]?.modelId).toBe('gpt-oss');
-    expect(visibleModelOptions({ mode: 'local', options, query: 'gptoss' })[0]?.modelId).toBe('gpt-oss');
+    expect(visibleModelOptions({ mode: 'local', options, query: 'gpt-oss' }).map((option) => option.modelId)).toContain('gpt-oss:20b');
+    expect(visibleModelOptions({ mode: 'local', options, query: 'gpt_oss' }).map((option) => option.modelId)).toContain('gpt-oss:20b');
+    expect(visibleModelOptions({ mode: 'local', options, query: 'gptoss' }).map((option) => option.modelId)).toContain('gpt-oss:120b');
     expect(visibleModelOptions({ mode: 'local', options, query: 'gpt oss' })[0]?.statusLabel).not.toContain('pull');
     expect(visibleModelOptions({ mode: 'local', options, query: 'qwen2.5 coder' })[0]).toMatchObject({
       label: 'qwen2.5-coder',
@@ -209,6 +208,49 @@ describe('modelCatalogService', () => {
       modelId: 'qwen2.5-coder:7b',
     });
     expect(buildPullCandidateFromQuery('llama3.2', localRuntime([{ id: 'llama3.2:latest' }]))).toBeUndefined();
+  });
+
+  it('busca humana local encontra instalado e candidatos Ollama sem modelos cloud', () => {
+    const options = buildLocalModelOptions({
+      localRuntime: localRuntime([
+        { id: 'qwen2.5-coder:1.5b', size: '986 MB', digest: 'sha256:qwen', modifiedAt: now },
+      ]),
+    });
+
+    expect(visibleModelOptions({ mode: 'local', options, query: 'qwen coder' })[0]).toMatchObject({
+      modelId: 'qwen2.5-coder:1.5b',
+      installed: true,
+      statusLabel: 'Instalado',
+    });
+    const llama = visibleModelOptions({ mode: 'local', options, query: 'llama' });
+    expect(llama.map((option) => option.modelId)).toEqual(expect.arrayContaining(['llama3', 'llama3.1', 'llama3.2']));
+    expect(llama.every((option) => option.source === 'local' && option.providerId === 'local-ollama')).toBe(true);
+    expect(visibleModelOptions({ mode: 'local', options, query: '' }).some((option) => option.modelId === 'llama3')).toBe(false);
+
+    expect(visibleModelOptions({ mode: 'local', options, query: 'deepseek r1' }).map((option) => option.modelId)).toContain('deepseek-r1');
+    expect(visibleModelOptions({ mode: 'local', options, query: 'gemma' }).map((option) => option.modelId)).toEqual(expect.arrayContaining(['gemma2', 'gemma3']));
+  });
+
+  it('usa descoberta remota Ollama quando disponível e mantém fallback apenas como complemento', () => {
+    const options = buildLocalModelOptions({
+      localRuntime: localRuntime([]),
+    });
+
+    const remote = visibleModelOptions({
+      mode: 'local',
+      options,
+      query: 'gpt oss',
+      localRuntime: localRuntime([]),
+      ollamaSearchResults: [
+        { modelId: 'gpt-oss:20b', label: 'gpt-oss:20b', family: 'GPT-OSS', sizeLabel: '13 GB' },
+      ],
+    });
+
+    expect(remote.find((option) => option.modelId === 'gpt-oss:20b')).toMatchObject({
+      estimatedSize: '13 GB',
+      providerId: 'local-ollama',
+      statusLabel: 'Download',
+    });
   });
 
   it('preserva tag Ollama na busca e não trata outra tag instalada como instalada', () => {
@@ -228,7 +270,7 @@ describe('modelCatalogService', () => {
       label: 'qwen2.5-coder:7b',
       modelId: 'qwen2.5-coder:7b',
       installed: false,
-      statusLabel: 'Disponível para baixar',
+      statusLabel: 'Download',
     });
   });
 
@@ -246,7 +288,7 @@ describe('modelCatalogService', () => {
 
     expect(visibleModelOptions({ mode: 'cloud', options: mixed, query: 'qwen' }).some((option) => option.providerType === 'local')).toBe(false);
     expect(visibleModelOptions({ mode: 'cloud', options: mixed, query: 'qwen2.5-coder' })).toHaveLength(0);
-    expect(visibleModelOptions({ mode: 'local', options: mixed, query: 'gpt' })).toHaveLength(0);
+    expect(visibleModelOptions({ mode: 'local', options: mixed, query: 'gemini' })).toHaveLength(0);
     expect(visibleModelOptions({ mode: 'cloud', options: mixed, query: 'gpt' }).every((option) => option.source === 'cloud')).toBe(true);
     expect(visibleModelOptions({ mode: 'local', options: mixed, query: 'qwen' }).every((option) => option.source === 'local')).toBe(true);
   });

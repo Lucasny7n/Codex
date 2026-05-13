@@ -665,6 +665,15 @@ pub struct OllamaModelDetails {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct OllamaLibrarySearchResult {
+    pub model_id: String,
+    pub label: String,
+    pub family: String,
+    pub size_label: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ExecutionRequestInput {
     pub session_id: String,
     pub command: String,

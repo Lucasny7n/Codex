@@ -51,6 +51,7 @@ vi.mock('../src/lib/api', () => ({
   restoreSession: vi.fn(),
   saveProviderProfileCredential: vi.fn(),
   saveProviderCredential: vi.fn(),
+  searchOllamaLibrary: vi.fn(),
   setDefaultProviderProfile: vi.fn(),
   showLocalModel: vi.fn(),
   sendOrderToAgent: vi.fn(),
@@ -243,6 +244,7 @@ describe('App layout visibility', () => {
     mockedApi.listArchivedSessions.mockResolvedValue([]);
     mockedApi.listProviderCredentials.mockResolvedValue([]);
     mockedApi.listProviderProfiles.mockResolvedValue([]);
+    mockedApi.searchOllamaLibrary.mockResolvedValue([]);
     mockedApi.saveProviderProfileCredential.mockResolvedValue({
       id: 'openai-api:principal',
       providerId: 'openai-api',
@@ -453,7 +455,7 @@ describe('App layout visibility', () => {
 
     fireEvent.click(screen.getByTitle(/mock-development-model/));
     fireEvent.click(screen.getAllByRole('tab', { name: 'Local' })[0]);
-    fireEvent.change(screen.getByLabelText('Buscar modelo ou provedor'), { target: { value: 'qwen2.5 coder 1.5b' } });
+    fireEvent.change(screen.getByLabelText('Buscar modelos Ollama'), { target: { value: 'qwen2.5 coder 1.5b' } });
     expect(screen.getByTestId('model-row-qwen2.5-coder:1.5b')).toHaveAttribute('data-source', 'local');
     expect(screen.getByTestId('model-row-qwen2.5-coder:1.5b')).toHaveAttribute('data-provider-type', 'local');
     fireEvent.click(screen.getByText('qwen2.5-coder:1.5b'));
@@ -468,8 +470,8 @@ describe('App layout visibility', () => {
 
     fireEvent.click(screen.getByTitle(/Qwen2.5 Coder 1.5B/));
     fireEvent.click(screen.getAllByRole('tab', { name: 'Local' })[0]);
-    fireEvent.change(screen.getByLabelText('Buscar modelo ou provedor'), { target: { value: 'GPT-5.5' } });
-    expect(screen.getByText('Modelo não instalado. Você pode baixar pelo Ollama.')).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText('Buscar modelos Ollama'), { target: { value: 'GPT-5.5' } });
+    expect(screen.getByText('Nenhum modelo Ollama encontrado para esta busca.')).toBeInTheDocument();
   });
 
   it('abre configuração específica de modelo cloud e local pelo botão de três pontos', async () => {
@@ -543,12 +545,12 @@ describe('App layout visibility', () => {
     fireEvent.click(screen.getByTitle(/GPT-5.5/));
     fireEvent.click(screen.getAllByRole('tab', { name: 'Local' })[0]);
     expect(screen.queryByText('qwen2.5-coder:7b')).not.toBeInTheDocument();
-    fireEvent.change(screen.getByLabelText('Buscar modelo ou provedor'), { target: { value: 'qwen2.5-coder:7b' } });
+    fireEvent.change(screen.getByLabelText('Buscar modelos Ollama'), { target: { value: 'qwen2.5-coder:7b' } });
     expect(screen.getByText('qwen2.5-coder:7b')).toBeInTheDocument();
-    expect(screen.getByText('Disponível para baixar')).toBeInTheDocument();
+    expect(screen.getByText('Download')).toBeInTheDocument();
     expect(screen.queryByText('Disponível para pull')).not.toBeInTheDocument();
     expect(screen.queryByLabelText('Configurar qwen2.5-coder:7b')).not.toBeInTheDocument();
-    fireEvent.mouseEnter(screen.getByTestId('model-row-ollama-pull:qwen2.5-coder:7b'));
+    fireEvent.mouseEnter(screen.getByTestId('model-row-ollama-download:qwen2.5-coder:7b'));
     fireEvent.click(screen.getByLabelText('Configurar qwen2.5-coder:7b'));
 
     expect(screen.getByRole('dialog', { name: 'qwen2.5-coder:7b' })).toBeInTheDocument();

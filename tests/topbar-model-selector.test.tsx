@@ -119,20 +119,21 @@ describe('TopBar model selector', () => {
     fireEvent.click(screen.getByRole('tab', { name: 'Local' }));
     expect(screen.getByTestId('model-row-qwen2.5-coder:1.5b')).toBeInTheDocument();
     expect(screen.queryByTestId('model-row-leak-cloud')).not.toBeInTheDocument();
-    fireEvent.change(screen.getByLabelText('Buscar modelo ou provedor'), { target: { value: 'GPT-5.5' } });
+    fireEvent.change(screen.getByLabelText('Buscar modelos Ollama'), { target: { value: 'GPT-5.5' } });
     expect(screen.queryByTestId('model-row-leak-cloud')).not.toBeInTheDocument();
-    expect(screen.getByText('Modelo não instalado. Você pode baixar pelo Ollama.')).toBeInTheDocument();
+    expect(screen.getByText('Nenhum modelo Ollama encontrado para esta busca.')).toBeInTheDocument();
 
-    fireEvent.change(screen.getByLabelText('Buscar modelo ou provedor'), { target: { value: 'gpt oss' } });
-    expect(screen.getByTestId('model-row-ollama-pull:gpt-oss')).toBeInTheDocument();
-    expect(screen.getByText('gpt-oss')).toBeInTheDocument();
-    expect(screen.getByText('Disponível para baixar')).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText('Buscar modelos Ollama'), { target: { value: 'gpt oss' } });
+    expect(screen.getByTestId('model-row-ollama-download:gpt-oss:20b')).toBeInTheDocument();
+    expect(screen.getByText('gpt-oss:20b')).toBeInTheDocument();
+    expect(screen.getByText('gpt-oss:120b')).toBeInTheDocument();
+    expect(screen.getAllByText('Download')).not.toHaveLength(0);
     expect(screen.queryByText('Disponível para pull')).not.toBeInTheDocument();
 
-    fireEvent.mouseEnter(screen.getByTestId('model-row-ollama-pull:gpt-oss'));
-    fireEvent.click(screen.getByLabelText('Configurar gpt-oss'));
+    fireEvent.mouseEnter(screen.getByTestId('model-row-ollama-download:gpt-oss:20b'));
+    fireEvent.click(screen.getByLabelText('Configurar gpt-oss:20b'));
 
     expect(onSelectModel).not.toHaveBeenCalled();
-    expect(screen.getByRole('dialog', { name: 'gpt-oss' })).toBeInTheDocument();
+    expect(screen.getByRole('dialog', { name: 'gpt-oss:20b' })).toBeInTheDocument();
   });
 });

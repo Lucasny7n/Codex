@@ -1,3 +1,4 @@
+use std::collections::HashSet;
 use std::env;
 use std::path::PathBuf;
 use std::process::Stdio;
@@ -12,7 +13,7 @@ use tokio::time::sleep;
 use crate::error::{AppError, AppResult};
 use crate::models::{
     now_iso, AppSettings, LocalInstalledModel, LocalModelInstallProgress, LocalModelInstallState,
-    LocalRuntimeSnapshot, LocalRuntimeState, OllamaModelDetails,
+    LocalRuntimeSnapshot, LocalRuntimeState, OllamaLibrarySearchResult, OllamaModelDetails,
 };
 
 #[derive(Default)]
@@ -439,6 +440,64 @@ impl LocalRuntimeService {
         Ok(parse_ollama_show(model_id, &raw, installed.as_ref()))
     }
 
+    pub async fn search_library(&self, query: &str) -> AppResult<Vec<OllamaLibrarySearchResult>> {
+        let query = query.trim();
+        if query.len() < 2 {
+            return Ok(Vec::new());
+        }
+
+        let client = reqwest::Client::builder()
+            .timeout(Duration::from_secs(4))
+            .build()
+            .map_err(|cause| {
+                AppError::Message(format!(
+                    "Falha ao preparar busca na biblioteca Ollama: {cause}"
+                ))
+            })?;
+        let search_url = format!("https://ollama.com/search?q={}", encode_query(query));
+        let search_html = client
+            .get(search_url)
+            .send()
+            .await
+            .map_err(|cause| {
+                AppError::Message(format!("Busca na biblioteca Ollama indisponível: {cause}"))
+            })?
+            .text()
+            .await
+            .map_err(|cause| {
+                AppError::Message(format!("Resposta da biblioteca Ollama inválida: {cause}"))
+            })?;
+
+        let slugs = parse_ollama_library_slugs(&search_html, query);
+        let mut results = Vec::new();
+        let mut seen = HashSet::new();
+
+        for slug in slugs.into_iter().take(4) {
+            let detail_url = format!("https://ollama.com/library/{slug}");
+            let detail_html = match client.get(detail_url).send().await {
+                Ok(response) => response.text().await.unwrap_or_default(),
+                Err(_) => String::new(),
+            };
+            let mut models = parse_ollama_library_detail_models(&detail_html, &slug);
+            if models.is_empty() {
+                models.push(OllamaLibrarySearchResult {
+                    model_id: slug.clone(),
+                    label: slug.clone(),
+                    family: infer_library_family(&slug),
+                    size_label: None,
+                });
+            }
+
+            for model in models {
+                if seen.insert(normalize_ollama_model_id(&model.model_id)) {
+                    results.push(model);
+                }
+            }
+        }
+
+        Ok(results.into_iter().take(24).collect())
+    }
+
     pub async fn test_model(&self, model_id: &str) -> AppResult<()> {
         test_generate(model_id).await.map_err(|cause| {
             AppError::Message(format!(
@@ -571,6 +630,122 @@ fn parse_ollama_tags_json(body: &str) -> Result<Vec<LocalInstalledModel>, serde_
     Ok(models)
 }
 
+fn parse_ollama_library_slugs(html: &str, query: &str) -> Vec<String> {
+    let Ok(regex) = regex::Regex::new(r#"href="/library/([A-Za-z0-9_.-]+)""#) else {
+        return Vec::new();
+    };
+    let mut seen = HashSet::new();
+    let mut slugs = regex
+        .captures_iter(html)
+        .filter_map(|capture| capture.get(1).map(|match_| match_.as_str().to_owned()))
+        .filter(|slug| !slug.ends_with("-cloud"))
+        .filter(|slug| seen.insert(slug.clone()))
+        .collect::<Vec<_>>();
+
+    let normalized_query = normalize_search_text(query);
+    slugs.sort_by_key(|slug| {
+        let normalized_slug = normalize_search_text(slug);
+        if normalized_slug == normalized_query {
+            0
+        } else if normalized_slug.contains(&normalized_query)
+            || normalized_query.contains(&normalized_slug)
+        {
+            1
+        } else {
+            2
+        }
+    });
+    slugs
+}
+
+fn parse_ollama_library_detail_models(html: &str, slug: &str) -> Vec<OllamaLibrarySearchResult> {
+    if html.trim().is_empty() {
+        return Vec::new();
+    }
+
+    let pattern = format!(r#"\b{}(?::[A-Za-z0-9_.-]+)?\b"#, regex::escape(slug));
+    let Ok(regex) = regex::Regex::new(&pattern) else {
+        return Vec::new();
+    };
+    let mut seen = HashSet::new();
+    regex
+        .find_iter(html)
+        .map(|match_| match_.as_str().trim().trim_matches('/').to_owned())
+        .filter(|model_id| !model_id.ends_with("-cloud") && !model_id.contains(":latest-cloud"))
+        .filter(|model_id| seen.insert(normalize_ollama_model_id(model_id)))
+        .map(|model_id| OllamaLibrarySearchResult {
+            label: model_id.clone(),
+            family: infer_library_family(&model_id),
+            size_label: parse_size_label_for_model(html, &model_id),
+            model_id,
+        })
+        .collect()
+}
+
+fn parse_size_label_for_model(html: &str, model_id: &str) -> Option<String> {
+    let escaped = regex::escape(model_id);
+    let pattern = format!(
+        r#"{}[^<]{{0,160}}?([0-9]+(?:\.[0-9]+)?\s?(?:MB|GB|TB))"#,
+        escaped
+    );
+    let regex = regex::Regex::new(&pattern).ok()?;
+    regex
+        .captures(html)
+        .and_then(|capture| capture.get(1))
+        .map(|match_| match_.as_str().replace(' ', ""))
+}
+
+fn infer_library_family(model_id: &str) -> String {
+    let lower = model_id.to_lowercase();
+    if lower.contains("gpt-oss") {
+        "GPT-OSS"
+    } else if lower.contains("qwen") {
+        "Qwen"
+    } else if lower.contains("deepseek") {
+        "DeepSeek"
+    } else if lower.contains("codellama") {
+        "CodeLlama"
+    } else if lower.contains("codegemma") {
+        "CodeGemma"
+    } else if lower.contains("llama") {
+        "Llama"
+    } else if lower.contains("mistral")
+        || lower.contains("mixtral")
+        || lower.contains("codestral")
+        || lower.contains("devstral")
+    {
+        "Mistral"
+    } else if lower.contains("phi") {
+        "Phi"
+    } else if lower.contains("gemma") {
+        "Gemma"
+    } else if lower.contains("starcoder") {
+        "StarCoder"
+    } else if lower.contains("nomic") || lower.contains("bge") {
+        "Embedding"
+    } else {
+        "Ollama"
+    }
+    .to_owned()
+}
+
+fn normalize_search_text(value: &str) -> String {
+    normalize_ollama_query(value).replace(['-', '_', '.', ':'], "")
+}
+
+fn encode_query(value: &str) -> String {
+    value
+        .bytes()
+        .map(|byte| match byte {
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => {
+                (byte as char).to_string()
+            }
+            b' ' => "%20".to_owned(),
+            _ => format!("%{byte:02X}"),
+        })
+        .collect::<String>()
+}
+
 async fn test_generate(model_id: &str) -> Result<(), String> {
     let response = reqwest::Client::builder()
         .timeout(Duration::from_secs(45))
@@ -672,11 +847,38 @@ fn parse_ollama_list(stdout: &str) -> Vec<LocalInstalledModel> {
 }
 
 fn normalize_ollama_model_id(raw: &str) -> String {
-    let trimmed = raw.trim().to_ascii_lowercase();
-    if trimmed.is_empty() || trimmed.contains(':') {
-        trimmed
+    let normalized = normalize_ollama_query(raw);
+    if normalized.is_empty() || normalized.contains(':') {
+        normalized
     } else {
-        format!("{trimmed}:latest")
+        format!("{normalized}:latest")
+    }
+}
+
+fn normalize_ollama_query(raw: &str) -> String {
+    let mut output = String::new();
+    let mut previous_dash = false;
+    for character in raw.trim().to_ascii_lowercase().chars() {
+        let next = if character.is_ascii_whitespace() || character == '_' {
+            '-'
+        } else {
+            character
+        };
+        if next == '-' {
+            if !previous_dash {
+                output.push(next);
+            }
+            previous_dash = true;
+        } else {
+            output.push(next);
+            previous_dash = false;
+        }
+    }
+    let normalized = output.trim_matches('-').to_owned();
+    if normalized == "gptoss" {
+        "gpt-oss".to_owned()
+    } else {
+        normalized
     }
 }
 
@@ -863,7 +1065,27 @@ mod tests {
     #[test]
     fn normalizes_ollama_model_ids() {
         assert_eq!(normalize_ollama_model_id("Llama3.2"), "llama3.2:latest");
+        assert_eq!(normalize_ollama_model_id("gptoss"), "gpt-oss:latest");
+        assert_eq!(normalize_ollama_query("gpt oss"), "gpt-oss");
         assert!(ollama_model_matches("llama3.2:latest", "llama3.2"));
+    }
+
+    #[test]
+    fn parses_ollama_library_variants() {
+        let html = r#"
+            <a href="/library/gpt-oss">gpt-oss</a>
+            <span>gpt-oss:20b 13 GB</span>
+            <span>gpt-oss:120b 65 GB</span>
+            <span>gpt-oss:latest-cloud</span>
+        "#;
+
+        let slugs = parse_ollama_library_slugs(html, "gpt oss");
+        let variants = parse_ollama_library_detail_models(html, "gpt-oss");
+
+        assert_eq!(slugs, vec!["gpt-oss"]);
+        assert!(variants.iter().any(|item| item.model_id == "gpt-oss:20b"));
+        assert!(variants.iter().any(|item| item.model_id == "gpt-oss:120b"));
+        assert!(!variants.iter().any(|item| item.model_id.contains("cloud")));
     }
 
     #[test]

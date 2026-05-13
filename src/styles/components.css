@@ -8454,26 +8454,26 @@ body,
   background: rgba(37, 99, 235, 0.075);
 }
 
-/* Passada 19: seletor de modelos alinhado, com menu de linha discreto e sem sobrepor scrollbar. */
+/* Model picker row actions stay aligned without overlapping the scrollbar. */
 .model-picker-menu {
   width: min(620px, calc(100vw - 32px));
 }
 
 .model-picker-scroll {
   max-height: min(520px, calc(100vh - 230px));
-  padding-right: 18px;
+  padding-right: 12px;
   scrollbar-gutter: stable;
 }
 
 .model-picker-option-row {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 32px;
+  grid-template-columns: minmax(0, 1fr) 36px;
   align-items: center;
-  gap: 8px;
-  width: calc(100% - 6px);
+  gap: 6px;
+  width: 100%;
   min-height: 48px;
-  margin: 0 6px 4px 0;
-  padding: 4px 10px 4px 6px;
+  margin: 0 0 4px;
+  padding: 4px 8px 4px 6px;
   border-radius: 10px;
 }
 
@@ -8507,10 +8507,10 @@ body,
 
 .model-picker-row-config,
 .model-picker-row-config-placeholder {
-  width: 32px;
-  min-width: 32px;
-  height: 32px;
-  min-height: 32px;
+  width: 36px;
+  min-width: 36px;
+  height: 36px;
+  min-height: 36px;
   margin: 0;
   place-self: center;
 }
@@ -8529,6 +8529,10 @@ body,
   pointer-events: none;
   line-height: 1;
   transition: opacity 120ms ease, background-color 120ms ease, border-color 120ms ease, color 120ms ease;
+}
+
+.model-picker-row-config-placeholder {
+  visibility: hidden;
 }
 
 .model-picker-option-row:hover .model-picker-row-config,

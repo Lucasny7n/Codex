@@ -23,6 +23,7 @@ import type {
   ProviderCredentialStatus,
   LocalRuntimeSnapshot,
   OllamaModelDetails,
+  OllamaLibrarySearchResult,
   LocalModelInstallProgress,
   SessionExportFormat,
   SessionExportResult,
@@ -230,6 +231,10 @@ export async function removeLocalModel(modelId: string): Promise<LocalRuntimeSna
 
 export async function showLocalModel(modelId: string): Promise<OllamaModelDetails> {
   return invoke('show_local_model', { modelId });
+}
+
+export async function searchOllamaLibrary(query: string): Promise<OllamaLibrarySearchResult[]> {
+  return invoke('search_ollama_library', { query });
 }
 
 export async function testLocalModel(modelId: string): Promise<ProviderRuntimeStatus> {

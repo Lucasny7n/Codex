@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { UiIcon } from '../common/AppIcons';
 import { CredentialInput, PopupMenu, PremiumModal, StatusDot } from '../common/PremiumUI';
 import type {
@@ -8,12 +8,14 @@ import type {
   ProviderAccountProfile,
   ProviderCredentialStatus,
   ProviderRuntimeStatus,
+  OllamaLibrarySearchResult,
 } from '../../types/domain';
 import { normalizeProviderStatus, type ProviderStatus } from '../../lib/providers/status';
 import {
   visibleModelOptions,
   type ModelCatalogOption,
 } from '../../lib/models/modelCatalogService';
+import { discoverOllamaLibraryModels } from '../../lib/ollama/searchService';
 
 export type TopBarModelOption = ModelCatalogOption;
 
@@ -238,6 +240,8 @@ export function TopBar({
   const [configStatus, setConfigStatus] = useState<'idle' | 'testing' | 'ready' | 'error'>('idle');
   const [configError, setConfigError] = useState<string>();
   const [hoveredOptionId, setHoveredOptionId] = useState<string>();
+  const [ollamaSearchResults, setOllamaSearchResults] = useState<OllamaLibrarySearchResult[]>([]);
+  const [ollamaSearchLoading, setOllamaSearchLoading] = useState(false);
   const providerStatusLabel = providerStatus?.state.replace('_', ' ') ?? 'offline';
   const environmentLabel = executionMode === 'local' ? 'Local' : 'Nuvem';
   const modelLabel = selectedModelLabel.trim() || 'Selecionar modelo';
@@ -256,8 +260,9 @@ export function TopBar({
       query,
       localRuntime,
       installationProgress,
+      ollamaSearchResults,
     }),
-    [installationProgress, localRuntime, pickerMode, query, safeCloudModels, safeLocalModels],
+    [installationProgress, localRuntime, ollamaSearchResults, pickerMode, query, safeCloudModels, safeLocalModels],
   );
   const pickerGroups = groupModelOptions(pickerOptions, pickerMode);
   const currentPickerOption = (pickerMode === 'cloud' ? safeCloudModels : safeLocalModels).find((option) => selectedModelId === option.id || selectedModelId === option.modelId || selectedModelLabel === option.label);
@@ -272,6 +277,34 @@ export function TopBar({
     configProfiles[0];
   const configProfile = creatingNewProfile ? undefined : selectedConfigProfile ?? profileFor(configTarget?.option.providerId, providerProfiles);
   const localProgress = configTarget ? installationProgress[configTarget.option.id] ?? installationProgress[configTarget.option.modelId ?? ''] : undefined;
+
+  useEffect(() => {
+    const trimmed = query.trim();
+    if (pickerMode !== 'local' || trimmed.length < 2) {
+      const clearTimer = window.setTimeout(() => {
+        setOllamaSearchResults([]);
+        setOllamaSearchLoading(false);
+      }, 0);
+      return () => window.clearTimeout(clearTimer);
+    }
+
+    let cancelled = false;
+    const timer = window.setTimeout(() => {
+      setOllamaSearchLoading(true);
+      void discoverOllamaLibraryModels(trimmed)
+        .then((results) => {
+          if (!cancelled) setOllamaSearchResults(results);
+        })
+        .finally(() => {
+          if (!cancelled) setOllamaSearchLoading(false);
+        });
+    }, 180);
+
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [pickerMode, query]);
 
   function openConfig(mode: ExecutionMode, option: TopBarModelOption): void {
     setModelMenuOpen(false);
@@ -521,14 +554,18 @@ export function TopBar({
 
   function pickerEmptyTitle(): string {
     if (pickerMode === 'cloud') return 'Nenhum modelo cloud configurado encontrado.';
-    if (query.trim()) return 'Modelo não instalado. Você pode baixar pelo Ollama.';
-    return 'Nenhum modelo Ollama instalado encontrado.';
+    if (query.trim()) return 'Nenhum modelo Ollama encontrado para esta busca.';
+    return 'Nenhum modelo Ollama instalado.';
   }
 
   function pickerEmptyDetail(): string {
     if (pickerMode === 'cloud') return 'Ajuste a busca ou configure um provider em Modelos.';
-    if (query.trim()) return 'Use Download no candidato local para baixar pelo Ollama.';
+    if (query.trim()) return ollamaSearchLoading ? 'Buscando na biblioteca Ollama...' : 'Ajuste a busca ou tente outro nome aceito pelo Ollama.';
     return 'Abra o Model Manager local ou baixe um modelo pelo Ollama.';
+  }
+
+  function pickerSectionLabel(): string {
+    return pickerMode === 'local' ? 'Ollama' : 'Provedores';
   }
 
   return (
@@ -548,8 +585,8 @@ export function TopBar({
                 <UiIcon name="search" className="model-picker-search-icon" />
                 <input
                   value={query}
-                  placeholder="Buscar modelo ou provedor..."
-                  aria-label="Buscar modelo ou provedor"
+                  placeholder={pickerMode === 'local' ? 'Buscar modelos Ollama...' : 'Buscar modelo ou provedor...'}
+                  aria-label={pickerMode === 'local' ? 'Buscar modelos Ollama' : 'Buscar modelo ou provedor'}
                   onChange={(event) => setQuery(event.target.value)}
                   onKeyDown={(event) => {
                     if (event.key !== 'Enter') return;
@@ -571,7 +608,7 @@ export function TopBar({
               </button>
             </div>
           </header>
-          <span className="model-picker-section">Provedores</span>
+          <span className="model-picker-section">{pickerSectionLabel()}</span>
           <div className="model-picker-scroll">
             {pickerGroups.length > 0 ? pickerGroups.map((group) => (
               <section key={group.label} className="model-picker-group">

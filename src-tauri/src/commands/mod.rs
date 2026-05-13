@@ -17,9 +17,9 @@ use crate::models::{
     AppHealthOverallStatus, AppHealthProvider, AppSettings, BootstrapPayload, ChatMessage,
     ChatRole, CommandLogChunk, ConversationImportResult, ExecutionRequestInput, ExecutionResponse,
     LocalModelInstallProgress, LocalRuntimeSnapshot, LogStream, ModelComparisonRequest,
-    ModelComparisonResponse, ModelComparisonResult, OllamaModelDetails, PendingIntentKind,
-    PermissionDecision, PermissionOutcome, PermissionOutcomeStatus, PermissionRequest,
-    PrivilegedActionRequestInput, PrivilegedActionSpec, ProviderAccountProfile,
+    ModelComparisonResponse, ModelComparisonResult, OllamaLibrarySearchResult, OllamaModelDetails,
+    PendingIntentKind, PermissionDecision, PermissionOutcome, PermissionOutcomeStatus,
+    PermissionRequest, PrivilegedActionRequestInput, PrivilegedActionSpec, ProviderAccountProfile,
     ProviderCredentialStatus, ProviderGenerateRequest, ProviderRuntimeStatus, ProviderStatusState,
     SessionExportFormat, SessionExportResult, SessionStatus, StatusKind, SystemHealthItem,
     TaskStatus, WorkspaceMeta,
@@ -1873,6 +1873,18 @@ pub async fn show_local_model(
     state
         .local_runtime_service
         .show_model(&settings, &model_id)
+        .await
+        .map_err(map_err)
+}
+
+#[tauri::command]
+pub async fn search_ollama_library(
+    state: State<'_, AppState>,
+    query: String,
+) -> Result<Vec<OllamaLibrarySearchResult>, ErrorPayload> {
+    state
+        .local_runtime_service
+        .search_library(&query)
         .await
         .map_err(map_err)
 }

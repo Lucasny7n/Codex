@@ -541,6 +541,13 @@ export interface OllamaModelDetails {
   modifiedAt?: string;
 }
 
+export interface OllamaLibrarySearchResult {
+  modelId: string;
+  label: string;
+  family: string;
+  sizeLabel?: string;
+}
+
 export interface ActionableError {
   code: string;
   severity: 'info' | 'warning' | 'error';

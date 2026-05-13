@@ -192,6 +192,22 @@ async function installTauriMock(page: Page): Promise<void> {
           ...localRuntime,
           installedModels: [...localRuntime.installedModels],
         };
+        if (cmd === 'search_ollama_library') {
+          const query = String(args?.query ?? '').toLowerCase();
+          if (query.includes('gpt')) {
+            return [
+              { modelId: 'gpt-oss:20b', label: 'gpt-oss:20b', family: 'GPT-OSS', sizeLabel: '13 GB' },
+              { modelId: 'gpt-oss:120b', label: 'gpt-oss:120b', family: 'GPT-OSS', sizeLabel: '65 GB' },
+            ];
+          }
+          if (query.includes('llama')) {
+            return [
+              { modelId: 'llama3.2', label: 'llama3.2', family: 'Llama' },
+              { modelId: 'llama3.1', label: 'llama3.1', family: 'Llama' },
+            ];
+          }
+          return [];
+        }
         if (cmd === 'get_stt_config_state') {
           return {
             ffmpeg: { id: 'ffmpeg', label: 'ffmpeg', installed: true, ready: true, message: 'ffmpeg disponível.' },
@@ -341,6 +357,7 @@ test('captura home, composer, chat temporário, seletor e modais em tema escuro'
   await expect(page.getByText('Local Ollama')).toHaveCount(0);
   await screenshot(page, 'pass-15-model-selector-cloud');
   await screenshot(page, 'pass-19-cloud-no-local-ollama');
+  await screenshot(page, 'pass-20-cloud-no-local');
   await page.getByLabel('Buscar modelo ou provedor').fill('qwen2.5-coder');
   await expect(page.getByText('Nenhum modelo cloud configurado encontrado.')).toBeVisible();
   await page.getByLabel('Buscar modelo ou provedor').fill('GPT-5.5');
@@ -356,23 +373,30 @@ test('captura home, composer, chat temporário, seletor e modais em tema escuro'
 
   await page.getByTitle(/mock-development-model/).click();
   await page.getByRole('tab', { name: 'Local' }).click();
-  await page.getByLabel('Buscar modelo ou provedor').fill('GPT-5.5');
-  await expect(page.getByText('Modelo não instalado. Você pode baixar pelo Ollama.')).toBeVisible();
-  await page.getByLabel('Buscar modelo ou provedor').fill('gpt oss');
-  await expect(page.getByTestId('model-row-ollama-pull:gpt-oss')).toBeVisible();
-  await expect(page.getByText('gpt-oss')).toBeVisible();
-  await expect(page.getByText('Disponível para baixar')).toBeVisible();
+  await screenshot(page, 'pass-20-local-empty-installed');
+  await page.getByLabel('Buscar modelos Ollama').fill('GPT-5.5');
+  await expect(page.getByText('Nenhum modelo Ollama encontrado para esta busca.')).toBeVisible();
+  await page.getByLabel('Buscar modelos Ollama').fill('gpt oss');
+  await expect(page.getByTestId('model-row-ollama-download:gpt-oss:20b')).toBeVisible();
+  await expect(page.getByText('gpt-oss:20b')).toBeVisible();
+  await expect(page.getByText('gpt-oss:120b')).toBeVisible();
+  await expect(page.getByTestId('model-row-ollama-download:gpt-oss:20b').getByText('Download')).toBeVisible();
   await expect(page.getByText('Disponível para pull')).toHaveCount(0);
   await screenshot(page, 'pass-19-local-search-gpt-oss');
-  await page.getByTestId('model-row-ollama-pull:gpt-oss').hover();
+  await screenshot(page, 'pass-20-local-search-gpt-oss');
+  await page.getByTestId('model-row-ollama-download:gpt-oss:20b').hover();
   await screenshot(page, 'pass-19-model-selector-ellipsis-aligned');
-  await page.getByLabel('Configurar gpt-oss').click();
-  await expect(page.getByRole('dialog', { name: 'gpt-oss' })).toBeVisible();
+  await screenshot(page, 'pass-20-ellipsis-aligned');
+  await page.getByLabel('Configurar gpt-oss:20b').click();
+  await expect(page.getByRole('dialog', { name: 'gpt-oss:20b' })).toBeVisible();
   await expect(page.getByTitle(/mock-development-model/)).toBeVisible();
   await page.keyboard.press('Escape');
   await page.getByTitle(/mock-development-model/).click();
   await page.getByRole('tab', { name: 'Local' }).click();
-  await page.getByLabel('Buscar modelo ou provedor').fill('Qwen');
+  await page.getByLabel('Buscar modelos Ollama').fill('llama');
+  await expect(page.getByText('llama3.2')).toBeVisible();
+  await screenshot(page, 'pass-20-local-search-llama');
+  await page.getByLabel('Buscar modelos Ollama').fill('Qwen');
   await screenshot(page, 'pass-15-model-selector-local');
   await page.getByTestId('model-row-qwen2.5-coder:1.5b').hover();
   await screenshot(page, 'pass-15-model-selector-local-hover');
@@ -383,8 +407,8 @@ test('captura home, composer, chat temporário, seletor e modais em tema escuro'
 
   await page.getByTitle(/mock-development-model/).click();
   await page.getByRole('tab', { name: 'Local' }).click();
-  await page.getByLabel('Buscar modelo ou provedor').fill('qwen3:8b');
-  await page.getByTestId('model-row-ollama-pull:qwen3:8b').hover();
+  await page.getByLabel('Buscar modelos Ollama').fill('qwen3:8b');
+  await page.getByTestId('model-row-ollama-download:qwen3:8b').hover();
   await page.getByLabel('Configurar qwen3:8b').click();
   await expect(page.getByRole('dialog', { name: 'qwen3:8b' })).toBeVisible();
   await screenshot(page, 'pass-15-model-config-local-download');

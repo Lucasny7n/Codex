@@ -1557,7 +1557,7 @@ export default function App(): JSX.Element {
       return;
     }
 
-    const targetModelId = option?.modelId ?? modelId.replace(/^ollama-pull:/u, '');
+    const targetModelId = option?.modelId ?? modelId.replace(/^ollama-(?:pull|download):/u, '');
     if (!settings || !targetModelId) return;
     setModelActionBusyId(option?.id ?? targetModelId);
     try {
