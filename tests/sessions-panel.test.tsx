@@ -1,5 +1,5 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { SessionsPanel } from '../src/components/panels/SessionsPanel';
 import type { AgentSession } from '../src/types/domain';
 
@@ -24,6 +24,28 @@ function session(): AgentSession {
     modelId: 'gpt-5.5',
   };
 }
+
+function installStorage(): void {
+  const values = new Map<string, string>();
+  Object.defineProperty(window, 'localStorage', {
+    configurable: true,
+    value: {
+      getItem: vi.fn((key: string) => values.get(key) ?? null),
+      setItem: vi.fn((key: string, value: string) => {
+        values.set(key, value);
+      }),
+      removeItem: vi.fn((key: string) => {
+        values.delete(key);
+      }),
+      clear: vi.fn(() => values.clear()),
+    },
+  });
+}
+
+beforeEach(() => {
+  installStorage();
+  window.localStorage.clear();
+});
 
 describe('SessionsPanel', () => {
   it('exibe nova conversa sem persistir e expõe ações premium da sessão', () => {
