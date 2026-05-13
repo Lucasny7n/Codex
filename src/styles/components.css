@@ -5360,8 +5360,7 @@
 }
 
 .model-picker-option-row:hover,
-.model-picker-option-row:focus-within,
-.model-picker-option-row.show-config {
+.model-picker-option-row:focus-within {
   background: rgba(255, 255, 255, 0.055);
 }
 
@@ -7360,7 +7359,6 @@ body,
 }
 
 .model-picker-option-row.active,
-.model-picker-option-row.show-config,
 .model-picker-option-row:focus-within {
   background: rgba(255, 255, 255, 0.045);
 }
@@ -7398,7 +7396,6 @@ body,
   display: block;
 }
 
-.model-picker-option-row.show-config .model-picker-row-config,
 .model-picker-option-row:focus-within .model-picker-row-config {
   opacity: 1;
   pointer-events: auto;
@@ -8449,7 +8446,6 @@ body,
   box-shadow: 0 0 0 4px rgba(39, 104, 201, 0.08);
 }
 
-:root[data-theme='light'] .model-picker-option-row.show-config,
 :root[data-theme='light'] .model-picker-option-row:focus-within {
   background: rgba(37, 99, 235, 0.075);
 }
@@ -8478,8 +8474,7 @@ body,
 }
 
 .model-picker-option-row:hover,
-.model-picker-option-row:focus-within,
-.model-picker-option-row.show-config {
+.model-picker-option-row:focus-within {
   background: rgba(255, 255, 255, 0.055);
 }
 
@@ -8536,8 +8531,7 @@ body,
 }
 
 .model-picker-option-row:hover .model-picker-row-config,
-.model-picker-option-row:focus-within .model-picker-row-config,
-.model-picker-option-row.show-config .model-picker-row-config {
+.model-picker-option-row:focus-within .model-picker-row-config {
   opacity: 1;
   pointer-events: auto;
 }
@@ -8556,8 +8550,7 @@ body,
 }
 
 :root[data-theme='light'] .model-picker-option-row:hover,
-:root[data-theme='light'] .model-picker-option-row:focus-within,
-:root[data-theme='light'] .model-picker-option-row.show-config {
+:root[data-theme='light'] .model-picker-option-row:focus-within {
   background: rgba(37, 99, 235, 0.075);
 }
 
@@ -8607,6 +8600,8 @@ body,
   white-space: normal;
 }
 
+.message-markdown h1,
+.message-markdown h2,
 .message-markdown h3,
 .message-markdown p,
 .message-markdown ul,
@@ -8614,10 +8609,23 @@ body,
   margin: 0;
 }
 
+.message-markdown h1,
+.message-markdown h2,
 .message-markdown h3 {
   color: var(--text-primary);
-  font-size: 1rem;
   line-height: 1.35;
+}
+
+.message-markdown h1 {
+  font-size: 1.12rem;
+}
+
+.message-markdown h2 {
+  font-size: 1.05rem;
+}
+
+.message-markdown h3 {
+  font-size: 1rem;
 }
 
 .message-markdown p,
@@ -8670,14 +8678,10 @@ body,
   background: rgba(255, 255, 255, 0.06);
 }
 
-.model-picker-row-config {
-  opacity: 0.72;
-  pointer-events: auto;
-}
-
 .model-picker-option-row:hover .model-picker-row-config,
 .model-picker-option-row:focus-within .model-picker-row-config {
   opacity: 1;
+  pointer-events: auto;
 }
 
 .settings-model-catalog-toolbar {

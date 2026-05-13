@@ -357,6 +357,7 @@ test('captura home, composer, chat temporário, seletor e modais em tema escuro'
   await expect(page.locator('select[aria-label="Selecionar preset"]')).toHaveCount(0);
   await screenshot(page, 'pass-15-home-dark');
   await screenshot(page, 'pass-21-home-dark');
+  await screenshot(page, 'pass-22-home-dark');
   await screenshot(page, 'pass-19-home-no-preset-select');
   await screenshot(page, 'pass-15-composer-empty');
   await screenshot(page, 'pass-15-send-disabled-neutral');
@@ -413,10 +414,12 @@ test('captura home, composer, chat temporário, seletor e modais em tema escuro'
   await screenshot(page, 'pass-19-local-search-gpt-oss');
   await screenshot(page, 'pass-20-local-search-gpt-oss');
   await screenshot(page, 'pass-21-model-selector-local-gpt-oss');
+  await screenshot(page, 'pass-22-local-gpt-oss');
   await page.getByTestId('model-row-ollama-download:gpt-oss:20b').hover();
   await screenshot(page, 'pass-19-model-selector-ellipsis-aligned');
   await screenshot(page, 'pass-20-ellipsis-aligned');
   await screenshot(page, 'pass-21-model-selector-ellipsis');
+  await screenshot(page, 'pass-22-ellipsis-hover');
   await page.getByLabel('Configurar gpt-oss:20b').click();
   await expect(page.getByRole('dialog', { name: 'gpt-oss:20b' })).toBeVisible();
   await expect(page.getByTitle(/mock-development-model/)).toBeVisible();
@@ -477,6 +480,7 @@ test('captura chat normal, markdown e scrollbar longa', async ({ page }) => {
   await expect(page.getByText('Pensamento concluído')).toHaveCount(0);
   await screenshot(page, 'pass-15-chat-no-thinking-label');
   await screenshot(page, 'pass-21-chat-clean');
+  await screenshot(page, 'pass-22-chat-markdown');
   await screenshot(page, 'pass-15-chat-long-scrollbar');
   await screenshot(page, 'pass-21-chat-long-scrollbar');
 });
@@ -499,6 +503,7 @@ test('captura configurações em todas as abas', async ({ page }) => {
   await dialog.getByRole('button', { name: 'Atualizar' }).click();
   await expect(dialog.getByText('Ollama API ativa')).toBeVisible();
   await screenshot(page, 'pass-21-settings-health');
+  await screenshot(page, 'pass-22-settings-health');
   await dialog.getByRole('button', { name: 'Personalização' }).click();
   await screenshot(page, 'pass-15-settings-personalization');
 });
@@ -508,6 +513,7 @@ test('captura tema claro, composer, settings e seletor', async ({ page }) => {
   await openApp(page, 'light');
   await screenshot(page, 'pass-15-home-light');
   await screenshot(page, 'pass-21-home-light');
+  await screenshot(page, 'pass-22-home-light');
   await page.getByPlaceholder('Como posso ajudá-lo hoje?').fill('Enviar visível no tema claro');
   await screenshot(page, 'pass-15-home-light-send-visible');
   await page.getByPlaceholder('Como posso ajudá-lo hoje?').focus();

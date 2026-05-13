@@ -190,7 +190,11 @@ function MarkdownContent({ content }: { content: string }): JSX.Element {
     if (heading) {
       flushParagraph();
       flushBullets();
-      blocks.push(<h3 key={`h-${blocks.length}`}>{renderInlineMarkdown(heading[2], `h-${blocks.length}`)}</h3>);
+      const level = heading[1].length;
+      const headingContent = renderInlineMarkdown(heading[2], `h-${blocks.length}`);
+      if (level === 1) blocks.push(<h1 key={`h-${blocks.length}`}>{headingContent}</h1>);
+      else if (level === 2) blocks.push(<h2 key={`h-${blocks.length}`}>{headingContent}</h2>);
+      else blocks.push(<h3 key={`h-${blocks.length}`}>{headingContent}</h3>);
       continue;
     }
     const bullet = trimmed.match(/^[-*]\s+(.+)$/u);

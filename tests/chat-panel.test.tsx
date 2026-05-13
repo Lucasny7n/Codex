@@ -60,6 +60,24 @@ describe('ChatPanel', () => {
     expect(screen.getByText('const status = "ok"')).toBeInTheDocument();
   });
 
+  it('renderiza headings, listas, inline code e bloco de código com segurança', () => {
+    render(<ChatPanel session={chat('# Título\n\n## Seção\n\nTexto normal com `inline`.\n\n* item um\n- item dois\n\n```ts\nconst value = 1;\n```')} />);
+
+    expect(screen.getByRole('heading', { level: 1, name: 'Título' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { level: 2, name: 'Seção' })).toBeInTheDocument();
+    expect(screen.getByText('inline')).toBeInTheDocument();
+    expect(screen.getByText('item um')).toBeInTheDocument();
+    expect(screen.getByText('item dois')).toBeInTheDocument();
+    expect(screen.getByText('const value = 1;')).toBeInTheDocument();
+  });
+
+  it('não quebra com markdown malformado ou backticks incompletos', () => {
+    render(<ChatPanel session={chat('Texto com `inline incompleto\n\n```ts\nconst ok = true;')} />);
+
+    expect(screen.getByText(/Texto com `inline incompleto/)).toBeInTheDocument();
+    expect(screen.getByText('const ok = true;')).toBeInTheDocument();
+  });
+
   it('traduz 429 como cota sem JSON cru', () => {
     const onOpenEnvironment = vi.fn();
 

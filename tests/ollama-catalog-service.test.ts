@@ -1,13 +1,13 @@
 import { describe, expect, it, vi } from 'vitest';
-import * as api from '../src/lib/api';
 import {
   pullOllamaModel,
   removeOllamaModel,
   showOllamaModel,
 } from '../src/lib/ollama/catalogService';
+import * as localRuntimeApi from '../src/lib/api/localRuntimeApi';
 import type { LocalRuntimeSnapshot, OllamaModelDetails } from '../src/types/domain';
 
-vi.mock('../src/lib/api', () => ({
+vi.mock('../src/lib/api/localRuntimeApi', () => ({
   installLocalModel: vi.fn(),
   removeLocalModel: vi.fn(),
   showLocalModel: vi.fn(),
@@ -37,16 +37,16 @@ function runtime(modelIds: string[]): LocalRuntimeSnapshot {
 
 describe('ollamaCatalogService', () => {
   it('pull só resolve como instalado depois do refresh retornado pelo backend', async () => {
-    vi.mocked(api.installLocalModel).mockResolvedValueOnce(runtime(['gpt-oss:latest']));
+    vi.mocked(localRuntimeApi.installLocalModel).mockResolvedValueOnce(runtime(['gpt-oss:latest']));
 
     await expect(pullOllamaModel('gpt oss')).resolves.toMatchObject({
       installedModels: [{ id: 'gpt-oss:latest' }],
     });
-    expect(api.installLocalModel).toHaveBeenCalledWith('gpt-oss');
+    expect(localRuntimeApi.installLocalModel).toHaveBeenCalledWith('gpt-oss');
   });
 
   it('pull falha se o backend concluir sem o modelo aparecer no snapshot Ollama', async () => {
-    vi.mocked(api.installLocalModel).mockResolvedValueOnce(runtime(['llama3.2:latest']));
+    vi.mocked(localRuntimeApi.installLocalModel).mockResolvedValueOnce(runtime(['llama3.2:latest']));
 
     await expect(pullOllamaModel('gpt-oss')).rejects.toThrow('/api/tags');
   });
@@ -57,8 +57,8 @@ describe('ollamaCatalogService', () => {
       raw: '{}',
       family: 'qwen2',
     };
-    vi.mocked(api.showLocalModel).mockResolvedValueOnce(details);
-    vi.mocked(api.removeLocalModel).mockResolvedValueOnce(runtime([]));
+    vi.mocked(localRuntimeApi.showLocalModel).mockResolvedValueOnce(details);
+    vi.mocked(localRuntimeApi.removeLocalModel).mockResolvedValueOnce(runtime([]));
 
     await expect(showOllamaModel('qwen2.5-coder:1.5b')).resolves.toBe(details);
     await expect(removeOllamaModel('qwen2.5-coder:1.5b')).resolves.toMatchObject({ installedModels: [] });

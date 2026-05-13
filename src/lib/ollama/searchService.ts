@@ -136,7 +136,7 @@ export async function discoverOllamaLibraryModels(query: string): Promise<Ollama
   }
 
   try {
-    const { searchOllamaLibrary } = await import('../api');
+    const { searchOllamaLibrary } = await import('../api/localRuntimeApi');
     const results = await searchOllamaLibrary(query);
     remoteCache.set(normalized, { at: Date.now(), results });
     return results;
