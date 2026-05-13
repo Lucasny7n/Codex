@@ -22,6 +22,7 @@ import setupLinux from '../scripts/setup-linux.sh?raw';
 import doctor from '../scripts/doctor.sh?raw';
 import validateIcons from '../scripts/validate-icons.sh?raw';
 import validateIconAlpha from '../scripts/validate-icon-alpha.mjs?raw';
+import commandInputPanel from '../src/components/chat/CommandInputPanel.tsx?raw';
 
 describe('repository public polish', () => {
   it('README and required docs exist with practical commands', () => {
@@ -77,5 +78,11 @@ describe('repository public polish', () => {
     expect(packageJson).toContain('"icons:validate"');
     expect(validateIcons).toContain('validate-icon-alpha.mjs');
     expect(validateIconAlpha).toContain('alpha');
+  });
+
+  it('composer cannot hardcode the old STT install error', () => {
+    expect(commandInputPanel).not.toContain('Backend local não configurado. Configurar transcrição local: sudo pacman -S --needed ffmpeg whisper.cpp');
+    expect(commandInputPanel).not.toContain('Modelo Whisper não encontrado. Configurar transcrição local: sudo pacman -S --needed ffmpeg whisper.cpp');
+    expect(commandInputPanel).not.toContain('result.command');
   });
 });

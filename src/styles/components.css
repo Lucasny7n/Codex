@@ -8757,13 +8757,14 @@ body,
 
 .premium-modal-panel.stt-config-modal {
   width: min(780px, calc(100vw - 28px));
-  height: min(86vh, 760px);
-  max-height: min(86vh, 760px);
+  height: min(88vh, 780px);
+  max-height: min(88vh, 780px);
 }
 
 .premium-modal-panel.stt-config-modal .premium-modal-body {
   overflow-y: auto;
   scrollbar-gutter: stable;
+  padding-bottom: 0;
 }
 
 .premium-modal-panel.stt-config-modal .dialog-actions {
@@ -8786,7 +8787,7 @@ body,
   min-height: 62px;
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-sm);
-  background: rgba(255, 255, 255, 0.025);
+  background: rgba(255, 255, 255, 0.035);
   padding: 10px;
   display: flex;
   align-items: flex-start;
@@ -8815,6 +8816,7 @@ body,
 .stt-config-modal .stt-command-box,
 .stt-config-modal .stt-mic-status {
   line-height: 1.45;
+  background: rgba(255, 255, 255, 0.028);
 }
 
 .stt-config-modal .stt-tool-grid {
@@ -8842,6 +8844,14 @@ body,
   background: rgba(255, 255, 255, 0.035);
   color: var(--text-secondary);
   font-size: 0.72rem;
+}
+
+.health-item-card small {
+  width: fit-content;
+  border: 1px solid currentColor;
+  border-radius: var(--radius-pill);
+  padding: 2px 7px;
+  opacity: 0.9;
 }
 
 @media (max-width: 760px) {

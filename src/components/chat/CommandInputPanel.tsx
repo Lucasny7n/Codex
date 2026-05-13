@@ -1,6 +1,13 @@
 import { useEffect, useRef, useState } from 'react';
 import { getSttConfigState, recordAndTranscribeShortTest, transcribeAudio } from '../../lib/api';
 import { readStoredSttModelPath, writeStoredSttModelPath } from '../../lib/stt/modelPath';
+import {
+  isFalseSttBackendMessage,
+  normalizeSttSnapshot,
+  shouldTreatMissingBackendAsTranscriptionError,
+  sttFailureMessage,
+  type SttCaptureStatus,
+} from '../../lib/stt/status';
 import type { PrivilegedActionSpec } from '../../types/domain';
 import type { ChatAttachment, LocalSttConfigSnapshot, SelectedFileAttachment, VoiceTranscriptionResult } from '../../types/domain';
 import { UiIcon } from '../common/AppIcons';
@@ -75,7 +82,7 @@ type VoiceState =
   | 'missing-backend'
   | 'permission-denied';
 
-type CaptureStatus = 'not_tested' | 'ok' | 'warning' | 'denied' | 'error';
+type CaptureStatus = SttCaptureStatus;
 
 const NATIVE_CAPTURE_FAILURE_MESSAGE = 'Não consegui gravar áudio pelo fallback nativo. Verifique o dispositivo de entrada.';
 
@@ -96,16 +103,19 @@ function captureStatusTone(status: CaptureStatus): 'ready' | 'warning' | 'error'
 
 function sttBackendTone(snapshot: LocalSttConfigSnapshot | undefined): 'ready' | 'warning' | 'error' | 'offline' {
   if (!snapshot) return 'offline';
-  if (snapshot.ready) return 'ready';
-  if (!snapshot.ffmpeg.installed) return 'error';
+  const backend = normalizeSttSnapshot(snapshot).backend;
+  if (backend === 'ok') return 'ready';
+  if (backend === 'error') return 'error';
   return 'warning';
 }
 
 function sttBackendLabel(snapshot: LocalSttConfigSnapshot | undefined): string {
-  if (!snapshot) return 'Não testada';
-  if (snapshot.ready) return 'OK';
-  if (!snapshot.ffmpeg.installed) return 'Erro';
-  return 'Atenção';
+  return normalizeSttSnapshot(snapshot).backendLabel;
+}
+
+function sttModelTone(snapshot: LocalSttConfigSnapshot | undefined): 'ready' | 'warning' | 'error' | 'offline' {
+  if (!snapshot) return 'offline';
+  return normalizeSttSnapshot(snapshot).model === 'ok' ? 'ready' : 'warning';
 }
 
 function isCapturePermissionIssue(cause: unknown): boolean {
@@ -122,22 +132,6 @@ function isCapturePermissionIssue(cause: unknown): boolean {
   }
   const message = cause instanceof Error ? cause.message.toLowerCase() : String(cause ?? '').toLowerCase();
   return /permission|denied|notallowed|abort|portal|mediadevices|capture|microphone|device/u.test(message);
-}
-
-function localTranscriptionMessage(message?: string, command?: string): string {
-  const normalized = message?.toLowerCase() ?? '';
-  const modelMissing = normalized.includes('modelo whisper não encontrado') || normalized.includes('nenhum modelo') || normalized.includes('model not');
-  const reason = modelMissing
-    ? 'Modelo Whisper não encontrado.'
-    : 'Backend local não configurado.';
-  return command ? `${reason} Configurar transcrição local: ${command}` : `${reason} Configure transcrição local.`;
-}
-
-function captureStatusFromSnapshot(status?: 'ok' | 'warning' | 'error'): CaptureStatus {
-  if (status === 'ok') return 'ok';
-  if (status === 'warning') return 'warning';
-  if (status === 'error') return 'error';
-  return 'not_tested';
 }
 
 function cleanInlineErrorMessage(message: string | undefined, fallback: string): string {
@@ -229,19 +223,31 @@ export function CommandInputPanel({
     stopRecordingTracks();
   }, []);
 
-  async function refreshSttConfig(path = sttModelPath): Promise<void> {
+  function applySttSnapshot(snapshot: LocalSttConfigSnapshot, path = sttModelPath): void {
+    const normalized = normalizeSttSnapshot(snapshot);
+    setSttSnapshot(snapshot);
+    setWebViewCaptureStatus(normalized.webviewCapture);
+    setNativeCaptureStatus(normalized.nativeCapture);
+    if (!path.trim() && snapshot.modelPath) {
+      setSttModelPath(snapshot.modelPath);
+    }
+    if (snapshot.ready) {
+      setSttSetupError(undefined);
+      setVoiceMessage((current) => isFalseSttBackendMessage(current) ? undefined : current);
+      setVoiceState((current) => current === 'missing-backend' ? 'idle' : current);
+    }
+  }
+
+  async function refreshSttConfig(path = sttModelPath): Promise<LocalSttConfigSnapshot | undefined> {
     setSttSetupLoading(true);
     setSttSetupError(undefined);
     try {
       const snapshot = await getSttConfigState(path.trim() || undefined);
-      setSttSnapshot(snapshot);
-      setWebViewCaptureStatus(captureStatusFromSnapshot(snapshot.capture.webviewStatus));
-      setNativeCaptureStatus(captureStatusFromSnapshot(snapshot.capture.nativeStatus));
-      if (!path.trim() && snapshot.modelPath) {
-        setSttModelPath(snapshot.modelPath);
-      }
+      applySttSnapshot(snapshot, path);
+      return snapshot;
     } catch (cause) {
       setSttSetupError(cleanInlineErrorMessage(cause instanceof Error ? cause.message : undefined, 'Falha ao detectar transcrição local.'));
+      return undefined;
     } finally {
       setSttSetupLoading(false);
     }
@@ -262,6 +268,7 @@ export function CommandInputPanel({
   }
 
   async function testMicrophone(): Promise<void> {
+    await refreshSttConfig(sttModelPath);
     setSttMicMessage(undefined);
     if (!navigator.mediaDevices?.getUserMedia) {
       setWebViewCaptureStatus('denied');
@@ -282,6 +289,7 @@ export function CommandInputPanel({
   }
 
   async function runNativeCaptureFallback(progressMessage = 'Tentando captura nativa curta...'): Promise<boolean> {
+    const snapshot = await refreshSttConfig(sttModelPath);
     setNativeCaptureStatus((current) => current === 'ok' ? 'ok' : 'not_tested');
     setVoiceState('transcribing');
     setVoiceMessage(progressMessage);
@@ -303,8 +311,16 @@ export function CommandInputPanel({
       }
       if (result.status === 'missing_backend') {
         if (!captureOk) setNativeCaptureStatus('warning');
+        if (shouldTreatMissingBackendAsTranscriptionError(result, snapshot ?? sttSnapshot)) {
+          const message = sttFailureMessage(result, snapshot ?? sttSnapshot);
+          setVoiceState('error');
+          setVoiceMessage(message);
+          setSttMicMessage(message);
+          return false;
+        }
+        const message = sttFailureMessage(result, snapshot ?? sttSnapshot);
         setVoiceState('missing-backend');
-        setVoiceMessage(localTranscriptionMessage(result.message, result.command));
+        setVoiceMessage(message);
         setSttMicMessage(captureOk
           ? 'Captura nativa funcionou, mas o backend STT ainda precisa ser configurado.'
           : 'Fallback nativo disponível, mas o backend STT ainda precisa ser configurado.');
@@ -312,8 +328,9 @@ export function CommandInputPanel({
       }
       setVoiceState('error');
       if (captureOk) {
-        setVoiceMessage(cleanInlineErrorMessage(result.message, 'Captura nativa funcionou, mas não consegui transcrever o áudio.'));
-        setSttMicMessage('Captura nativa funcionou, mas a transcrição local falhou.');
+        const message = sttFailureMessage(result, snapshot ?? sttSnapshot);
+        setVoiceMessage(message);
+        setSttMicMessage(message);
       } else {
         setNativeCaptureStatus('error');
         setVoiceMessage(NATIVE_CAPTURE_FAILURE_MESSAGE);
@@ -330,6 +347,7 @@ export function CommandInputPanel({
   }
 
   async function recordShortSttTest(): Promise<void> {
+    await refreshSttConfig(sttModelPath);
     if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === 'undefined') {
       setWebViewCaptureStatus('denied');
       await runNativeCaptureFallback('Permissão WebView negada. Tentando captura nativa.');
@@ -443,6 +461,7 @@ export function CommandInputPanel({
 
     setVoiceState('transcribing');
     setVoiceMessage('Transcrevendo...');
+    const snapshot = await refreshSttConfig(sttModelPath);
     try {
       const result = await transcribeAudio(
         await blobToBytes(blob),
@@ -456,12 +475,13 @@ export function CommandInputPanel({
         return result;
       }
       if (result.status === 'missing_backend') {
-        setVoiceState('missing-backend');
-        setVoiceMessage(localTranscriptionMessage(result.message, result.command));
+        const currentSnapshot = snapshot ?? sttSnapshot;
+        setVoiceState(shouldTreatMissingBackendAsTranscriptionError(result, currentSnapshot) ? 'error' : 'missing-backend');
+        setVoiceMessage(sttFailureMessage(result, currentSnapshot));
         return result;
       }
       setVoiceState('error');
-      setVoiceMessage(cleanInlineErrorMessage(result.message, 'Não foi possível transcrever o áudio local.'));
+      setVoiceMessage(sttFailureMessage(result, snapshot ?? sttSnapshot));
       return result;
     } catch (cause) {
       setVoiceState('error');
@@ -470,6 +490,7 @@ export function CommandInputPanel({
   }
 
   async function startBackendRecording(): Promise<void> {
+    await refreshSttConfig(sttModelPath);
     if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === 'undefined') {
       setWebViewCaptureStatus('denied');
       await runNativeCaptureFallback('Permissão WebView negada. Tentando captura nativa.');
@@ -676,7 +697,7 @@ export function CommandInputPanel({
               </span>
             </div>
             <div className="stt-status-card">
-              <StatusDot tone={sttSnapshot?.modelExists ? 'ready' : 'warning'} />
+              <StatusDot tone={sttModelTone(sttSnapshot)} />
               <span>
                 <strong>Modelo</strong>
                 <small title={sttSnapshot?.modelPath ?? sttModelPath}>{(sttSnapshot?.modelPath ?? sttModelPath) || '~/.codex/models/ggml-base.bin'}</small>

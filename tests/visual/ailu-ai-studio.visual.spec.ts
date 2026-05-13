@@ -212,13 +212,17 @@ async function installTauriMock(page: Page): Promise<void> {
           return {
             ffmpeg: { id: 'ffmpeg', label: 'ffmpeg', installed: true, ready: true, message: 'ffmpeg disponível.' },
             backends: [
-              { id: 'whisper-cli', label: 'whisper-cli', installed: false, ready: false, message: 'Requer whisper-cli e modelo local.' },
+              { id: 'whisper-cli', label: 'whisper-cli', installed: true, ready: true, message: 'whisper-cli pronto com modelo local.' },
+              { id: 'whisper.cpp', label: 'whisper.cpp', installed: false, ready: false, message: 'Opcional; whisper-cli já cobre a transcrição local.' },
             ],
-            modelExists: false,
-            modelCandidates: [],
-            ready: false,
-            installCommand: 'sudo pacman -S --needed ffmpeg whisper.cpp',
-            message: 'Nenhum backend STT local encontrado.',
+            modelPath: '/home/lucas/.codex/models/ggml-base.bin',
+            modelExists: true,
+            modelCandidates: [
+              { label: 'ggml-base.bin', path: '/home/lucas/.codex/models/ggml-base.bin', source: 'default', exists: true },
+            ],
+            ready: true,
+            installCommand: 'pacman -S --needed ffmpeg whisper.cpp',
+            message: 'Transcrição local pronta. Modelo: /home/lucas/.codex/models/ggml-base.bin',
             capture: {
               webviewStatus: 'ok',
               webviewMessage: 'PipeWire, WirePlumber e portal ativos.',
@@ -231,10 +235,11 @@ async function installTauriMock(page: Page): Promise<void> {
         }
         if (cmd === 'record_and_transcribe_short_test') {
           return {
-            status: 'error',
-            message: 'Não consegui gravar áudio pelo fallback nativo. Verifique o dispositivo de entrada.',
-            backend: 'native-capture',
-            captureStatus: 'error',
+            status: 'done',
+            text: 'texto reconhecido pelo fallback nativo',
+            message: 'Transcrição concluída.',
+            backend: 'whisper-cli',
+            captureStatus: 'ok',
             captureBackend: 'pw-record',
           };
         }
@@ -254,14 +259,14 @@ async function installTauriMock(page: Page): Promise<void> {
             items: [
               { id: 'ollama-installed', label: 'Ollama instalado', status: 'ok', detail: 'Runtime encontrado no PATH.' },
               { id: 'ollama-api', label: 'Ollama API ativa', status: 'ok', detail: 'http://127.0.0.1:11434' },
-              { id: 'stt-backend', label: 'Backend STT', status: 'warning', detail: 'Backend Whisper/Vosk ausente.', action: 'Configurar transcrição local', command: 'sudo pacman -S --needed ffmpeg whisper.cpp' },
-              { id: 'microphone-webview', label: 'Captura WebView', status: 'warning', detail: 'Captura ainda não testada no WebView.', action: 'Testar microfone' },
+              { id: 'stt-backend', label: 'Backend STT', status: 'ok', detail: 'Transcrição local pronta. Modelo: /home/lucas/.codex/models/ggml-base.bin', action: 'Gravar teste curto' },
+              { id: 'microphone-webview', label: 'Captura WebView', status: 'ok', detail: 'PipeWire, WirePlumber e portal ativos. O teste real acontece ao clicar no microfone.', action: 'Testar microfone' },
               { id: 'microphone-native', label: 'Captura nativa', status: 'ok', detail: 'Fallback nativo disponível via pw-record.', action: 'Gravar teste curto' },
               { id: 'api-keys', label: 'API keys', status: 'warning', detail: 'Credencial salva exige teste antes de ficar pronta.', action: 'Testar conexão' },
               { id: 'git-workspace', label: 'Git/workspace', status: 'ok', detail: '/tmp/workspace · main' },
             ],
             recentErrors: [],
-            overallStatus: 'warning',
+            overallStatus: 'ok',
             actions: [],
           };
         }
@@ -551,14 +556,29 @@ test('captura tema claro, composer, settings e seletor', async ({ page }) => {
 test('captura estado de configuração STT', async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   await openApp(page, 'dark');
+
   await page.getByLabel('Entrada por voz').click();
-  await expect(page.getByText(/Não consegui gravar áudio pelo fallback nativo|Backend local não configurado|Microfone indisponível/)).toBeVisible();
+  await expect(page.getByText('Transcrição adicionada.')).toBeVisible();
+  await expect(page.getByPlaceholder('Como posso ajudá-lo hoje?')).toHaveValue(/texto reconhecido pelo fallback nativo/);
+  await expect(page.getByText(/Backend local não configurado|Modelo Whisper não encontrado/)).toHaveCount(0);
   await screenshot(page, 'pass-15-mic-permission-flow');
-  await page.getByText(/Configurar microfone|Configurar transcrição local/).click();
-  await expect(page.getByRole('dialog', { name: 'Transcrição e microfone' })).toBeVisible();
+
+  await page.getByLabel('Menu do usuário').click();
+  await page.getByText('Configurações').click();
+  const settings = page.getByRole('dialog', { name: 'Configurações' });
+  await settings.getByRole('button', { name: 'Saúde' }).click();
+  await settings.getByRole('button', { name: 'Atualizar' }).click();
+  await expect(settings.getByText('Backend STT')).toBeVisible();
+  await expect(settings.getByText('Captura WebView')).toBeVisible();
+  await expect(settings.getByText('Captura nativa')).toBeVisible();
+  await expect(settings.getByText('Transcrição local pronta. Modelo: /home/lucas/.codex/models/ggml-base.bin')).toBeVisible();
+  await screenshot(page, 'pass-21-mic-health-agreement');
+  await settings.getByRole('button', { name: 'Fechar' }).click();
+
+  await page.getByLabel('Entrada por voz').click();
+  await expect(page.getByText('Transcrição adicionada.')).toBeVisible();
+  await expect(page.getByText(/Backend local não configurado|Modelo Whisper não encontrado/)).toHaveCount(0);
   await screenshot(page, 'pass-15-mic-state');
-  await screenshot(page, 'pass-15-mic-config');
-  await screenshot(page, 'pass-21-mic-diagnostic');
 });
 
 test('mantém data fixa para evitar ruído de screenshots', () => {

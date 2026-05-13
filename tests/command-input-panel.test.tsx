@@ -2,6 +2,7 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import * as api from '../src/lib/api';
 import { CommandInputPanel } from '../src/components/chat/CommandInputPanel';
+import type { LocalSttConfigSnapshot } from '../src/types/domain';
 
 vi.mock('../src/lib/api', () => ({
   getFileAttachment: vi.fn(),
@@ -32,6 +33,55 @@ function mockFileListing(): void {
     ],
     truncated: false,
   });
+}
+
+function readySttSnapshot(): LocalSttConfigSnapshot {
+  return {
+    ffmpeg: {
+      id: 'ffmpeg',
+      label: 'ffmpeg',
+      installed: true,
+      ready: true,
+      message: 'ffmpeg disponível.',
+    },
+    backends: [
+      {
+        id: 'whisper-cli',
+        label: 'whisper-cli',
+        installed: true,
+        ready: true,
+        message: 'whisper-cli pronto com modelo local.',
+      },
+      {
+        id: 'whisper.cpp',
+        label: 'whisper.cpp',
+        installed: false,
+        ready: false,
+        message: 'Opcional; whisper-cli já cobre a transcrição local.',
+      },
+    ],
+    modelPath: '/home/lucas/.codex/models/ggml-base.bin',
+    modelExists: true,
+    modelCandidates: [
+      {
+        label: 'ggml-base.bin',
+        path: '/home/lucas/.codex/models/ggml-base.bin',
+        source: 'default',
+        exists: true,
+      },
+    ],
+    ready: true,
+    installCommand: 'pacman -S --needed ffmpeg whisper.cpp',
+    message: 'Transcrição local pronta. Modelo: /home/lucas/.codex/models/ggml-base.bin',
+    capture: {
+      webviewStatus: 'ok',
+      webviewMessage: 'PipeWire, WirePlumber e portal ativos.',
+      nativeStatus: 'ok',
+      nativeMessage: 'Fallback nativo disponível via pw-record.',
+      nativeTools: ['pw-record'],
+    },
+    checkedAt: new Date().toISOString(),
+  };
 }
 
 describe('CommandInputPanel', () => {
@@ -82,7 +132,7 @@ describe('CommandInputPanel', () => {
       modelExists: false,
       modelCandidates: [],
       ready: false,
-      installCommand: 'sudo pacman -S ffmpeg whisper.cpp',
+      installCommand: 'pacman -S --needed ffmpeg whisper.cpp',
       message: 'Nenhum backend STT local encontrado.',
       capture: {
         webviewStatus: 'ok',
@@ -364,7 +414,7 @@ describe('CommandInputPanel', () => {
     vi.mocked(api.transcribeAudio).mockResolvedValue({
       status: 'missing_backend',
       message: 'Nenhum backend local de transcrição foi encontrado.',
-      command: 'sudo pacman -S ffmpeg whisper.cpp',
+      command: 'sudo pacman -S --needed ffmpeg whisper.cpp',
     });
 
     render(
@@ -381,8 +431,9 @@ describe('CommandInputPanel', () => {
     fireEvent.click(screen.getByLabelText('Entrada por voz'));
     fireEvent.click(await screen.findByLabelText('Parar transcrição de voz'));
 
-    expect(await screen.findByRole('alert')).toHaveTextContent('Backend local não configurado');
-    expect(await screen.findByRole('alert')).toHaveTextContent('sudo pacman -S ffmpeg whisper.cpp');
+    expect(await screen.findByRole('alert')).toHaveTextContent('Modelo de transcrição local não encontrado');
+    expect(screen.queryByText('Backend local não configurado')).not.toBeInTheDocument();
+    expect(screen.queryByText('sudo pacman -S --needed ffmpeg whisper.cpp')).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByText('Configurar transcrição local'));
     expect(await screen.findByRole('dialog', { name: 'Transcrição e microfone' })).toBeInTheDocument();
@@ -391,7 +442,44 @@ describe('CommandInputPanel', () => {
     expect(screen.getByText('Captura WebView')).toBeInTheDocument();
     expect(screen.getByText('Captura nativa')).toBeInTheDocument();
     expect(screen.getByText('Comando Arch sugerido')).toBeInTheDocument();
-    expect(screen.getByText('sudo pacman -S ffmpeg whisper.cpp')).toBeInTheDocument();
+    expect(screen.getByText('pacman -S --needed ffmpeg whisper.cpp')).toBeInTheDocument();
+  });
+
+  it('não mostra backend/modelo ausente quando snapshot STT atual está pronto', async () => {
+    Object.defineProperty(window.navigator, 'mediaDevices', {
+      configurable: true,
+      value: {
+        getUserMedia: vi.fn().mockResolvedValue({
+          getTracks: () => [{ stop: vi.fn() }],
+        }),
+      },
+    });
+    vi.stubGlobal('MediaRecorder', MockMediaRecorder);
+    vi.mocked(api.getSttConfigState).mockResolvedValue(readySttSnapshot());
+    vi.mocked(api.transcribeAudio).mockResolvedValue({
+      status: 'missing_backend',
+      message: 'Backend local não configurado. Configurar transcrição local: sudo pacman -S --needed ffmpeg whisper.cpp',
+      command: 'sudo pacman -S --needed ffmpeg whisper.cpp',
+    });
+
+    render(
+      <CommandInputPanel
+        busy={false}
+        privilegedActions={[]}
+        actionJsonExamples={{}}
+        onSendOrder={vi.fn()}
+        onExecuteCommand={vi.fn()}
+        onRequestPrivilegedAction={vi.fn()}
+      />,
+    );
+
+    fireEvent.click(screen.getByLabelText('Entrada por voz'));
+    fireEvent.click(await screen.findByLabelText('Parar transcrição de voz'));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('Captei o áudio, mas não consegui transcrever.');
+    expect(screen.queryByText(/Backend local não configurado/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Modelo Whisper não encontrado/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/sudo pacman -S --needed ffmpeg whisper\.cpp/)).not.toBeInTheDocument();
   });
 
   it('limpa erro bruto de STT antes de mostrar na UI', async () => {
@@ -454,46 +542,42 @@ describe('CommandInputPanel', () => {
     expect(screen.getByText('Permissão no Linux/Hyprland')).toBeInTheDocument();
   });
 
-  it('não mostra erro falso de modelo Whisper quando o backend está pronto', async () => {
-    vi.mocked(api.getSttConfigState).mockResolvedValueOnce({
-      ffmpeg: {
-        id: 'ffmpeg',
-        label: 'ffmpeg',
-        installed: true,
-        ready: true,
-        message: 'ffmpeg disponível.',
+  it('fallback nativo com captura OK e sem fala mostra mensagem de reconhecimento', async () => {
+    Object.defineProperty(window.navigator, 'mediaDevices', {
+      configurable: true,
+      value: {
+        getUserMedia: vi.fn().mockRejectedValue(new DOMException('portal denied', 'NotAllowedError')),
       },
-      backends: [
-        {
-          id: 'whisper-cli',
-          label: 'whisper-cli',
-          installed: true,
-          ready: true,
-          message: 'whisper-cli pronto com modelo local.',
-        },
-      ],
-      modelPath: '/home/lucas/.codex/models/ggml-base.bin',
-      modelExists: true,
-      modelCandidates: [
-        {
-          label: 'ggml-base.bin',
-          path: '/home/lucas/.codex/models/ggml-base.bin',
-          source: 'default',
-          exists: true,
-        },
-      ],
-      ready: true,
-      installCommand: 'sudo pacman -S ffmpeg whisper.cpp',
-      message: 'Transcrição local pronta. Modelo: /home/lucas/.codex/models/ggml-base.bin',
-      capture: {
-        webviewStatus: 'ok',
-        webviewMessage: 'PipeWire, WirePlumber e portal ativos.',
-        nativeStatus: 'ok',
-        nativeMessage: 'Fallback nativo disponível via pw-record.',
-        nativeTools: ['pw-record'],
-      },
-      checkedAt: new Date().toISOString(),
     });
+    vi.stubGlobal('MediaRecorder', MockMediaRecorder);
+    vi.mocked(api.getSttConfigState).mockResolvedValue(readySttSnapshot());
+    vi.mocked(api.recordAndTranscribeShortTest).mockResolvedValueOnce({
+      status: 'error',
+      message: 'Nenhuma fala foi reconhecida. Tente falar mais perto do microfone.',
+      backend: 'whisper-cli',
+      captureStatus: 'ok',
+      captureBackend: 'pw-record',
+    });
+
+    render(
+      <CommandInputPanel
+        busy={false}
+        privilegedActions={[]}
+        actionJsonExamples={{}}
+        onSendOrder={vi.fn()}
+        onExecuteCommand={vi.fn()}
+        onRequestPrivilegedAction={vi.fn()}
+      />,
+    );
+
+    fireEvent.click(screen.getByLabelText('Entrada por voz'));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('Nenhuma fala foi reconhecida. Tente falar mais perto do microfone.');
+    expect(screen.queryByText(/Backend local não configurado/)).not.toBeInTheDocument();
+  });
+
+  it('não mostra erro falso de modelo Whisper quando o backend está pronto', async () => {
+    vi.mocked(api.getSttConfigState).mockResolvedValue(readySttSnapshot());
 
     Object.defineProperty(window.navigator, 'mediaDevices', {
       configurable: true,

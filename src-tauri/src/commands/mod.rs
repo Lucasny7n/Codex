@@ -119,6 +119,40 @@ fn command_text(program: &str, args: &[&str]) -> Option<String> {
     Some(String::from_utf8_lossy(&output.stdout).trim().to_owned())
 }
 
+fn has_app_project_markers(root: &Path) -> bool {
+    root.join("package.json").is_file()
+        && root.join("src-tauri/tauri.conf.json").is_file()
+        && root.join("assets/ailu-ai-studio.desktop").is_file()
+}
+
+fn resolve_app_project_root_from_candidates(
+    settings_workspace_root: &str,
+    candidates: &[PathBuf],
+) -> PathBuf {
+    let mut roots = Vec::new();
+    for candidate in candidates {
+        roots.push(candidate.clone());
+        if let Some(parent) = candidate.parent() {
+            roots.push(parent.to_path_buf());
+        }
+    }
+    roots.push(PathBuf::from(settings_workspace_root));
+
+    roots
+        .into_iter()
+        .find(|root| has_app_project_markers(root))
+        .unwrap_or_else(|| PathBuf::from(settings_workspace_root))
+}
+
+fn app_project_root_for_health(settings_workspace_root: &str) -> PathBuf {
+    let mut candidates = Vec::new();
+    if let Ok(current_dir) = env::current_dir() {
+        candidates.push(current_dir);
+    }
+    candidates.push(PathBuf::from(env!("CARGO_MANIFEST_DIR")));
+    resolve_app_project_root_from_candidates(settings_workspace_root, &candidates)
+}
+
 fn health_item(
     id: &str,
     label: &str,
@@ -504,7 +538,10 @@ fn zip_preview(path: &Path) -> (Option<String>, FilePreviewKind, bool) {
     }
 }
 
-const STT_INSTALL_COMMAND: &str = "sudo pacman -S --needed ffmpeg whisper.cpp";
+const STT_INSTALL_COMMAND: &str = "pacman -S --needed ffmpeg whisper.cpp";
+const STT_TRANSCRIPTION_FAILURE_MESSAGE: &str = "Captei o áudio, mas não consegui transcrever.";
+const STT_NO_SPEECH_MESSAGE: &str =
+    "Nenhuma fala foi reconhecida. Tente falar mais perto do microfone.";
 const MIC_CAPTURE_FAILURE_MESSAGE: &str =
     "Não consegui acessar o microfone. Verifique PipeWire/WirePlumber ou selecione outro dispositivo.";
 const NATIVE_CAPTURE_FAILURE_MESSAGE: &str =
@@ -560,7 +597,7 @@ fn missing_transcription_backend_result(detail: Option<String>) -> VoiceTranscri
     voice_result(
         VoiceTranscriptionResultStatus::MissingBackend,
         None,
-        "Transcrição local indisponível. Verifique ffmpeg, whisper-cli e um modelo em ~/.codex/models.",
+        "Transcrição local indisponível. Verifique ffmpeg, whisper-cli e um modelo local.",
         None,
         Some(STT_INSTALL_COMMAND),
         detail,
@@ -775,7 +812,7 @@ fn stt_model_candidates(configured: Option<&str>) -> Vec<SttModelCandidate> {
     }
 
     if let Ok(home) = home_dir() {
-        let fixed = [
+        let mut fixed = vec![
             home.join(".codex/models/ggml-base.bin"),
             home.join(".codex/models/ggml-small.bin"),
             home.join(".codex/models/ggml-tiny.bin"),
@@ -783,6 +820,11 @@ fn stt_model_candidates(configured: Option<&str>) -> Vec<SttModelCandidate> {
             home.join(".local/share/whisper.cpp/ggml-small.bin"),
             home.join(".local/share/whisper.cpp/ggml-tiny.bin"),
         ];
+        fixed.extend([
+            PathBuf::from("/home/lucas/.codex/models/ggml-base.bin"),
+            PathBuf::from("/home/lucas/.codex/models/ggml-small.bin"),
+            PathBuf::from("/home/lucas/.codex/models/ggml-tiny.bin"),
+        ]);
         for path in fixed {
             let label = path
                 .file_name()
@@ -837,16 +879,20 @@ fn whisper_model_path(configured: Option<&str>) -> Option<PathBuf> {
         }
     }
     let home = home_dir().ok()?;
-    [
+    let mut fixed = vec![
         home.join(".codex/models/ggml-base.bin"),
         home.join(".codex/models/ggml-small.bin"),
         home.join(".codex/models/ggml-tiny.bin"),
         home.join(".local/share/whisper.cpp/ggml-base.bin"),
         home.join(".local/share/whisper.cpp/ggml-small.bin"),
         home.join(".local/share/whisper.cpp/ggml-tiny.bin"),
-    ]
-    .into_iter()
-    .find(|path| path.is_file())
+    ];
+    fixed.extend([
+        PathBuf::from("/home/lucas/.codex/models/ggml-base.bin"),
+        PathBuf::from("/home/lucas/.codex/models/ggml-small.bin"),
+        PathBuf::from("/home/lucas/.codex/models/ggml-tiny.bin"),
+    ]);
+    fixed.into_iter().find(|path| path.is_file())
 }
 
 fn faster_whisper_local_model(configured: Option<&str>) -> Option<PathBuf> {
@@ -1024,7 +1070,7 @@ fn stt_config_snapshot(model_path_input: Option<&str>) -> AppResult<LocalSttConf
             },
         ),
     ];
-    let ready = ffmpeg.installed && backends.iter().any(|backend| backend.ready);
+    let ready = whisper_cli_ready;
     let message = if ready {
         match selected_model.as_ref() {
             Some(path) => format!(
@@ -1036,9 +1082,8 @@ fn stt_config_snapshot(model_path_input: Option<&str>) -> AppResult<LocalSttConf
     } else if !ffmpeg.installed {
         "ffmpeg não encontrado. Ele é necessário para converter áudio antes da transcrição."
             .to_owned()
-    } else if backends.iter().all(|backend| !backend.installed) {
-        "Nenhum backend STT local encontrado. Instale whisper-cli ou configure outro backend local."
-            .to_owned()
+    } else if !whisper_cli_installed {
+        "whisper-cli não encontrado. Ele é o backend principal de transcrição local.".to_owned()
     } else if !model_exists {
         "Modelo Whisper não encontrado. Escolha um arquivo ggml em ~/.codex/models.".to_owned()
     } else {
@@ -1119,16 +1164,26 @@ fn openai_whisper_cached_model() -> Option<String> {
         })
 }
 
-fn run_whisper_cpp(audio_path: &Path, model_path: Option<&str>) -> Result<Option<String>, String> {
-    let Some(binary) = command_in_path("whisper-cli").or_else(|| command_in_path("whisper.cpp"))
-    else {
+fn sanitize_backend_detail(raw: &str) -> String {
+    let first = raw
+        .lines()
+        .rev()
+        .map(str::trim)
+        .find(|line| {
+            !line.is_empty()
+                && !line.starts_with('{')
+                && !line.starts_with('[')
+                && !line.contains("stack")
+                && !line.contains("backtrace")
+        })
+        .unwrap_or("sem detalhe");
+    first.chars().take(180).collect()
+}
+
+fn run_whisper_cli(audio_path: &Path, model_path: Option<&str>) -> Result<Option<String>, String> {
+    let Some(binary) = command_in_path("whisper-cli") else {
         return Ok(None);
     };
-    let backend_label = binary
-        .file_name()
-        .and_then(|name| name.to_str())
-        .unwrap_or("whisper-cli")
-        .to_owned();
     let Some(model) = whisper_model_path(model_path) else {
         return Err("Modelo Whisper não encontrado. Coloque ggml-base.bin em ~/.codex/models ou selecione o caminho no app.".to_owned());
     };
@@ -1141,7 +1196,7 @@ fn run_whisper_cpp(audio_path: &Path, model_path: Option<&str>) -> Result<Option
         .arg("pt")
         .arg("-nt")
         .output()
-        .map_err(|error| format!("Não consegui executar {backend_label}: {error}"))?;
+        .map_err(|error| format!("Não consegui executar whisper-cli: {error}"))?;
     let stdout = String::from_utf8_lossy(&output.stdout);
     let stderr = String::from_utf8_lossy(&output.stderr);
     let text = clean_transcript_output(if stdout.trim().is_empty() {
@@ -1149,14 +1204,17 @@ fn run_whisper_cpp(audio_path: &Path, model_path: Option<&str>) -> Result<Option
     } else {
         &stdout
     });
-    if output.status.success() && !text.is_empty() {
-        Ok(Some(text))
-    } else {
-        let detail = stderr.trim().lines().last().unwrap_or("sem detalhe");
-        Err(format!(
-            "Não consegui transcrever com {backend_label}. Detalhe interno: {detail}"
-        ))
+    if output.status.success() {
+        return if text.is_empty() {
+            Err(STT_NO_SPEECH_MESSAGE.to_owned())
+        } else {
+            Ok(Some(text))
+        };
     }
+    Err(format!(
+        "whisper-cli falhou: {}",
+        sanitize_backend_detail(&stderr)
+    ))
 }
 
 fn run_openai_whisper(audio_path: &Path, temp_dir: &Path) -> Result<Option<String>, String> {
@@ -1297,6 +1355,14 @@ pub fn transcribe_audio(
         ));
     }
 
+    let snapshot = match stt_config_snapshot(model_path.as_deref()) {
+        Ok(snapshot) => snapshot,
+        Err(error) => return Err(map_err(error)),
+    };
+    if !snapshot.ready {
+        return Ok(missing_transcription_backend_result(Some(snapshot.message)));
+    }
+
     let temp_dir = env::temp_dir().join(format!("ailu-voice-{}", Uuid::new_v4()));
     if let Err(error) = fs::create_dir_all(&temp_dir) {
         return Ok(voice_result(
@@ -1325,20 +1391,62 @@ pub fn transcribe_audio(
         ));
     }
 
-    let mut diagnostics = Vec::new();
     let audio_path = match ffmpeg_convert_to_wav(&input_path, &temp_dir) {
         Ok(path) => path,
         Err(error) => {
-            diagnostics.push(error);
-            input_path.clone()
+            let _ = fs::remove_dir_all(&temp_dir);
+            return Ok(voice_result(
+                VoiceTranscriptionResultStatus::Error,
+                None,
+                STT_TRANSCRIPTION_FAILURE_MESSAGE,
+                Some("ffmpeg"),
+                None,
+                Some(sanitize_backend_detail(&error)),
+            ));
         }
     };
 
-    let attempts: [(&str, Result<Option<String>, String>); 1] = [(
-        "whisper-cli",
-        run_whisper_cpp(&audio_path, model_path.as_deref()),
-    )];
-    for (backend, attempt) in attempts {
+    let selected_model = snapshot.model_path.as_deref().or(model_path.as_deref());
+    let mut diagnostics = Vec::new();
+    match run_whisper_cli(&audio_path, selected_model) {
+        Ok(Some(text)) => {
+            let _ = fs::remove_dir_all(&temp_dir);
+            return Ok(voice_result(
+                VoiceTranscriptionResultStatus::Done,
+                Some(text),
+                "Transcrição concluída.",
+                Some("whisper-cli"),
+                None,
+                None,
+            ));
+        }
+        Ok(None) => diagnostics
+            .push("whisper-cli deixou de estar disponível após o snapshot STT.".to_owned()),
+        Err(error) if error == STT_NO_SPEECH_MESSAGE => {
+            let _ = fs::remove_dir_all(&temp_dir);
+            return Ok(voice_result(
+                VoiceTranscriptionResultStatus::Error,
+                None,
+                STT_NO_SPEECH_MESSAGE,
+                Some("whisper-cli"),
+                None,
+                None,
+            ));
+        }
+        Err(error) => diagnostics.push(error),
+    }
+
+    for (backend, attempt) in [
+        ("whisper", run_openai_whisper(&audio_path, &temp_dir)),
+        (
+            "faster-whisper",
+            run_faster_whisper(&audio_path, &temp_dir, model_path.as_deref()),
+        ),
+        (
+            "vosk-transcriber",
+            run_vosk_transcriber(&audio_path, model_path.as_deref()),
+        ),
+    ] {
         match attempt {
             Ok(Some(text)) => {
                 let _ = fs::remove_dir_all(&temp_dir);
@@ -1356,77 +1464,16 @@ pub fn transcribe_audio(
         }
     }
 
-    let attempts: [(&str, Result<Option<String>, String>); 1] =
-        [("whisper", run_openai_whisper(&audio_path, &temp_dir))];
-    for (backend, attempt) in attempts {
-        match attempt {
-            Ok(Some(text)) => {
-                let _ = fs::remove_dir_all(&temp_dir);
-                return Ok(voice_result(
-                    VoiceTranscriptionResultStatus::Done,
-                    Some(text),
-                    "Transcrição concluída.",
-                    Some(backend),
-                    None,
-                    None,
-                ));
-            }
-            Ok(None) => {}
-            Err(error) => diagnostics.push(error),
-        }
-    }
-
-    let attempts: [(&str, Result<Option<String>, String>); 1] = [(
-        "faster-whisper",
-        run_faster_whisper(&audio_path, &temp_dir, model_path.as_deref()),
-    )];
-    for (backend, attempt) in attempts {
-        match attempt {
-            Ok(Some(text)) => {
-                let _ = fs::remove_dir_all(&temp_dir);
-                return Ok(voice_result(
-                    VoiceTranscriptionResultStatus::Done,
-                    Some(text),
-                    "Transcrição concluída.",
-                    Some(backend),
-                    None,
-                    None,
-                ));
-            }
-            Ok(None) => {}
-            Err(error) => diagnostics.push(error),
-        }
-    }
-
-    let attempts: [(&str, Result<Option<String>, String>); 1] = [(
-        "vosk-transcriber",
-        run_vosk_transcriber(&audio_path, model_path.as_deref()),
-    )];
-    for (backend, attempt) in attempts {
-        match attempt {
-            Ok(Some(text)) => {
-                let _ = fs::remove_dir_all(&temp_dir);
-                return Ok(voice_result(
-                    VoiceTranscriptionResultStatus::Done,
-                    Some(text),
-                    "Transcrição concluída.",
-                    Some(backend),
-                    None,
-                    None,
-                ));
-            }
-            Ok(None) => {}
-            Err(error) => diagnostics.push(error),
-        }
-    }
-
-    let detail = if diagnostics.is_empty() {
-        None
-    } else {
-        Some(diagnostics.join("\n"))
-    };
+    let result = voice_result(
+        VoiceTranscriptionResultStatus::Error,
+        None,
+        STT_TRANSCRIPTION_FAILURE_MESSAGE,
+        Some("whisper-cli"),
+        None,
+        Some(sanitize_backend_detail(&diagnostics.join("\n"))),
+    );
     let _ = fs::remove_dir_all(&temp_dir);
-    Ok(missing_transcription_backend_result(detail))
+    Ok(result)
 }
 
 #[tauri::command]
@@ -1604,6 +1651,36 @@ pub fn get_file_attachment(path: String) -> Result<SelectedFileAttachment, Error
 }
 
 #[cfg(test)]
+mod health_tests {
+    use super::*;
+
+    #[test]
+    fn health_root_prefers_app_markers_over_stale_workspace_setting() {
+        let root = env::temp_dir().join(format!("ailu-health-test-{}", Uuid::new_v4()));
+        let stale_workspace = root.join("Codex-Codex");
+        let app_root = root.join("ailu-ai-studio");
+        fs::create_dir_all(&stale_workspace).expect("workspace antigo");
+        fs::create_dir_all(app_root.join("src-tauri")).expect("src-tauri");
+        fs::create_dir_all(app_root.join("assets")).expect("assets");
+        fs::write(app_root.join("package.json"), "{}").expect("package marker");
+        fs::write(app_root.join("src-tauri/tauri.conf.json"), "{}").expect("tauri marker");
+        fs::write(
+            app_root.join("assets/ailu-ai-studio.desktop"),
+            "[Desktop Entry]",
+        )
+        .expect("desktop marker");
+
+        let resolved = resolve_app_project_root_from_candidates(
+            &stale_workspace.to_string_lossy(),
+            &[app_root.join("src-tauri")],
+        );
+
+        assert_eq!(resolved, app_root);
+        let _ = fs::remove_dir_all(root);
+    }
+}
+
+#[cfg(test)]
 mod stt_tests {
     use super::*;
     use std::{ffi::OsString, sync::Mutex};
@@ -1692,6 +1769,17 @@ mod stt_tests {
             log
         }
 
+        fn add_whisper_cli_failure(&self) {
+            self.write_executable(
+                "whisper-cli",
+                "#!/bin/sh\nprintf 'internal stack trace secret\\n' >&2\nexit 2\n",
+            );
+        }
+
+        fn add_whisper_cli_empty(&self) {
+            self.write_executable("whisper-cli", "#!/bin/sh\nexit 0\n");
+        }
+
         fn add_pw_record(&self) {
             self.write_executable(
                 "pw-record",
@@ -1778,6 +1866,42 @@ mod stt_tests {
     }
 
     #[test]
+    fn transcribe_audio_does_not_return_missing_backend_when_ready_whisper_cli_fails() {
+        let _lock = ENV_LOCK.lock().expect("env lock");
+        let env = TestEnv::new();
+        env.add_ffmpeg();
+        env.add_whisper_cli_failure();
+
+        let result = transcribe_audio(vec![1, 2, 3, 4], Some("audio/wav".to_owned()), None)
+            .expect("transcrição");
+
+        assert_eq!(result.status, VoiceTranscriptionResultStatus::Error);
+        assert_eq!(result.message, STT_TRANSCRIPTION_FAILURE_MESSAGE);
+        assert_eq!(result.backend.as_deref(), Some("whisper-cli"));
+        assert!(result.command.is_none());
+        assert!(!result
+            .technical_details
+            .as_deref()
+            .unwrap_or_default()
+            .contains("stack trace"));
+    }
+
+    #[test]
+    fn transcribe_audio_reports_no_speech_without_missing_backend_when_ready() {
+        let _lock = ENV_LOCK.lock().expect("env lock");
+        let env = TestEnv::new();
+        env.add_ffmpeg();
+        env.add_whisper_cli_empty();
+
+        let result = transcribe_audio(vec![1, 2, 3, 4], Some("audio/wav".to_owned()), None)
+            .expect("transcrição");
+
+        assert_eq!(result.status, VoiceTranscriptionResultStatus::Error);
+        assert_eq!(result.message, STT_NO_SPEECH_MESSAGE);
+        assert!(result.command.is_none());
+    }
+
+    #[test]
     fn native_capture_prefers_pw_record_when_it_generates_wav() {
         let _lock = ENV_LOCK.lock().expect("env lock");
         let env = TestEnv::new();
@@ -1789,6 +1913,25 @@ mod stt_tests {
 
         assert_eq!(backend, "pw-record");
         assert!(recorded_file_ok(&wav));
+    }
+
+    #[test]
+    fn native_capture_ok_transcription_failure_is_not_missing_backend() {
+        let _lock = ENV_LOCK.lock().expect("env lock");
+        let env = TestEnv::new();
+        env.add_ffmpeg();
+        env.add_whisper_cli_failure();
+        env.add_pw_record();
+
+        let result = record_and_transcribe_short_test(None).expect("teste nativo");
+
+        assert_eq!(result.status, VoiceTranscriptionResultStatus::Error);
+        assert_eq!(result.capture_status.as_deref(), Some("ok"));
+        assert_eq!(result.message, STT_TRANSCRIPTION_FAILURE_MESSAGE);
+        assert_ne!(
+            result.status,
+            VoiceTranscriptionResultStatus::MissingBackend
+        );
     }
 
     #[test]
@@ -2057,8 +2200,9 @@ pub async fn get_app_health_check(
     state: State<'_, AppState>,
 ) -> Result<AppHealthCheck, ErrorPayload> {
     let settings = state.settings();
-    let base_dir = settings.workspace_root.clone();
-    let expected_base_dir = state.settings().workspace_root;
+    let app_root = app_project_root_for_health(&settings.workspace_root);
+    let base_dir = app_root.to_string_lossy().to_string();
+    let expected_base_dir = base_dir.clone();
     let providers = state
         .provider_registry
         .providers()
@@ -2100,15 +2244,9 @@ pub async fn get_app_health_check(
     )
     .filter(|text| !text.is_empty())
     .unwrap_or_else(|| "GPU não detectada via lspci neste ambiente.".to_owned());
-    let workflow_exists = Path::new(&base_dir)
-        .join(".github/workflows/ci.yml")
-        .is_file();
-    let desktop_entry_exists = Path::new(&base_dir)
-        .join("assets/ailu-ai-studio.desktop")
-        .is_file();
-    let icon_exists = Path::new(&base_dir)
-        .join("src-tauri/icons/512x512.png")
-        .is_file();
+    let workflow_exists = app_root.join(".github/workflows/ci.yml").is_file();
+    let desktop_entry_exists = app_root.join("assets/ailu-ai-studio.desktop").is_file();
+    let icon_exists = app_root.join("src-tauri/icons/512x512.png").is_file();
     let stt_backend_status = match stt.as_ref() {
         Some(snapshot) if snapshot.ready => "ok",
         Some(snapshot) if !snapshot.ffmpeg.installed => "error",
@@ -2143,6 +2281,7 @@ pub async fn get_app_health_check(
         .as_ref()
         .map(|snapshot| snapshot.capture.clone())
         .unwrap_or_else(stt_capture_snapshot);
+    let ffmpeg_installed = command_ok("ffmpeg", ["-version"]);
     let pipewire_active = systemctl_user_active("pipewire.service");
     let wireplumber_active = systemctl_user_active("wireplumber.service");
     let portal_active = systemctl_user_active("xdg-desktop-portal.service");
@@ -2218,10 +2357,18 @@ pub async fn get_app_health_check(
         health_item(
             "ffmpeg",
             "ffmpeg",
-            command_ok("ffmpeg", ["-version"]),
+            ffmpeg_installed,
             "Conversão de áudio para STT.".to_owned(),
-            Some("Instalar ffmpeg"),
-            Some("sudo pacman -S --needed ffmpeg"),
+            if ffmpeg_installed {
+                None
+            } else {
+                Some("Instalar ffmpeg")
+            },
+            if ffmpeg_installed {
+                None
+            } else {
+                Some("pacman -S --needed ffmpeg")
+            },
         ),
         health_item_with_status(
             "stt-backend",
@@ -2270,16 +2417,32 @@ pub async fn get_app_health_check(
             "Desktop entry",
             desktop_entry_exists,
             "assets/ailu-ai-studio.desktop".to_owned(),
-            Some("Instalar desktop entry"),
-            Some("bash scripts/install-desktop-entry.sh"),
+            if desktop_entry_exists {
+                None
+            } else {
+                Some("Instalar desktop entry")
+            },
+            if desktop_entry_exists {
+                None
+            } else {
+                Some("bash scripts/install-desktop-entry.sh")
+            },
         ),
         health_item(
             "icon",
             "Ícone",
             icon_exists,
             "src-tauri/icons/512x512.png".to_owned(),
-            Some("Validar alpha"),
-            Some("npm run icons:validate"),
+            if icon_exists {
+                None
+            } else {
+                Some("Validar alpha")
+            },
+            if icon_exists {
+                None
+            } else {
+                Some("npm run icons:validate")
+            },
         ),
         health_item(
             "ci",
