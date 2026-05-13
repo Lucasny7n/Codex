@@ -7,16 +7,27 @@ export interface ProjectMemoryRecord {
   updatedAt?: string;
 }
 
-const PROJECT_MEMORY_PREFIX = 'codex-command-center-project-memory:';
+const PROJECT_MEMORY_PREFIX = 'ailu-ai-studio-project-memory:';
+const LEGACY_PROJECT_MEMORY_PREFIX = 'codex-command-center-project-memory:';
 const MEMORY_LIMIT = 1_200;
 
 export function projectMemoryKey(project: string): string {
   return `${PROJECT_MEMORY_PREFIX}${project}`;
 }
 
+function legacyProjectMemoryKey(project: string): string {
+  return `${LEGACY_PROJECT_MEMORY_PREFIX}${project}`;
+}
+
 export function readProjectMemory(project: string): ProjectMemoryRecord {
   try {
-    const raw = window.localStorage?.getItem(projectMemoryKey(project));
+    const key = projectMemoryKey(project);
+    const legacyKey = legacyProjectMemoryKey(project);
+    const raw = window.localStorage?.getItem(key) ?? window.localStorage?.getItem(legacyKey);
+    if (raw && !window.localStorage?.getItem(key)) {
+      window.localStorage?.setItem(key, raw);
+      window.localStorage?.removeItem(legacyKey);
+    }
     const parsed: unknown = raw ? JSON.parse(raw) : undefined;
     if (!parsed || typeof parsed !== 'object') {
       return { project, enabled: true, summary: '' };

@@ -1771,7 +1771,7 @@ mod tests {
 
     fn test_credential_store() -> Arc<CredentialStore> {
         let path = std::env::temp_dir().join(format!(
-            "codex-provider-adapters-test-{}.json",
+            "ailu-provider-adapters-test-{}.json",
             uuid::Uuid::new_v4()
         ));
         Arc::new(CredentialStore::new(path).expect("credential store de teste deve iniciar"))

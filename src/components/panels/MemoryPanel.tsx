@@ -96,7 +96,7 @@ export function MemoryPanel({ memory }: MemoryPanelProps): JSX.Element {
               const url = URL.createObjectURL(blob);
               const anchor = document.createElement('a');
               anchor.href = url;
-              anchor.download = 'codex-memory-snapshot.md';
+              anchor.download = 'ailu-memory-snapshot.md';
               anchor.click();
               URL.revokeObjectURL(url);
             }}

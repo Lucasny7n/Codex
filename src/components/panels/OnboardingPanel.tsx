@@ -2,7 +2,7 @@ interface OnboardingPanelProps {
   onOpenGuide: () => void;
   onOpenQuickstart: () => void;
   onOpenWorkspace: () => void;
-  onOpenCodexRoot: () => void;
+  onOpenDataRoot: () => void;
   onOpenLogs: () => void;
   onRunCheckEnvironment: () => void;
   busy?: boolean;
@@ -24,7 +24,7 @@ export function OnboardingPanel({
   onOpenGuide,
   onOpenQuickstart,
   onOpenWorkspace,
-  onOpenCodexRoot,
+  onOpenDataRoot,
   onOpenLogs,
   onRunCheckEnvironment,
   busy = false,
@@ -61,7 +61,7 @@ export function OnboardingPanel({
           <button type="button" className="btn-modern" onClick={onOpenWorkspace}>
             Abrir pasta no VS Code
           </button>
-          <button type="button" className="btn-modern" onClick={onOpenCodexRoot}>
+          <button type="button" className="btn-modern" onClick={onOpenDataRoot}>
             Abrir ~/.codex
           </button>
           <button type="button" className="btn-modern" onClick={onOpenLogs}>

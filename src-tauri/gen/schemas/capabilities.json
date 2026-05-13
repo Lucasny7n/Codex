@@ -1,1 +1,1 @@
-{"default":{"identifier":"default","description":"Permissões da janela principal do Codex Command Center","local":true,"windows":["main"],"permissions":["core:default","core:event:default","core:window:default","core:path:default","shell:allow-open"]}}
+{"default":{"identifier":"default","description":"Permissões da janela principal do Ailu AI Studio","local":true,"windows":["main"],"permissions":["core:default","core:event:default","core:window:default","core:path:default","shell:allow-open"]}}

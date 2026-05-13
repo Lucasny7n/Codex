@@ -22,7 +22,7 @@ impl ProviderRegistry {
     #[cfg(test)]
     pub fn new_with_mock_for_tests() -> Self {
         let path = std::env::temp_dir().join(format!(
-            "codex-credentials-test-{}.json",
+            "ailu-credentials-test-{}.json",
             uuid::Uuid::new_v4()
         ));
         let credential_store =

@@ -7,7 +7,7 @@ describe('format helpers', () => {
   });
 
   it('encurta path mantendo sufixo', () => {
-    expect(shortPath('/tmp/codex-workspace/src/app/App.tsx', 3)).toBe('.../src/app/App.tsx');
+    expect(shortPath('/tmp/ailu-workspace/src/app/App.tsx', 3)).toBe('.../src/app/App.tsx');
   });
 
   it('escapa path para shell sem perder aspas simples', () => {

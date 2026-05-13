@@ -9,7 +9,7 @@ describe('OnboardingPanel', () => {
         onOpenGuide={vi.fn()}
         onOpenQuickstart={vi.fn()}
         onOpenWorkspace={vi.fn()}
-        onOpenCodexRoot={vi.fn()}
+        onOpenDataRoot={vi.fn()}
         onOpenLogs={vi.fn()}
         onRunCheckEnvironment={vi.fn()}
       />,

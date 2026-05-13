@@ -40,7 +40,7 @@ impl AppState {
         let config_manager = Arc::new(ConfigManager::new()?);
         let settings = config_manager.load_or_create_settings()?;
         let workspace_root = settings.workspace_root.clone();
-        let codex_data_root = config_manager.codex_root().join("codex-ui");
+        let data_root = config_manager.data_root().to_path_buf();
         let session_manager = Arc::new(SessionManager::new(config_manager.sessions_dir())?);
         let memory_manager = Arc::new(MemoryManager::new(
             config_manager.codex_root(),
@@ -54,7 +54,7 @@ impl AppState {
             memory_manager,
             permission_manager: Arc::new(PermissionManager::new()),
             privileged_helper_client: Arc::new(PrivilegedHelperClient::new(
-                codex_data_root.as_path(),
+                data_root.as_path(),
                 PathBuf::from(workspace_root).as_path(),
             )),
             credential_store: credential_store.clone(),

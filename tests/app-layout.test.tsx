@@ -97,8 +97,8 @@ function payload(sessions: AgentSession[]): BootstrapPayload {
     },
     workspaceMeta: {
       root: '/tmp/workspace',
-      repoName: 'Codex-Codex',
-      branch: 'codex-cloud-end4-ui-v2',
+      repoName: 'Ailu Projeto',
+      branch: 'ailu-main-polish',
       headShort: 'abc1234',
       dirty: false
     },
@@ -686,7 +686,7 @@ describe('App layout visibility', () => {
     });
   });
 
-  it('não cria projeto Codex-Codex automaticamente a partir do workspace', async () => {
+  it('não cria projeto Ailu Projeto automaticamente a partir do workspace', async () => {
     vi.mocked(api.bootstrapState).mockResolvedValue(payload([baseSession()]));
 
     render(<App />);
@@ -698,11 +698,11 @@ describe('App layout visibility', () => {
     fireEvent.click(screen.getByText('Projetos'));
 
     expect(screen.getByText('Novo Projeto')).toBeInTheDocument();
-    expect(screen.queryByText('Codex-Codex')).not.toBeInTheDocument();
+    expect(screen.queryByText('Ailu Projeto')).not.toBeInTheDocument();
   });
 
-  it('permite excluir Codex-Codex quando ele veio de projeto salvo pelo app', async () => {
-    window.localStorage.setItem('codex-command-center-projects', JSON.stringify(['Codex-Codex']));
+  it('permite excluir Ailu Projeto quando ele veio de projeto salvo pelo app', async () => {
+    window.localStorage.setItem('ailu-ai-studio-projects', JSON.stringify(['Ailu Projeto']));
     vi.mocked(api.bootstrapState).mockResolvedValue(payload([baseSession()]));
 
     render(<App />);
@@ -712,14 +712,14 @@ describe('App layout visibility', () => {
     });
 
     fireEvent.click(screen.getByText('Projetos'));
-    expect(screen.getByText('Codex-Codex')).toBeInTheDocument();
-    fireEvent.click(screen.getByLabelText('Ações do projeto Codex-Codex'));
+    expect(screen.getByText('Ailu Projeto')).toBeInTheDocument();
+    fireEvent.click(screen.getByLabelText('Ações do projeto Ailu Projeto'));
     fireEvent.click(screen.getByText('Excluir Projeto'));
 
     await waitFor(() => {
-      expect(screen.queryByText('Codex-Codex')).not.toBeInTheDocument();
+      expect(screen.queryByText('Ailu Projeto')).not.toBeInTheDocument();
     });
-    expect(window.localStorage.getItem('codex-command-center-projects')).toBe('[]');
+    expect(window.localStorage.getItem('ailu-ai-studio-projects')).toBe('[]');
   });
 
   it('ativa Bate-papo Temporário sem salvar conversa no histórico', async () => {

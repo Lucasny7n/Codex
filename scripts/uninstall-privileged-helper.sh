@@ -1,15 +1,15 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-TARGET_HELPER="/usr/local/libexec/codex-privileged-helper"
-TARGET_POLICY="/usr/share/polkit-1/actions/local.lucas.codex-command-center.policy"
+TARGET_HELPER="/usr/local/libexec/ailu-privileged-helper"
+TARGET_POLICY="/usr/share/polkit-1/actions/local.lucas.ailu-ai-studio.policy"
 
 ts="$(date +%Y%m%d-%H%M%S)"
-backup_dir="$HOME/.codex/codex-ui/backups/privileged-helper-uninstall-$ts"
+backup_dir="$HOME/.codex/ailu-ai-studio/backups/privileged-helper-uninstall-$ts"
 mkdir -p "$backup_dir"
 
-helper_backup="$backup_dir/codex-privileged-helper.previous"
-policy_backup="$backup_dir/local.lucas.codex-command-center.policy.previous"
+helper_backup="$backup_dir/ailu-privileged-helper.previous"
+policy_backup="$backup_dir/local.lucas.ailu-ai-studio.policy.previous"
 rollback_script="$backup_dir/rollback.sh"
 
 if [[ -e "$TARGET_HELPER" ]]; then
@@ -36,7 +36,7 @@ EOF
 chmod +x "$rollback_script"
 
 cat <<EOF
-Remoção do helper privilegiado do Codex Command Center
+Remoção do helper privilegiado do Ailu AI Studio
 
 Helper alvo : $TARGET_HELPER
 Policy alvo : $TARGET_POLICY

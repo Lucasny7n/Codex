@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=Ailu AI Studio
+Comment=Premium AI studio for local and cloud models.
+Exec=ailu-ai-studio
+Icon=ailu-ai-studio
+Terminal=false
+Categories=Development;IDE;Utility;
+StartupNotify=true
+StartupWMClass=ailu-ai-studio

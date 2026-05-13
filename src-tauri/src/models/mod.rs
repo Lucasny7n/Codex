@@ -369,8 +369,8 @@ pub struct AppPersonalizationSettings {
     pub memories_stored: bool,
     #[serde(default = "default_true")]
     pub reference_chat_history: bool,
-    #[serde(default, alias = "customizeCodexQwen")]
-    pub customize_codex: bool,
+    #[serde(default, alias = "customizeCodex", alias = "customizeCodexQwen")]
+    pub customize_ailu: bool,
     #[serde(default)]
     pub manage_cookies: bool,
     #[serde(default)]
@@ -398,7 +398,7 @@ impl Default for AppPersonalizationSettings {
         Self {
             memories_stored: true,
             reference_chat_history: true,
-            customize_codex: false,
+            customize_ailu: false,
             manage_cookies: false,
             web_page_extraction: false,
             image_search: false,
@@ -548,9 +548,14 @@ fn default_local_models_root() -> String {
 }
 
 fn default_workspace_root(home: &str) -> String {
-    let path = format!("{home}/Codex-Codex");
-    if Path::new(&path).exists() {
-        return path;
+    for path in [
+        format!("{home}/Lucas-Workspace/Projects/ailu-ai-studio"),
+        format!("{home}/ailu-ai-studio"),
+        format!("{home}/Codex-Codex"),
+    ] {
+        if Path::new(&path).exists() {
+            return path;
+        }
     }
     home.to_owned()
 }

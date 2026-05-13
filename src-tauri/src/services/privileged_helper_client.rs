@@ -35,14 +35,14 @@ pub struct HelperResponse {
 
 #[derive(Debug, Clone)]
 pub struct PrivilegedHelperClient {
-    pub codex_data_root: PathBuf,
+    pub data_root: PathBuf,
     pub workspace_root: PathBuf,
 }
 
 impl PrivilegedHelperClient {
-    pub fn new(codex_data_root: &Path, workspace_root: &Path) -> Self {
+    pub fn new(data_root: &Path, workspace_root: &Path) -> Self {
         Self {
-            codex_data_root: codex_data_root.to_path_buf(),
+            data_root: data_root.to_path_buf(),
             workspace_root: workspace_root.to_path_buf(),
         }
     }
@@ -111,15 +111,26 @@ impl PrivilegedHelperClient {
     }
 
     fn resolve_helper_path(&self) -> AppResult<String> {
+        if let Ok(path) = std::env::var("AILU_PRIVILEGED_HELPER_PATH") {
+            if PathBuf::from(&path).exists() {
+                return Ok(path);
+            }
+        }
+
         if let Ok(path) = std::env::var("CODEX_PRIVILEGED_HELPER_PATH") {
             if PathBuf::from(&path).exists() {
                 return Ok(path);
             }
         }
 
-        let installed = PathBuf::from("/usr/local/libexec/codex-privileged-helper");
+        let installed = PathBuf::from("/usr/local/libexec/ailu-privileged-helper");
         if installed.exists() {
             return Ok(installed.to_string_lossy().to_string());
+        }
+
+        let legacy_installed = PathBuf::from("/usr/local/libexec/codex-privileged-helper");
+        if legacy_installed.exists() {
+            return Ok(legacy_installed.to_string_lossy().to_string());
         }
 
         let local_debug = self
@@ -127,10 +138,21 @@ impl PrivilegedHelperClient {
             .join("src-tauri")
             .join("target")
             .join("debug")
-            .join("codex-privileged-helper");
+            .join("ailu-privileged-helper");
 
         if local_debug.exists() {
             return Ok(local_debug.to_string_lossy().to_string());
+        }
+
+        let legacy_local_debug = self
+            .workspace_root
+            .join("src-tauri")
+            .join("target")
+            .join("debug")
+            .join("codex-privileged-helper");
+
+        if legacy_local_debug.exists() {
+            return Ok(legacy_local_debug.to_string_lossy().to_string());
         }
 
         Err(AppError::Message(
@@ -139,7 +161,7 @@ impl PrivilegedHelperClient {
     }
 
     fn append_privileged_log(&self, outcome: &PermissionOutcome) -> AppResult<()> {
-        let logs_dir = self.codex_data_root.join("logs");
+        let logs_dir = self.data_root.join("logs");
         fs::create_dir_all(&logs_dir)?;
         let log_path = logs_dir.join("privileged-actions.log");
 
@@ -162,7 +184,7 @@ mod tests {
 
     #[test]
     fn writes_privileged_log() {
-        let root = unique_temp_path("codex-helper-client-test");
+        let root = unique_temp_path("ailu-helper-client-test");
         std::fs::create_dir_all(&root).expect("tmp root");
         let client = PrivilegedHelperClient::new(&root, &root);
         let outcome = PermissionOutcome {

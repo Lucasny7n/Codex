@@ -1,13 +1,13 @@
-# Codex Command Center
+# Ailu AI Studio
 
-[![CI](https://github.com/Lucasny7n/Codex/actions/workflows/ci.yml/badge.svg)](https://github.com/Lucasny7n/Codex/actions/workflows/ci.yml)
+[![CI](https://github.com/Lucasny7n/ailu-ai-studio/actions/workflows/ci.yml/badge.svg)](https://github.com/Lucasny7n/ailu-ai-studio/actions/workflows/ci.yml)
 ![Tauri](https://img.shields.io/badge/Tauri-2.x-24c8db)
 ![React](https://img.shields.io/badge/React-18-61dafb)
 ![Rust](https://img.shields.io/badge/Rust-stable-f46623)
 ![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178c6)
 ![License](https://img.shields.io/badge/license-MIT-blue)
 
-Codex Command Center é um app desktop premium para operar modelos de IA locais e na nuvem com sessões, anexos, permissões explícitas e diagnóstico honesto. Ele é construído com Tauri, Rust, React e TypeScript.
+Ailu AI Studio é um app desktop premium para operar modelos de IA locais e na nuvem com sessões, anexos, permissões explícitas e diagnóstico honesto. Ele é construído com Tauri, Rust, React e TypeScript.
 
 ## Visão geral
 

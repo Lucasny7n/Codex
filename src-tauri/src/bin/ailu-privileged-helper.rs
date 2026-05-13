@@ -113,7 +113,7 @@ fn parse_request_json_arg() -> Result<String, String> {
         }
         i += 1;
     }
-    Err("uso: codex-privileged-helper --request-json '<json>'".to_owned())
+    Err("uso: ailu-privileged-helper --request-json '<json>'".to_owned())
 }
 
 fn execute_action(request: &HelperRequest) -> Result<HelperResponse, String> {
@@ -241,11 +241,13 @@ fn restore_file_action(request: &HelperRequest) -> Result<HelperResponse, String
     if !backup.exists() {
         return Err(format!("backupPath não existe: {}", backup.display()));
     }
-    if !backup
-        .to_string_lossy()
-        .contains("/.codex/codex-ui/backups/")
+    let backup_text = backup.to_string_lossy();
+    if !backup_text.contains("/.codex/ailu-ai-studio/backups/")
+        && !backup_text.contains("/.codex/codex-ui/backups/")
     {
-        return Err("restore_file exige backupPath dentro de ~/.codex/codex-ui/backups".to_owned());
+        return Err(
+            "restore_file exige backupPath dentro de ~/.codex/ailu-ai-studio/backups".to_owned(),
+        );
     }
 
     let target = validate_safe_path(&target_path)?;
@@ -507,7 +509,7 @@ fn create_backup_if_exists(
 fn create_backup(source: &Path, request: &HelperRequest) -> Result<PathBuf, String> {
     let backups_dir = PathBuf::from(&request.user_home)
         .join(".codex")
-        .join("codex-ui")
+        .join("ailu-ai-studio")
         .join("backups");
     fs::create_dir_all(&backups_dir)
         .map_err(|cause| format!("falha ao criar diretório de backup: {cause}"))?;
@@ -545,12 +547,12 @@ fn append_log(
     let mut file = OpenOptions::new()
         .create(true)
         .append(true)
-        .open("/var/log/codex-privileged-helper.log")
+        .open("/var/log/ailu-privileged-helper.log")
         .or_else(|_| {
             OpenOptions::new()
                 .create(true)
                 .append(true)
-                .open("/tmp/codex-privileged-helper.log")
+                .open("/tmp/ailu-privileged-helper.log")
         })
         .map_err(|cause| format!("falha ao abrir log do helper: {cause}"))?;
     file.write_all(line.to_string().as_bytes())

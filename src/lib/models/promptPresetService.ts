@@ -6,7 +6,8 @@ export interface PromptPreset {
   builtIn: boolean;
 }
 
-const CUSTOM_PRESETS_KEY = 'codex-command-center-custom-prompt-presets';
+const CUSTOM_PRESETS_KEY = 'ailu-ai-studio-custom-prompt-presets';
+const LEGACY_CUSTOM_PRESETS_KEY = 'codex-command-center-custom-prompt-presets';
 
 export const BUILT_IN_PROMPT_PRESETS: PromptPreset[] = [
   {
@@ -83,7 +84,11 @@ export const BUILT_IN_PROMPT_PRESETS: PromptPreset[] = [
 
 export function readCustomPromptPresets(): PromptPreset[] {
   try {
-    const raw = window.localStorage?.getItem(CUSTOM_PRESETS_KEY);
+    const raw = window.localStorage?.getItem(CUSTOM_PRESETS_KEY) ?? window.localStorage?.getItem(LEGACY_CUSTOM_PRESETS_KEY);
+    if (raw && !window.localStorage?.getItem(CUSTOM_PRESETS_KEY)) {
+      window.localStorage?.setItem(CUSTOM_PRESETS_KEY, raw);
+      window.localStorage?.removeItem(LEGACY_CUSTOM_PRESETS_KEY);
+    }
     const parsed: unknown = raw ? JSON.parse(raw) : [];
     if (!Array.isArray(parsed)) return [];
     return parsed
@@ -119,12 +124,14 @@ export function saveCustomPromptPreset(input: { id?: string; label: string; desc
     ...readCustomPromptPresets().filter((preset) => preset.id !== id),
   ].slice(0, 40);
   window.localStorage?.setItem(CUSTOM_PRESETS_KEY, JSON.stringify(next));
+  window.localStorage?.removeItem(LEGACY_CUSTOM_PRESETS_KEY);
   return next;
 }
 
 export function removeCustomPromptPreset(id: string): PromptPreset[] {
   const next = readCustomPromptPresets().filter((preset) => preset.id !== id);
   window.localStorage?.setItem(CUSTOM_PRESETS_KEY, JSON.stringify(next));
+  window.localStorage?.removeItem(LEGACY_CUSTOM_PRESETS_KEY);
   return next;
 }
 

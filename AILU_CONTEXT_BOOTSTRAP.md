@@ -1,4 +1,4 @@
-# Codex Context Bootstrap
+# Ailu AI Studio Context Bootstrap
 
 This file keeps coding-agent context close to the repository. It is not a product manual; public documentation lives in `README.md` and `docs/`.
 

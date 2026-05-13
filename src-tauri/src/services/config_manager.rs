@@ -21,7 +21,7 @@ impl ConfigManager {
             .map_err(|_| AppError::Message("Não foi possível resolver HOME".to_owned()))?;
 
         let codex_root = home.join(".codex");
-        let data_root = codex_root.join("codex-ui");
+        let data_root = codex_root.join("ailu-ai-studio");
         let settings_path = data_root.join("settings.json");
         let sessions_dir = data_root.join("sessions");
         let memory_dir = data_root.join("memory");
@@ -35,8 +35,20 @@ impl ConfigManager {
             memory_dir,
             backups_dir,
         };
+        manager.migrate_legacy_data_root()?;
         manager.ensure_dirs()?;
         Ok(manager)
+    }
+
+    fn migrate_legacy_data_root(&self) -> AppResult<()> {
+        let legacy_data_root = self.codex_root.join("codex-ui");
+        if self.settings_path.exists() || !legacy_data_root.exists() {
+            return Ok(());
+        }
+
+        fs::create_dir_all(&self.data_root)?;
+        copy_dir_contents(&legacy_data_root, &self.data_root)?;
+        Ok(())
     }
 
     fn ensure_dirs(&self) -> AppResult<()> {
@@ -83,7 +95,16 @@ impl ConfigManager {
             settings.codex_root = expected_codex_root;
         }
 
-        let expected_workspace = home.join("Codex-Codex");
+        let workspace_candidates = [
+            home.join("Lucas-Workspace/Projects/ailu-ai-studio"),
+            home.join("ailu-ai-studio"),
+            home.join("Codex-Codex"),
+        ];
+        let expected_workspace = workspace_candidates
+            .iter()
+            .find(|path| path.exists())
+            .cloned()
+            .unwrap_or_else(|| home.join("ailu-ai-studio"));
         let legacy_workspace = home.join("Codex").to_string_lossy().to_string();
         if settings.workspace_root == legacy_workspace && expected_workspace.exists() {
             settings.workspace_root = expected_workspace.to_string_lossy().to_string();
@@ -103,6 +124,10 @@ impl ConfigManager {
 
     pub fn codex_root(&self) -> &Path {
         &self.codex_root
+    }
+
+    pub fn data_root(&self) -> &Path {
+        &self.data_root
     }
 
     pub fn sessions_dir(&self) -> &Path {
@@ -142,4 +167,19 @@ impl ConfigManager {
         fs::copy(source, &backup)?;
         Ok(Some(backup))
     }
+}
+
+fn copy_dir_contents(source: &Path, target: &Path) -> AppResult<()> {
+    for entry in fs::read_dir(source)? {
+        let entry = entry?;
+        let source_path = entry.path();
+        let target_path = target.join(entry.file_name());
+        if source_path.is_dir() {
+            fs::create_dir_all(&target_path)?;
+            copy_dir_contents(&source_path, &target_path)?;
+        } else if !target_path.exists() {
+            fs::copy(&source_path, &target_path)?;
+        }
+    }
+    Ok(())
 }

@@ -14,7 +14,7 @@ function memorySnapshot(): MemorySnapshot {
       'Preferencia 5',
       'Preferencia 6 com texto comprido que precisa quebrar linha sem sair do painel lateral.',
     ],
-    activeProjects: ['Codex-Codex'],
+    activeProjects: ['Ailu Projeto'],
     importantFixHistory: [],
     operationalPolicies: ['Diagnosticar antes de alterar.'],
   };

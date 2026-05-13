@@ -1,29 +1,30 @@
 {
-  "name": "codex-command-center",
+  "name": "ailu-ai-studio",
   "private": true,
   "version": "0.1.0",
-  "description": "Premium desktop command center for local and cloud AI models, built with Tauri, Rust, React and TypeScript.",
+  "description": "Premium AI studio for local and cloud models.",
   "author": "Lucas",
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/Lucasny7n/Codex.git"
+    "url": "git+https://github.com/Lucasny7n/ailu-ai-studio.git"
   },
   "bugs": {
-    "url": "https://github.com/Lucasny7n/Codex/issues"
+    "url": "https://github.com/Lucasny7n/ailu-ai-studio/issues"
   },
-  "homepage": "https://github.com/Lucasny7n/Codex#readme",
+  "homepage": "https://github.com/Lucasny7n/ailu-ai-studio#readme",
   "keywords": [
+    "ailu",
+    "ai",
+    "ollama",
+    "llm",
     "tauri",
     "rust",
     "react",
     "typescript",
-    "ai",
-    "ollama",
-    "desktop-app",
-    "llm",
     "local-ai",
-    "command-center"
+    "cloud-ai",
+    "desktop-app"
   ],
   "type": "module",
   "scripts": {
@@ -32,8 +33,8 @@
     "preview": "vite preview",
     "lint": "eslint .",
     "test": "vitest run",
-    "test:visual": "mkdir -p ${CODEX_SCREENSHOT_DIR:-test-results/screenshots} && env -u NO_COLOR -u FORCE_COLOR playwright test tests/visual/codex-command-center.visual.spec.ts",
-    "screenshots": "mkdir -p ${CODEX_SCREENSHOT_DIR:-test-results/screenshots} && env -u NO_COLOR -u FORCE_COLOR playwright test tests/visual/codex-command-center.visual.spec.ts",
+    "test:visual": "mkdir -p ${AILU_SCREENSHOT_DIR:-test-results/screenshots} && env -u NO_COLOR -u FORCE_COLOR playwright test tests/visual/ailu-ai-studio.visual.spec.ts",
+    "screenshots": "mkdir -p ${AILU_SCREENSHOT_DIR:-test-results/screenshots} && env -u NO_COLOR -u FORCE_COLOR playwright test tests/visual/ailu-ai-studio.visual.spec.ts",
     "icons:generate": "bash scripts/generate-icons.sh",
     "icons:validate": "bash scripts/validate-icons.sh",
     "healthcheck": "bash scripts/healthcheck.sh",

@@ -37,7 +37,7 @@ npm run icons:validate
 bash scripts/install-desktop-entry.sh
 ```
 
-Confirme que o desktop entry aponta para `Icon=codex-command-center` e que os PNGs existem em `~/.local/share/icons/hicolor`.
+Confirme que o desktop entry aponta para `Icon=ailu-ai-studio` e que os PNGs existem em `~/.local/share/icons/hicolor`.
 
 ## Porta Vite ocupada
 

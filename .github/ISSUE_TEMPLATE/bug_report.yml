@@ -1,5 +1,5 @@
 name: Bug report
-description: Report a reproducible problem in Codex Command Center.
+description: Report a reproducible problem in Ailu AI Studio.
 title: "fix: "
 labels: ["bug"]
 body:

@@ -633,7 +633,7 @@ mod tests {
 
     fn temp_store() -> CredentialStore {
         let dir = std::env::temp_dir().join(format!(
-            "codex-credential-store-test-{}",
+            "ailu-credential-store-test-{}",
             uuid::Uuid::new_v4()
         ));
         fs::create_dir_all(&dir).expect("diretório temporário deve existir");
@@ -777,7 +777,7 @@ mod tests {
     #[test]
     fn fallback_file_uses_private_permissions() {
         let dir = std::env::temp_dir().join(format!(
-            "codex-credential-permission-test-{}",
+            "ailu-credential-permission-test-{}",
             uuid::Uuid::new_v4()
         ));
         fs::create_dir_all(&dir).expect("diretório temporário deve existir");

@@ -21,10 +21,10 @@ Os comandos de instalação assumem `WORKSPACE_ROOT` apontando para a raiz do pr
 - chama `pkexec` com helper dedicado;
 - recebe resultado estruturado (`success/summary/stdout/stderr/exitCode`);
 - emite evento `permission-outcome` para a UI;
-- registra log em `~/.codex/codex-ui/logs/privileged-actions.log`.
+- registra log em `~/.codex/ailu-ai-studio/logs/privileged-actions.log`.
 
 4. Helper privilegiado:
-- binário: `src-tauri/src/bin/codex-privileged-helper.rs`;
+- binário: `src-tauri/src/bin/ailu-privileged-helper.rs`;
 - aceita apenas `--request-json`;
 - **não executa shell livre**;
 - executa apenas ações explícitas da allowlist;
@@ -32,7 +32,7 @@ Os comandos de instalação assumem `WORKSPACE_ROOT` apontando para a raiz do pr
 - gera backup automático para ações críticas (`/boot`, restauração de arquivo etc.).
 
 5. Polkit:
-- policy local preparada em `system/polkit/local.lucas.codex-command-center.policy`;
+- policy local preparada em `system/polkit/local.lucas.ailu-ai-studio.policy`;
 - instalação via script dedicado (não aplicada automaticamente).
 
 ## Ações allowlist iniciais
@@ -61,11 +61,11 @@ Observações:
 
 ## Arquivos principais
 
-- Helper root: `src-tauri/src/bin/codex-privileged-helper.rs`
+- Helper root: `src-tauri/src/bin/ailu-privileged-helper.rs`
 - Cliente pkexec: `src-tauri/src/services/privileged_helper_client.rs`
 - Catálogo/validação: `src-tauri/src/services/privileged_actions.rs`
 - Fluxo de comandos Tauri: `src-tauri/src/commands/mod.rs`
-- Policy: `system/polkit/local.lucas.codex-command-center.policy`
+- Policy: `system/polkit/local.lucas.ailu-ai-studio.policy`
 - Instalação: `scripts/install-privileged-helper.sh`
 - Desinstalação: `scripts/uninstall-privileged-helper.sh`
 
@@ -74,7 +74,7 @@ Observações:
 1. Build do helper:
 ```bash
 cd "$WORKSPACE_ROOT/src-tauri"
-cargo build --release --bin codex-privileged-helper
+cargo build --release --bin ailu-privileged-helper
 ```
 
 2. Instalar helper + policy:

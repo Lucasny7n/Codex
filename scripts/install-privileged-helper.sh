@@ -2,13 +2,13 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-HELPER_RELEASE="$ROOT_DIR/src-tauri/target/release/codex-privileged-helper"
-HELPER_DEBUG="$ROOT_DIR/src-tauri/target/debug/codex-privileged-helper"
-POLICY_SOURCE="$ROOT_DIR/system/polkit/local.lucas.codex-command-center.policy"
+HELPER_RELEASE="$ROOT_DIR/src-tauri/target/release/ailu-privileged-helper"
+HELPER_DEBUG="$ROOT_DIR/src-tauri/target/debug/ailu-privileged-helper"
+POLICY_SOURCE="$ROOT_DIR/system/polkit/local.lucas.ailu-ai-studio.policy"
 
-TARGET_HELPER="/usr/local/libexec/codex-privileged-helper"
-TARGET_POLICY="/usr/share/polkit-1/actions/local.lucas.codex-command-center.policy"
-ACTION_ID="local.lucas.codex-command-center.privileged-helper"
+TARGET_HELPER="/usr/local/libexec/ailu-privileged-helper"
+TARGET_POLICY="/usr/share/polkit-1/actions/local.lucas.ailu-ai-studio.policy"
+ACTION_ID="local.lucas.ailu-ai-studio.privileged-helper"
 
 if [[ -x "$HELPER_RELEASE" ]]; then
   HELPER_SOURCE="$HELPER_RELEASE"
@@ -16,7 +16,7 @@ elif [[ -x "$HELPER_DEBUG" ]]; then
   HELPER_SOURCE="$HELPER_DEBUG"
 else
   echo "Helper não encontrado. Compile primeiro:"
-  echo "  cd /home/lucas/Codex-Codex/src-tauri && cargo build --release --bin codex-privileged-helper"
+  echo "  cd \"$ROOT_DIR/src-tauri\" && cargo build --release --bin ailu-privileged-helper"
   exit 1
 fi
 
@@ -31,11 +31,11 @@ if ! command -v pkexec >/dev/null 2>&1; then
 fi
 
 ts="$(date +%Y%m%d-%H%M%S)"
-backup_dir="$HOME/.codex/codex-ui/backups/privileged-helper-install-$ts"
+backup_dir="$HOME/.codex/ailu-ai-studio/backups/privileged-helper-install-$ts"
 mkdir -p "$backup_dir"
 
-helper_backup="$backup_dir/codex-privileged-helper.previous"
-policy_backup="$backup_dir/local.lucas.codex-command-center.policy.previous"
+helper_backup="$backup_dir/ailu-privileged-helper.previous"
+policy_backup="$backup_dir/local.lucas.ailu-ai-studio.policy.previous"
 rollback_script="$backup_dir/rollback.sh"
 
 if [[ -e "$TARGET_HELPER" ]]; then
@@ -66,7 +66,7 @@ EOF
 chmod +x "$rollback_script"
 
 cat <<EOF
-Instalação do helper privilegiado do Codex Command Center
+Instalação do helper privilegiado do Ailu AI Studio
 
 Origem helper : $HELPER_SOURCE
 Origem policy : $POLICY_SOURCE

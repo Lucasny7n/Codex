@@ -1,6 +1,6 @@
 # Arquitetura
 
-Codex Command Center é um app desktop Tauri v2 com frontend React/TypeScript e backend Rust. A arquitetura privilegia status honesto: provider, conta, modelo ou runtime só podem aparecer como prontos depois de validação real.
+Ailu AI Studio é um app desktop Tauri v2 com frontend React/TypeScript e backend Rust. A arquitetura privilegia status honesto: provider, conta, modelo ou runtime só podem aparecer como prontos depois de validação real.
 
 ## Camadas
 

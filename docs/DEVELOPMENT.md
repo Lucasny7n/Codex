@@ -1,6 +1,6 @@
 # Desenvolvimento
 
-Este guia descreve o caminho local para instalar, rodar, validar e depurar o Codex Command Center.
+Este guia descreve o caminho local para instalar, rodar, validar e depurar o Ailu AI Studio.
 
 ## Instalação
 

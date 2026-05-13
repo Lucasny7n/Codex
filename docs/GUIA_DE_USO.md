@@ -1,6 +1,6 @@
 # Guia de Uso
 
-Codex Command Center é uma central desktop para conversar com modelos locais via Ollama e providers de IA na nuvem com estado real de configuração.
+Ailu AI Studio é uma central desktop para conversar com modelos locais via Ollama e providers de IA na nuvem com estado real de configuração.
 
 ## Abrir o app
 

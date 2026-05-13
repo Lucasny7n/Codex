@@ -4,7 +4,7 @@ Use this file as a short handoff for external AI review tools.
 
 ## Project
 
-Codex Command Center is a Tauri v2 desktop app built with Rust, React and TypeScript. It operates local Ollama models and authenticated cloud AI providers with honest readiness status.
+Ailu AI Studio is a Tauri v2 desktop app built with Rust, React and TypeScript. It operates local Ollama models and authenticated cloud AI providers with honest readiness status.
 
 ## Before changing code
 

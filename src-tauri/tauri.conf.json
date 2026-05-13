@@ -1,9 +1,9 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "Codex Command Center",
+  "productName": "Ailu AI Studio",
   "version": "0.1.0",
-  "identifier": "com.lucas.codexcommandcenter",
-  "mainBinaryName": "codex_command_center",
+  "identifier": "com.lucasny7n.ailu.ai.studio",
+  "mainBinaryName": "ailu-ai-studio",
   "build": {
     "beforeDevCommand": "npm run dev",
     "beforeBuildCommand": "npm run build",
@@ -14,7 +14,7 @@
     "windows": [
       {
         "label": "main",
-        "title": "Codex Command Center",
+        "title": "Ailu AI Studio",
         "width": 1720,
         "height": 980,
         "minWidth": 1200,
@@ -36,9 +36,9 @@
     "targets": ["deb", "rpm"],
     "publisher": "Lucas",
     "category": "DeveloperTool",
-    "shortDescription": "Premium desktop command center for local and cloud AI models.",
-    "longDescription": "Codex Command Center is a Tauri desktop app for operating local Ollama models and authenticated cloud AI providers with sessions, attachments, explicit permissions and honest runtime status.",
-    "homepage": "https://github.com/Lucasny7n/Codex",
+    "shortDescription": "Premium AI studio for local and cloud models.",
+    "longDescription": "Ailu AI Studio is a Tauri desktop app for operating local Ollama models and authenticated cloud AI providers with sessions, attachments, explicit permissions and honest runtime status.",
+    "homepage": "https://github.com/Lucasny7n/ailu-ai-studio",
     "license": "MIT",
     "icon": [
       "icons/32x32.png",

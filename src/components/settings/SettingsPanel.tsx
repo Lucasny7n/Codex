@@ -85,7 +85,7 @@ const FEATURED_MODEL_IDS = [
 const DEFAULT_PERSONALIZATION: AppPersonalizationSettings = {
   memoriesStored: true,
   referenceChatHistory: true,
-  customizeCodex: false,
+  customizeAilu: false,
   manageCookies: false,
   webPageExtraction: false,
   imageSearch: false,
@@ -1023,10 +1023,10 @@ export function SettingsPanel({
 
               <section className="settings-block">
                 <SwitchRow
-                  label="Personalização avançada do Codex"
+                  label="Personalização avançada do Ailu"
                   description={`Mantém preferências de comportamento para o perfil ${selectedAgentLabel}.`}
-                  checked={personalization.customizeCodex}
-                  onChange={(value) => updatePersonalization('customizeCodex', value)}
+                  checked={personalization.customizeAilu}
+                  onChange={(value) => updatePersonalization('customizeAilu', value)}
                 />
                 <SwitchRow
                   label="Gerenciar cookies"

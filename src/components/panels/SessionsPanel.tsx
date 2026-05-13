@@ -56,6 +56,27 @@ function writeLocalStorage(key: string, value: string): void {
   }
 }
 
+function removeLocalStorage(key: string): void {
+  const storage = window.localStorage;
+  if (!storage || typeof storage.removeItem !== 'function') return;
+  try {
+    storage.removeItem(key);
+  } catch {
+    // Limpeza de compatibilidade é opcional.
+  }
+}
+
+function readSidebarStorage(key: string, legacyKey: string): string | undefined {
+  const current = readLocalStorage(key);
+  if (current !== undefined) return current;
+  const legacy = readLocalStorage(legacyKey);
+  if (legacy !== undefined) {
+    writeLocalStorage(key, legacy);
+    removeLocalStorage(legacyKey);
+  }
+  return legacy;
+}
+
 function FolderIcon({ compact = false }: { compact?: boolean }): JSX.Element {
   return <UiIcon name="folder" className={compact ? 'qwen-row-icon qwen-row-icon-compact' : 'qwen-row-icon'} />;
 }
@@ -111,8 +132,8 @@ export function SessionsPanel({
   const [menuProject, setMenuProject] = useState<string>();
   const [editingSessionId, setEditingSessionId] = useState<string>();
   const [editingTitle, setEditingTitle] = useState('');
-  const [projectsOpen, setProjectsOpen] = useState(() => readLocalStorage('codex-sidebar-projects-open') === 'true');
-  const [conversationsOpen, setConversationsOpen] = useState(() => readLocalStorage('codex-sidebar-conversations-open') === 'true');
+  const [projectsOpen, setProjectsOpen] = useState(() => readSidebarStorage('ailu-sidebar-projects-open', 'codex-sidebar-projects-open') === 'true');
+  const [conversationsOpen, setConversationsOpen] = useState(() => readSidebarStorage('ailu-sidebar-conversations-open', 'codex-sidebar-conversations-open') === 'true');
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const filteredSessions = useMemo(() => {
     const normalized = query.trim().toLowerCase();
@@ -133,14 +154,16 @@ export function SessionsPanel({
 
   function toggleProjects(): void {
     setProjectsOpen((current) => {
-      writeLocalStorage('codex-sidebar-projects-open', current ? 'false' : 'true');
+      writeLocalStorage('ailu-sidebar-projects-open', current ? 'false' : 'true');
+      removeLocalStorage('codex-sidebar-projects-open');
       return !current;
     });
   }
 
   function toggleConversations(): void {
     setConversationsOpen((current) => {
-      writeLocalStorage('codex-sidebar-conversations-open', current ? 'false' : 'true');
+      writeLocalStorage('ailu-sidebar-conversations-open', current ? 'false' : 'true');
+      removeLocalStorage('codex-sidebar-conversations-open');
       return !current;
     });
   }

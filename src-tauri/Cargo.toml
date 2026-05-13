@@ -1,24 +1,24 @@
 [package]
-name = "codex_command_center"
-default-run = "codex_command_center"
+name = "ailu-ai-studio"
+default-run = "ailu-ai-studio"
 version = "0.1.0"
 edition = "2021"
-description = "Premium desktop command center for local and cloud AI models"
+description = "Premium AI studio for local and cloud models"
 authors = ["Lucas"]
 license = "MIT"
-repository = "https://github.com/Lucasny7n/Codex"
-homepage = "https://github.com/Lucasny7n/Codex"
+repository = "https://github.com/Lucasny7n/ailu-ai-studio"
+homepage = "https://github.com/Lucasny7n/ailu-ai-studio"
 readme = "../README.md"
 keywords = ["tauri", "rust", "ai", "ollama", "desktop"]
 categories = ["development-tools"]
 
 [lib]
-name = "codex_command_center_lib"
+name = "ailu_ai_studio_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
-[package.metadata.codex-command-center]
-product-name = "Codex Command Center"
-summary = "Premium desktop command center for local and cloud AI models."
+[package.metadata.ailu-ai-studio]
+product-name = "Ailu AI Studio"
+summary = "Premium AI studio for local and cloud models."
 
 [build-dependencies]
 tauri-build = { version = "2.0.0", features = [] }

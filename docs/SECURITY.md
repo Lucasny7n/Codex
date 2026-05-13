@@ -1,6 +1,6 @@
 # Segurança
 
-Codex Command Center opera providers, arquivos locais, comandos e credenciais. Segurança e rastreabilidade têm prioridade sobre automação.
+Ailu AI Studio opera providers, arquivos locais, comandos e credenciais. Segurança e rastreabilidade têm prioridade sobre automação.
 
 ## API keys
 

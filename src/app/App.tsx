@@ -103,14 +103,14 @@ import {
   type ToastMessage,
 } from '../components/common/PremiumUI';
 
-function homeFromCodexRoot(settings?: AppSettings): string | undefined {
+function homeFromDataRoot(settings?: AppSettings): string | undefined {
   if (!settings?.codexRoot) return undefined;
   return settings.codexRoot.endsWith('/.codex') ? settings.codexRoot.slice(0, -'/.codex'.length) : undefined;
 }
 
 function buildActionJsonExamples(settings?: AppSettings): Record<string, string> {
-  const codexRoot = settings?.codexRoot ?? '~/.codex';
-  const home = homeFromCodexRoot(settings) ?? '~';
+  const dataRoot = settings?.codexRoot ?? '~/.codex';
+  const home = homeFromDataRoot(settings) ?? '~';
 
   return {
     systemctl_enable_service: '{\n  "service": "fstrim.timer"\n}',
@@ -120,7 +120,7 @@ function buildActionJsonExamples(settings?: AppSettings): Record<string, string>
     bootctl_set_default_kernel: '{\n  "entry": "arch-linux-cachyos-bore.conf"\n}',
     chmod_random_seed: '{}',
     backup_file: '{\n  "path": "/boot/loader/loader.conf"\n}',
-    restore_file: `{\n  "backupPath": "${codexRoot}/codex-ui/backups/exemplo.bak",\n  "targetPath": "/boot/loader/loader.conf"\n}`,
+    restore_file: `{\n  "backupPath": "${dataRoot}/ailu-ai-studio/backups/exemplo.bak",\n  "targetPath": "/boot/loader/loader.conf"\n}`,
     pacman_install_packages: '{\n  "packages": ["ripgrep"]\n}',
     paccache_keep_versions: '{\n  "keep": 2\n}',
     waydroid_start: '{}',
@@ -193,6 +193,31 @@ function readLocalStorage(key: string): string | undefined {
   }
 }
 
+const AILU_STORAGE_PREFIX = 'ailu-ai-studio';
+const LEGACY_STORAGE_PREFIX = 'codex-command-center';
+const SIDEBAR_COLLAPSED_KEY = 'ailu-sidebar-collapsed';
+const LEGACY_SIDEBAR_COLLAPSED_KEY = 'codex-sidebar-collapsed';
+
+function ailuStorageKey(suffix: string): string {
+  return `${AILU_STORAGE_PREFIX}-${suffix}`;
+}
+
+function legacyStorageKey(suffix: string): string {
+  return `${LEGACY_STORAGE_PREFIX}-${suffix}`;
+}
+
+function readAiluStorage(suffix: string): string | undefined {
+  const key = ailuStorageKey(suffix);
+  const value = readLocalStorage(key);
+  if (value !== undefined) return value;
+
+  const legacyValue = readLocalStorage(legacyStorageKey(suffix));
+  if (legacyValue !== undefined) {
+    writeLocalStorage(key, legacyValue);
+  }
+  return legacyValue;
+}
+
 function writeLocalStorage(key: string, value: string): void {
   const storage = window.localStorage;
   if (!storage || typeof storage.setItem !== 'function') return;
@@ -201,6 +226,11 @@ function writeLocalStorage(key: string, value: string): void {
   } catch {
     // Persistência de UI é opcional; o estado em memória continua válido.
   }
+}
+
+function writeAiluStorage(suffix: string, value: string): void {
+  writeLocalStorage(ailuStorageKey(suffix), value);
+  removeLocalStorage(legacyStorageKey(suffix));
 }
 
 function removeLocalStorage(key: string): void {
@@ -213,9 +243,14 @@ function removeLocalStorage(key: string): void {
   }
 }
 
+function removeAiluStorage(suffix: string): void {
+  removeLocalStorage(ailuStorageKey(suffix));
+  removeLocalStorage(legacyStorageKey(suffix));
+}
+
 function readSavedProjects(): string[] {
   try {
-    const raw = readLocalStorage('codex-command-center-projects');
+    const raw = readAiluStorage('projects');
     const parsed: unknown = raw ? JSON.parse(raw) : [];
     return Array.isArray(parsed) ? parsed.filter((item): item is string => typeof item === 'string') : [];
   } catch {
@@ -224,16 +259,16 @@ function readSavedProjects(): string[] {
 }
 
 function readInitialActiveProject(savedProjects: string[]): string | undefined {
-  const active = readLocalStorage('codex-command-center-active-project')?.trim();
+  const active = readAiluStorage('active-project')?.trim();
   if (!active) return undefined;
   if (savedProjects.includes(active)) return active;
-  writeLocalStorage('codex-command-center-active-project', '');
+  writeAiluStorage('active-project', '');
   return undefined;
 }
 
 function readProjectMeta(project: string): StoredProjectMeta | undefined {
   try {
-    const raw = readLocalStorage(`codex-command-center-project:${project}`);
+    const raw = readAiluStorage(`project:${project}`);
     const parsed: unknown = raw ? JSON.parse(raw) : undefined;
     if (!parsed || typeof parsed !== 'object') return undefined;
     const candidate = parsed as Partial<StoredProjectMeta> & {
@@ -372,7 +407,13 @@ export default function App(): JSX.Element {
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
   const [temporaryChatActive, setTemporaryChatActive] = useState(false);
   const [temporaryMessages, setTemporaryMessages] = useState<ChatMessage[]>([]);
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(() => readLocalStorage('codex-sidebar-collapsed') === 'true');
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
+    const current = readLocalStorage(SIDEBAR_COLLAPSED_KEY);
+    if (current !== undefined) return current === 'true';
+    const legacy = readLocalStorage(LEGACY_SIDEBAR_COLLAPSED_KEY);
+    if (legacy !== undefined) writeLocalStorage(SIDEBAR_COLLAPSED_KEY, legacy);
+    return legacy === 'true';
+  });
   const [projectDialogOpen, setProjectDialogOpen] = useState(false);
   const [projectFileManagerOpen, setProjectFileManagerOpen] = useState(false);
   const [editingProjectName, setEditingProjectName] = useState<string>();
@@ -387,7 +428,7 @@ export default function App(): JSX.Element {
   const [projectFiles, setProjectFiles] = useState<string[]>([]);
   const [projectSessionIds, setProjectSessionIds] = useState<Record<string, string[]>>(() => {
     try {
-      const raw = readLocalStorage('codex-command-center-project-sessions');
+      const raw = readAiluStorage('project-sessions');
       const parsed: unknown = raw ? JSON.parse(raw) : {};
       if (!parsed || typeof parsed !== 'object') return {};
       const entries = Object.entries(parsed as Record<string, unknown>)
@@ -638,7 +679,8 @@ export default function App(): JSX.Element {
 
   function toggleSidebar(): void {
     setSidebarCollapsed((current) => {
-      writeLocalStorage('codex-sidebar-collapsed', current ? 'false' : 'true');
+      writeLocalStorage(SIDEBAR_COLLAPSED_KEY, current ? 'false' : 'true');
+      removeLocalStorage(LEGACY_SIDEBAR_COLLAPSED_KEY);
       return !current;
     });
   }
@@ -649,7 +691,7 @@ export default function App(): JSX.Element {
   }
 
   function persistProjectSessionIds(next: Record<string, string[]>): void {
-    writeLocalStorage('codex-command-center-project-sessions', JSON.stringify(next));
+    writeAiluStorage('project-sessions', JSON.stringify(next));
     setProjectSessionIds(next);
   }
 
@@ -738,16 +780,16 @@ export default function App(): JSX.Element {
       files: projectFiles,
       updatedAt: new Date().toISOString(),
     };
-    writeLocalStorage('codex-command-center-projects', JSON.stringify(nextProjects));
-    writeLocalStorage(`codex-command-center-project:${title}`, JSON.stringify(projectMeta));
+    writeAiluStorage('projects', JSON.stringify(nextProjects));
+    writeAiluStorage(`project:${title}`, JSON.stringify(projectMeta));
     if (renamed && editingProjectName) {
-      removeLocalStorage(`codex-command-center-project:${editingProjectName}`);
+      removeAiluStorage(`project:${editingProjectName}`);
       const nextSessionIds = { ...projectSessionIds };
       nextSessionIds[title] = nextSessionIds[editingProjectName] ?? [];
       delete nextSessionIds[editingProjectName];
       persistProjectSessionIds(nextSessionIds);
     }
-    writeLocalStorage('codex-command-center-active-project', title);
+    writeAiluStorage('active-project', title);
     setSavedProjects(nextProjects);
     setActiveProject(title);
     selectSession(undefined);
@@ -763,13 +805,13 @@ export default function App(): JSX.Element {
     const nextProjects = savedProjects.filter((item) => item !== project);
     const nextSessionIds = { ...projectSessionIds };
     delete nextSessionIds[project];
-    writeLocalStorage('codex-command-center-projects', JSON.stringify(nextProjects));
-    removeLocalStorage(`codex-command-center-project:${project}`);
+    writeAiluStorage('projects', JSON.stringify(nextProjects));
+    removeAiluStorage(`project:${project}`);
     persistProjectSessionIds(nextSessionIds);
     setSavedProjects(nextProjects);
     if (activeProject === project) {
       setActiveProject(undefined);
-      writeLocalStorage('codex-command-center-active-project', '');
+      writeAiluStorage('active-project', '');
     }
   }
 
@@ -887,7 +929,7 @@ export default function App(): JSX.Element {
     setTemporaryChatActive(false);
     setTemporaryMessages([]);
     if (!activeProject) {
-      writeLocalStorage('codex-command-center-active-project', '');
+      writeAiluStorage('active-project', '');
     }
     selectSession(undefined);
   }
@@ -896,7 +938,7 @@ export default function App(): JSX.Element {
     setTemporaryChatActive(false);
     setTemporaryMessages([]);
     setActiveProject(project);
-    writeLocalStorage('codex-command-center-active-project', project);
+    writeAiluStorage('active-project', project);
     selectSession(undefined);
   }
 
@@ -904,7 +946,7 @@ export default function App(): JSX.Element {
     setTemporaryChatActive(false);
     setTemporaryMessages([]);
     setActiveProject(undefined);
-    writeLocalStorage('codex-command-center-active-project', '');
+    writeAiluStorage('active-project', '');
     selectSession(sessionId);
   }
 
@@ -912,7 +954,7 @@ export default function App(): JSX.Element {
     setTemporaryChatActive(true);
     setTemporaryMessages([]);
     setActiveProject(undefined);
-    writeLocalStorage('codex-command-center-active-project', '');
+    writeAiluStorage('active-project', '');
     selectSession(undefined);
   }
 
@@ -1455,12 +1497,12 @@ export default function App(): JSX.Element {
     if (settings?.workspaceRoot) void openProjectInVscode(settings.workspaceRoot);
   }
 
-  function handleOpenCodexRoot(): void {
+  function handleOpenDataRoot(): void {
     if (settings?.codexRoot) void openProjectInVscode(settings.codexRoot);
   }
 
   function handleOpenLogs(): void {
-    if (settings?.codexRoot) void openProjectInVscode(`${settings.codexRoot}/codex-ui/logs`);
+    if (settings?.codexRoot) void openProjectInVscode(`${settings.codexRoot}/ailu-ai-studio/logs`);
   }
 
   async function handleSetTopbarCloudOption(option: TopBarModelOption): Promise<void> {
@@ -1837,7 +1879,7 @@ export default function App(): JSX.Element {
         onOpenGuide={handleOpenGuide}
         onOpenQuickstart={handleOpenQuickstart}
         onOpenWorkspace={handleOpenWorkspace}
-        onOpenCodexRoot={handleOpenCodexRoot}
+        onOpenDataRoot={handleOpenDataRoot}
         onOpenLogs={handleOpenLogs}
         onRunCheckEnvironment={() => void handleRunCheckEnvironment()}
       />

@@ -1,7 +1,7 @@
 import { expect, test, type Page } from '@playwright/test';
 
 const nodeProcess = (globalThis as { process?: { env?: Record<string, string | undefined> } }).process;
-const screenshotDir = nodeProcess?.env?.CODEX_SCREENSHOT_DIR ?? 'test-results/screenshots';
+const screenshotDir = nodeProcess?.env?.AILU_SCREENSHOT_DIR ?? 'test-results/screenshots';
 
 declare global {
   interface Window {
@@ -23,7 +23,7 @@ function nowIso(): string {
 async function installTauriMock(page: Page): Promise<void> {
   await page.addInitScript(() => {
     const now = '2026-05-10T12:00:00.000Z';
-    window.localStorage.setItem('codex-sidebar-conversations-open', 'true');
+    window.localStorage.setItem('ailu-sidebar-conversations-open', 'true');
     Object.defineProperty(window.navigator, 'mediaDevices', {
       configurable: true,
       value: {
@@ -94,7 +94,7 @@ async function installTauriMock(page: Page): Promise<void> {
       personalization: {
         memoriesStored: true,
         referenceChatHistory: true,
-        customizeCodex: false,
+        customizeAilu: false,
         manageCookies: false,
         webPageExtraction: false,
         imageSearch: false,
@@ -175,7 +175,7 @@ async function installTauriMock(page: Page): Promise<void> {
         if (cmd === 'bootstrap_state') {
           return {
             settings,
-            workspaceMeta: { root: '/tmp/workspace', repoName: 'Codex-Codex', branch: 'main', headShort: 'abc1234', dirty: false },
+            workspaceMeta: { root: '/tmp/workspace', repoName: 'Ailu Projeto', branch: 'main', headShort: 'abc1234', dirty: false },
             sessions: [session],
             pendingPermissions: [],
             providers: [provider],
@@ -297,7 +297,7 @@ async function installTauriMock(page: Page): Promise<void> {
           return undefined;
         }
         if (cmd === 'update_settings') return args?.settings;
-        if (cmd === 'export_all_conversations') return { path: '/tmp/codex-conversas.json', format: 'json', bytes: 100 };
+        if (cmd === 'export_all_conversations') return { path: '/tmp/ailu-conversas.json', format: 'json', bytes: 100 };
         if (cmd === 'archive_all_sessions') return [];
         if (cmd === 'delete_all_sessions') return 1;
         if (cmd === 'list_file_directory') {
@@ -358,6 +358,7 @@ test('captura home, composer, chat temporário, seletor e modais em tema escuro'
   await screenshot(page, 'pass-15-home-dark');
   await screenshot(page, 'pass-21-home-dark');
   await screenshot(page, 'pass-22-home-dark');
+  await screenshot(page, 'pass-23-home-dark');
   await screenshot(page, 'pass-19-home-no-preset-select');
   await screenshot(page, 'pass-15-composer-empty');
   await screenshot(page, 'pass-15-send-disabled-neutral');
@@ -384,6 +385,7 @@ test('captura home, composer, chat temporário, seletor e modais em tema escuro'
   await expect(page.getByText('Local Ollama')).toHaveCount(0);
   await screenshot(page, 'pass-15-model-selector-cloud');
   await screenshot(page, 'pass-21-model-selector-cloud');
+  await screenshot(page, 'pass-23-model-selector-cloud');
   await screenshot(page, 'pass-19-cloud-no-local-ollama');
   await screenshot(page, 'pass-20-cloud-no-local');
   await page.getByLabel('Buscar modelo ou provedor').fill('qwen2.5-coder');
@@ -415,11 +417,13 @@ test('captura home, composer, chat temporário, seletor e modais em tema escuro'
   await screenshot(page, 'pass-20-local-search-gpt-oss');
   await screenshot(page, 'pass-21-model-selector-local-gpt-oss');
   await screenshot(page, 'pass-22-local-gpt-oss');
+  await screenshot(page, 'pass-23-local-gpt-oss');
   await page.getByTestId('model-row-ollama-download:gpt-oss:20b').hover();
   await screenshot(page, 'pass-19-model-selector-ellipsis-aligned');
   await screenshot(page, 'pass-20-ellipsis-aligned');
   await screenshot(page, 'pass-21-model-selector-ellipsis');
   await screenshot(page, 'pass-22-ellipsis-hover');
+  await screenshot(page, 'pass-23-ellipsis-hover');
   await page.getByLabel('Configurar gpt-oss:20b').click();
   await expect(page.getByRole('dialog', { name: 'gpt-oss:20b' })).toBeVisible();
   await expect(page.getByTitle(/mock-development-model/)).toBeVisible();
@@ -481,6 +485,7 @@ test('captura chat normal, markdown e scrollbar longa', async ({ page }) => {
   await screenshot(page, 'pass-15-chat-no-thinking-label');
   await screenshot(page, 'pass-21-chat-clean');
   await screenshot(page, 'pass-22-chat-markdown');
+  await screenshot(page, 'pass-23-chat-markdown');
   await screenshot(page, 'pass-15-chat-long-scrollbar');
   await screenshot(page, 'pass-21-chat-long-scrollbar');
 });
@@ -504,6 +509,7 @@ test('captura configurações em todas as abas', async ({ page }) => {
   await expect(dialog.getByText('Ollama API ativa')).toBeVisible();
   await screenshot(page, 'pass-21-settings-health');
   await screenshot(page, 'pass-22-settings-health');
+  await screenshot(page, 'pass-23-settings-health');
   await dialog.getByRole('button', { name: 'Personalização' }).click();
   await screenshot(page, 'pass-15-settings-personalization');
 });
@@ -514,6 +520,7 @@ test('captura tema claro, composer, settings e seletor', async ({ page }) => {
   await screenshot(page, 'pass-15-home-light');
   await screenshot(page, 'pass-21-home-light');
   await screenshot(page, 'pass-22-home-light');
+  await screenshot(page, 'pass-23-home-light');
   await page.getByPlaceholder('Como posso ajudá-lo hoje?').fill('Enviar visível no tema claro');
   await screenshot(page, 'pass-15-home-light-send-visible');
   await page.getByPlaceholder('Como posso ajudá-lo hoje?').focus();

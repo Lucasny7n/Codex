@@ -331,12 +331,12 @@ impl SessionManager {
         let sessions = self.list_all_sessions();
         let exports_dir = self.export_dir.clone();
         fs::create_dir_all(&exports_dir)?;
-        let file = unique_export_path(&exports_dir, "codex-conversas", "json");
+        let file = unique_export_path(&exports_dir, "ailu-conversas", "json");
         let envelope = ConversationExportEnvelope {
-            version: "codex-command-center.conversations.v1".to_owned(),
+            version: "ailu-ai-studio.conversations.v1".to_owned(),
             exported_at: now_iso(),
             metadata: ConversationExportMetadata {
-                source: "Codex Command Center".to_owned(),
+                source: "Ailu AI Studio".to_owned(),
                 sessions_count: sessions.len(),
             },
             sessions,
@@ -361,7 +361,9 @@ impl SessionManager {
             serde_json::from_value(parsed)?
         } else {
             let envelope: ConversationExportEnvelope = serde_json::from_value(parsed)?;
-            if envelope.version != "codex-command-center.conversations.v1" {
+            if envelope.version != "ailu-ai-studio.conversations.v1"
+                && envelope.version != "codex-command-center.conversations.v1"
+            {
                 return Err(
                     anyhow::anyhow!("Arquivo de conversas com versão incompatível.").into(),
                 );
@@ -702,7 +704,7 @@ mod tests {
 
     fn temp_sessions_dir() -> PathBuf {
         let dir =
-            std::env::temp_dir().join(format!("codex-session-manager-test-{}", Uuid::new_v4()));
+            std::env::temp_dir().join(format!("ailu-session-manager-test-{}", Uuid::new_v4()));
         fs::create_dir_all(&dir).expect("deve criar diretório temporário");
         dir
     }
@@ -865,7 +867,7 @@ mod tests {
             .starts_with(exports_dir.to_string_lossy().as_ref()));
         assert!(fs::read_to_string(&export.path)
             .expect("export deve existir")
-            .contains("codex-command-center.conversations.v1"));
+            .contains("ailu-ai-studio.conversations.v1"));
 
         let import_result = manager
             .import_conversations_from_file(Path::new(&export.path))

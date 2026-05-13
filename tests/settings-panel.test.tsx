@@ -35,7 +35,7 @@ const readyStatus: ProviderRuntimeStatus = {
 function settings(): AppSettings {
   return {
     workspaceRoot: '/tmp/workspace',
-    codexRoot: '/tmp/codex',
+    codexRoot: '/tmp/.codex',
     selectedProviderId: 'gemini-cli',
     selectedModelId: 'gemini-cli-default',
     selectedAgentId: 'equilibrado',
@@ -54,7 +54,7 @@ function settings(): AppSettings {
     personalization: {
       memoriesStored: true,
       referenceChatHistory: true,
-      customizeCodex: false,
+      customizeAilu: false,
       manageCookies: false,
       webPageExtraction: false,
       imageSearch: false,
@@ -391,7 +391,7 @@ describe('SettingsPanel', () => {
 
     expect(screen.getByText('Memórias guardadas')).toBeInTheDocument();
     expect(screen.getByText('Histórico de chat de referência')).toBeInTheDocument();
-    expect(screen.getByText('Personalização avançada do Codex')).toBeInTheDocument();
+    expect(screen.getByText('Personalização avançada do Ailu')).toBeInTheDocument();
     expect(screen.getByText('Gerenciar cookies')).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: /Avançado/ }));

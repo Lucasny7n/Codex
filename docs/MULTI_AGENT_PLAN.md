@@ -4,7 +4,7 @@ Este documento descreve uma direção futura. Nada aqui deve ser apresentado com
 
 ## Objetivo
 
-Preparar o Codex Command Center para coordenar perfis especializados de trabalho, mantendo a regra de provider/modelo real e status honesto.
+Preparar o Ailu AI Studio para coordenar perfis especializados de trabalho, mantendo a regra de provider/modelo real e status honesto.
 
 ## Possíveis papéis
 

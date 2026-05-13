@@ -37,7 +37,7 @@ describe('SessionsPanel', () => {
     render(
       <SessionsPanel
         sessions={[current]}
-        projects={['Codex-Codex']}
+        projects={['Ailu Projeto']}
         projectSessions={{}}
         activeProject={undefined}
         selectedSessionId={undefined}
@@ -86,7 +86,7 @@ describe('SessionsPanel', () => {
     render(
       <SessionsPanel
         sessions={[session()]}
-        projects={['Codex-Codex']}
+        projects={['Ailu Projeto']}
         projectSessions={{}}
         activeProject={undefined}
         selectedSessionId={undefined}
@@ -135,7 +135,7 @@ describe('SessionsPanel', () => {
     render(
       <SessionsPanel
         sessions={[current]}
-        projects={['Codex-Codex']}
+        projects={['Ailu Projeto']}
         projectSessions={{}}
         activeProject={undefined}
         selectedSessionId={current.id}
@@ -160,7 +160,7 @@ describe('SessionsPanel', () => {
     expect(screen.queryByText('Comunidade')).not.toBeInTheDocument();
     expect(screen.queryByText('Coder')).not.toBeInTheDocument();
     expect(screen.queryByText('Novo Projeto')).not.toBeInTheDocument();
-    expect(screen.queryByText('Codex-Codex')).not.toBeInTheDocument();
+    expect(screen.queryByText('Ailu Projeto')).not.toBeInTheDocument();
     expect(screen.queryByText('Corrigir Settings')).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByLabelText('Recolher sidebar'));
@@ -168,17 +168,17 @@ describe('SessionsPanel', () => {
 
     fireEvent.click(screen.getByText('Projetos'));
     expect(screen.getByText('Novo Projeto')).toBeInTheDocument();
-    expect(screen.getByText('Codex-Codex')).toBeInTheDocument();
+    expect(screen.getByText('Ailu Projeto')).toBeInTheDocument();
     expect(screen.queryByText('Corrigir Settings')).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByText('Todas as conversas'));
     expect(screen.getByText('Novo Projeto')).toBeInTheDocument();
-    expect(screen.getByText('Codex-Codex')).toBeInTheDocument();
+    expect(screen.getByText('Ailu Projeto')).toBeInTheDocument();
     expect(screen.getByText('Corrigir Settings')).toBeInTheDocument();
 
     fireEvent.click(screen.getByText('Projetos'));
     expect(screen.queryByText('Novo Projeto')).not.toBeInTheDocument();
-    expect(screen.queryByText('Codex-Codex')).not.toBeInTheDocument();
+    expect(screen.queryByText('Ailu Projeto')).not.toBeInTheDocument();
     expect(screen.getByText('Corrigir Settings')).toBeInTheDocument();
 
     fireEvent.click(screen.getByLabelText('Ações da sessão Corrigir Settings'));
@@ -194,7 +194,7 @@ describe('SessionsPanel', () => {
     render(
       <SessionsPanel
         sessions={[session()]}
-        projects={['Codex-Codex']}
+        projects={['Ailu Projeto']}
         projectSessions={{}}
         activeProject={undefined}
         selectedSessionId={undefined}
@@ -225,7 +225,7 @@ describe('SessionsPanel', () => {
     expect(screen.getByLabelText('Menu do usuário')).toBeInTheDocument();
     expect(screen.queryByText('Projetos')).not.toBeInTheDocument();
     expect(screen.queryByText('Todas as conversas')).not.toBeInTheDocument();
-    expect(screen.queryByText('Codex-Codex')).not.toBeInTheDocument();
+    expect(screen.queryByText('Ailu Projeto')).not.toBeInTheDocument();
     expect(screen.queryByText('Corrigir Settings')).not.toBeInTheDocument();
   });
 });

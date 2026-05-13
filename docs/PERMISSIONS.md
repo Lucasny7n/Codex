@@ -38,7 +38,7 @@
 - Serviço fora da allowlist é bloqueado.
 - Saída e status ficam auditáveis em:
   - feed de status da sessão;
-  - `~/.codex/codex-ui/logs/privileged-actions.log`.
+  - `~/.codex/ailu-ai-studio/logs/privileged-actions.log`.
 
 ## Por que não `sudo -S` e não `NOPASSWD: ALL`
 

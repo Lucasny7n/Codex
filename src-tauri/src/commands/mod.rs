@@ -1044,7 +1044,7 @@ pub fn transcribe_audio(
         ));
     }
 
-    let temp_dir = env::temp_dir().join(format!("codex-voice-{}", Uuid::new_v4()));
+    let temp_dir = env::temp_dir().join(format!("ailu-voice-{}", Uuid::new_v4()));
     if let Err(error) = fs::create_dir_all(&temp_dir) {
         return Ok(voice_result(
             VoiceTranscriptionResultStatus::Error,
@@ -1280,7 +1280,7 @@ mod file_browser_tests {
     use super::*;
 
     fn temp_file_browser_dir() -> PathBuf {
-        let dir = std::env::temp_dir().join(format!("codex-file-browser-test-{}", Uuid::new_v4()));
+        let dir = std::env::temp_dir().join(format!("ailu-file-browser-test-{}", Uuid::new_v4()));
         fs::create_dir_all(&dir).expect("deve criar diretório temporário");
         dir
     }
@@ -1529,12 +1529,7 @@ pub async fn get_app_health_check(
 ) -> Result<AppHealthCheck, ErrorPayload> {
     let settings = state.settings();
     let base_dir = settings.workspace_root.clone();
-    let expected_base_dir = state
-        .config_manager
-        .home_dir()
-        .join("Codex-Codex")
-        .to_string_lossy()
-        .to_string();
+    let expected_base_dir = state.settings().workspace_root;
     let providers = state
         .provider_registry
         .providers()
@@ -1580,7 +1575,7 @@ pub async fn get_app_health_check(
         .join(".github/workflows/ci.yml")
         .is_file();
     let desktop_entry_exists = Path::new(&base_dir)
-        .join("assets/codex-command-center.desktop")
+        .join("assets/ailu-ai-studio.desktop")
         .is_file();
     let icon_exists = Path::new(&base_dir)
         .join("src-tauri/icons/512x512.png")
@@ -1695,7 +1690,7 @@ pub async fn get_app_health_check(
             "desktop-entry",
             "Desktop entry",
             desktop_entry_exists,
-            "assets/codex-command-center.desktop".to_owned(),
+            "assets/ailu-ai-studio.desktop".to_owned(),
             Some("Instalar desktop entry"),
             Some("bash scripts/install-desktop-entry.sh"),
         ),
@@ -1738,13 +1733,13 @@ pub async fn get_app_health_check(
     let mut recent_errors = Vec::new();
     if !correct_base_dir {
         actions.push(AppHealthAction {
-            label: "Abrir ~/Codex-Codex".to_owned(),
+            label: "Abrir workspace ativo".to_owned(),
             command: Some(format!("cd {expected_base_dir}")),
         });
         recent_errors.push(actionable_error(
             "wrong_workspace",
             ActionableErrorSeverity::Error,
-            "Workspace ativo não é ~/Codex-Codex.",
+            "Workspace ativo não corresponde à base configurada.",
             "Corrigir base",
             Some(format!("base atual: {base_dir}")),
         ));
@@ -2678,7 +2673,7 @@ mod agent_order_tests {
     use super::*;
 
     fn temp_sessions_dir() -> std::path::PathBuf {
-        let dir = std::env::temp_dir().join(format!("codex-agent-order-test-{}", Uuid::new_v4()));
+        let dir = std::env::temp_dir().join(format!("ailu-agent-order-test-{}", Uuid::new_v4()));
         fs::create_dir_all(&dir).expect("deve criar diretório temporário");
         dir
     }
@@ -2686,7 +2681,7 @@ mod agent_order_tests {
     fn mock_settings(workspace_root: String) -> AppSettings {
         AppSettings {
             workspace_root,
-            codex_root: "/tmp/codex-root".to_owned(),
+            codex_root: "/tmp/ailu-data-root".to_owned(),
             selected_provider_id: "mock-development".to_owned(),
             selected_model_id: "mock-development-model".to_owned(),
             selected_agent_id: "equilibrado".to_owned(),

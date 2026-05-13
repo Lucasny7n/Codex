@@ -12,7 +12,7 @@ function pendingRequest(): PermissionRequest {
     command: 'systemctl restart waydroid-container.service',
     actionId: 'systemctl_restart_service',
     dryRun: true,
-    cwd: '/tmp/codex-workspace',
+    cwd: '/tmp/ailu-workspace',
     category: 'privileged',
     risk: 'alto',
     riskLevel: 'high',

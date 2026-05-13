@@ -1,6 +1,6 @@
 # Ollama
 
-Ollama é a única fonte local ativa do Codex Command Center nesta versão.
+Ollama é a única fonte local ativa do Ailu AI Studio nesta versão.
 
 ## Diagnóstico rápido
 

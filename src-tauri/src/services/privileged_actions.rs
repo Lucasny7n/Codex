@@ -405,9 +405,11 @@ fn prepare_restore_file_action(
     args: &Value,
 ) -> AppResult<PreparedPrivilegedAction> {
     let backup_path = validate_abs_path(&get_str(args, "backupPath")?, "backupPath")?;
-    if !backup_path.contains("/.codex/codex-ui/backups/") {
+    if !backup_path.contains("/.codex/ailu-ai-studio/backups/")
+        && !backup_path.contains("/.codex/codex-ui/backups/")
+    {
         return Err(AppError::Message(
-            "restore_file exige backupPath dentro de ~/.codex/codex-ui/backups".to_owned(),
+            "restore_file exige backupPath dentro de ~/.codex/ailu-ai-studio/backups".to_owned(),
         ));
     }
     let target_path = ensure_safe_system_path(&get_str(args, "targetPath")?, "targetPath")?;

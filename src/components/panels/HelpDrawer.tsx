@@ -7,7 +7,7 @@ interface HelpDrawerProps {
   onOpenGuide: () => void;
   onOpenQuickstart: () => void;
   onOpenWorkspace: () => void;
-  onOpenCodexRoot: () => void;
+  onOpenDataRoot: () => void;
   onOpenLogs: () => void;
   onRunCheckEnvironment: () => void;
 }
@@ -19,7 +19,7 @@ export function HelpDrawer({
   onOpenGuide,
   onOpenQuickstart,
   onOpenWorkspace,
-  onOpenCodexRoot,
+  onOpenDataRoot,
   onOpenLogs,
   onRunCheckEnvironment
 }: HelpDrawerProps): JSX.Element | null {
@@ -39,7 +39,7 @@ export function HelpDrawer({
             onOpenGuide={onOpenGuide}
             onOpenQuickstart={onOpenQuickstart}
             onOpenWorkspace={onOpenWorkspace}
-            onOpenCodexRoot={onOpenCodexRoot}
+            onOpenDataRoot={onOpenDataRoot}
             onOpenLogs={onOpenLogs}
             onRunCheckEnvironment={onRunCheckEnvironment}
             busy={busy}
