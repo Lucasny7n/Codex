@@ -8756,22 +8756,38 @@ body,
 }
 
 .premium-modal-panel.stt-config-modal {
-  height: auto;
-  max-height: min(85vh, 720px);
+  width: min(780px, calc(100vw - 28px));
+  height: min(86vh, 760px);
+  max-height: min(86vh, 760px);
+}
+
+.premium-modal-panel.stt-config-modal .premium-modal-body {
+  overflow-y: auto;
+  scrollbar-gutter: stable;
+}
+
+.premium-modal-panel.stt-config-modal .dialog-actions {
+  position: sticky;
+  bottom: 0;
+  z-index: 1;
+  margin: 2px -2px -2px;
+  padding: 12px 2px 2px;
+  background: linear-gradient(180deg, transparent, var(--surface-modal) 36%);
 }
 
 .stt-status-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 8px;
+  gap: 10px;
 }
 
 .stt-status-card {
   min-width: 0;
+  min-height: 62px;
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-sm);
   background: rgba(255, 255, 255, 0.025);
-  padding: 9px;
+  padding: 10px;
   display: flex;
   align-items: flex-start;
   gap: 8px;
@@ -8794,6 +8810,15 @@ body,
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.stt-config-modal .stt-command-box,
+.stt-config-modal .stt-mic-status {
+  line-height: 1.45;
+}
+
+.stt-config-modal .stt-tool-grid {
+  max-height: none;
 }
 
 .stt-recognized-text {

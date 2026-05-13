@@ -38,6 +38,8 @@ if command -v pacman >/dev/null 2>&1 && confirm "Run the Arch dependency command
 fi
 
 print_step "Optional STT dependencies"
+printf "Ailu uses ffmpeg + whisper-cli + a local model for the primary local STT path.\n"
+printf "On Arch, the whisper.cpp package usually provides whisper-cli; whisper.cpp itself is optional when whisper-cli works.\n"
 printf "Recommended command:\n"
 printf "  sudo pacman -S --needed ffmpeg whisper.cpp\n"
 if command -v pacman >/dev/null 2>&1 && confirm "Install optional STT packages with sudo?"; then

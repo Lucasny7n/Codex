@@ -51,6 +51,10 @@ Recommended local STT tools:
 sudo pacman -S --needed ffmpeg whisper.cpp
 ```
 
+On Arch, `whisper.cpp` usually provides `whisper-cli`. Ailu treats
+`whisper-cli` as the primary backend; the separate `whisper.cpp` binary is
+optional when `whisper-cli` and a local model are available.
+
 Place a Whisper model in `~/.codex/models`, for example:
 
 ```text

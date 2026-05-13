@@ -75,12 +75,13 @@ type VoiceState =
   | 'missing-backend'
   | 'permission-denied';
 
-type CaptureStatus = 'not_tested' | 'ok' | 'denied' | 'error';
+type CaptureStatus = 'not_tested' | 'ok' | 'warning' | 'denied' | 'error';
 
-const MIC_CAPTURE_FAILURE_MESSAGE = 'Não consegui acessar o microfone. Verifique PipeWire/WirePlumber ou selecione outro dispositivo.';
+const NATIVE_CAPTURE_FAILURE_MESSAGE = 'Não consegui gravar áudio pelo fallback nativo. Verifique o dispositivo de entrada.';
 
 function captureStatusLabel(status: CaptureStatus, webview = false): string {
   if (status === 'ok') return 'OK';
+  if (status === 'warning') return 'Atenção';
   if (status === 'denied') return webview ? 'Negada' : 'Erro';
   if (status === 'error') return 'Erro';
   return 'Não testada';
@@ -88,6 +89,7 @@ function captureStatusLabel(status: CaptureStatus, webview = false): string {
 
 function captureStatusTone(status: CaptureStatus): 'ready' | 'warning' | 'error' | 'offline' {
   if (status === 'ok') return 'ready';
+  if (status === 'warning') return 'warning';
   if (status === 'denied' || status === 'error') return 'error';
   return 'offline';
 }
@@ -124,10 +126,18 @@ function isCapturePermissionIssue(cause: unknown): boolean {
 
 function localTranscriptionMessage(message?: string, command?: string): string {
   const normalized = message?.toLowerCase() ?? '';
-  const reason = normalized.includes('whisper') && (normalized.includes('modelo') || normalized.includes('model'))
+  const modelMissing = normalized.includes('modelo whisper não encontrado') || normalized.includes('nenhum modelo') || normalized.includes('model not');
+  const reason = modelMissing
     ? 'Modelo Whisper não encontrado.'
     : 'Backend local não configurado.';
   return command ? `${reason} Configurar transcrição local: ${command}` : `${reason} Configure transcrição local.`;
+}
+
+function captureStatusFromSnapshot(status?: 'ok' | 'warning' | 'error'): CaptureStatus {
+  if (status === 'ok') return 'ok';
+  if (status === 'warning') return 'warning';
+  if (status === 'error') return 'error';
+  return 'not_tested';
 }
 
 function cleanInlineErrorMessage(message: string | undefined, fallback: string): string {
@@ -225,6 +235,8 @@ export function CommandInputPanel({
     try {
       const snapshot = await getSttConfigState(path.trim() || undefined);
       setSttSnapshot(snapshot);
+      setWebViewCaptureStatus(captureStatusFromSnapshot(snapshot.capture.webviewStatus));
+      setNativeCaptureStatus(captureStatusFromSnapshot(snapshot.capture.nativeStatus));
       if (!path.trim() && snapshot.modelPath) {
         setSttModelPath(snapshot.modelPath);
       }
@@ -264,17 +276,22 @@ export function CommandInputPanel({
     } catch (cause) {
       const name = cause instanceof DOMException ? cause.name : '';
       setWebViewCaptureStatus(name === 'NotAllowedError' || isCapturePermissionIssue(cause) ? 'denied' : 'error');
-      setSttMicMessage(name === 'NotAllowedError' ? 'Permissão negada pelo WebView/portal de microfone.' : 'Não foi possível abrir o microfone.');
+      setSttMicMessage('Permissão WebView negada. Tentando captura nativa.');
+      await runNativeCaptureFallback('Permissão WebView negada. Tentando captura nativa.');
     }
   }
 
-  async function runNativeCaptureFallback(): Promise<boolean> {
-    setNativeCaptureStatus('not_tested');
+  async function runNativeCaptureFallback(progressMessage = 'Tentando captura nativa curta...'): Promise<boolean> {
+    setNativeCaptureStatus((current) => current === 'ok' ? 'ok' : 'not_tested');
     setVoiceState('transcribing');
-    setVoiceMessage('Tentando captura nativa curta...');
-    setSttMicMessage('Tentando captura nativa curta...');
+    setVoiceMessage(progressMessage);
+    setSttMicMessage(progressMessage);
     try {
       const result = await recordAndTranscribeShortTest(sttModelPath.trim() || undefined);
+      const captureOk = result.captureStatus === 'ok';
+      const captureFailed = result.captureStatus === 'error';
+      if (captureOk) setNativeCaptureStatus('ok');
+      if (captureFailed) setNativeCaptureStatus('error');
       if (result.status === 'done' && result.text?.trim()) {
         appendTranscript(result.text);
         setSttRecognizedText(result.text);
@@ -285,22 +302,29 @@ export function CommandInputPanel({
         return true;
       }
       if (result.status === 'missing_backend') {
-        setNativeCaptureStatus('error');
+        if (!captureOk) setNativeCaptureStatus('warning');
         setVoiceState('missing-backend');
         setVoiceMessage(localTranscriptionMessage(result.message, result.command));
-        setSttMicMessage('Captura nativa disponível, mas o backend STT ainda precisa ser configurado.');
+        setSttMicMessage(captureOk
+          ? 'Captura nativa funcionou, mas o backend STT ainda precisa ser configurado.'
+          : 'Fallback nativo disponível, mas o backend STT ainda precisa ser configurado.');
         return false;
       }
-      setNativeCaptureStatus('error');
       setVoiceState('error');
-      setVoiceMessage(MIC_CAPTURE_FAILURE_MESSAGE);
-      setSttMicMessage(MIC_CAPTURE_FAILURE_MESSAGE);
+      if (captureOk) {
+        setVoiceMessage(cleanInlineErrorMessage(result.message, 'Captura nativa funcionou, mas não consegui transcrever o áudio.'));
+        setSttMicMessage('Captura nativa funcionou, mas a transcrição local falhou.');
+      } else {
+        setNativeCaptureStatus('error');
+        setVoiceMessage(NATIVE_CAPTURE_FAILURE_MESSAGE);
+        setSttMicMessage(NATIVE_CAPTURE_FAILURE_MESSAGE);
+      }
       return false;
     } catch {
       setNativeCaptureStatus('error');
       setVoiceState('error');
-      setVoiceMessage(MIC_CAPTURE_FAILURE_MESSAGE);
-      setSttMicMessage(MIC_CAPTURE_FAILURE_MESSAGE);
+      setVoiceMessage(NATIVE_CAPTURE_FAILURE_MESSAGE);
+      setSttMicMessage(NATIVE_CAPTURE_FAILURE_MESSAGE);
       return false;
     }
   }
@@ -308,7 +332,7 @@ export function CommandInputPanel({
   async function recordShortSttTest(): Promise<void> {
     if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === 'undefined') {
       setWebViewCaptureStatus('denied');
-      await runNativeCaptureFallback();
+      await runNativeCaptureFallback('Permissão WebView negada. Tentando captura nativa.');
       return;
     }
     setSttTestRecording(true);
@@ -346,7 +370,9 @@ export function CommandInputPanel({
       }
     } catch (cause) {
       setWebViewCaptureStatus(isCapturePermissionIssue(cause) ? 'denied' : 'error');
-      await runNativeCaptureFallback();
+      await runNativeCaptureFallback(isCapturePermissionIssue(cause)
+        ? 'Permissão WebView negada. Tentando captura nativa.'
+        : 'WebView falhou. Tentando captura nativa.');
     } finally {
       setSttTestRecording(false);
     }
@@ -435,7 +461,7 @@ export function CommandInputPanel({
         return result;
       }
       setVoiceState('error');
-      setVoiceMessage(result.message || 'Não foi possível transcrever o áudio local.');
+      setVoiceMessage(cleanInlineErrorMessage(result.message, 'Não foi possível transcrever o áudio local.'));
       return result;
     } catch (cause) {
       setVoiceState('error');
@@ -446,7 +472,7 @@ export function CommandInputPanel({
   async function startBackendRecording(): Promise<void> {
     if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === 'undefined') {
       setWebViewCaptureStatus('denied');
-      await runNativeCaptureFallback();
+      await runNativeCaptureFallback('Permissão WebView negada. Tentando captura nativa.');
       return;
     }
 
@@ -487,7 +513,9 @@ export function CommandInputPanel({
     } catch (cause) {
       stopRecordingTracks();
       setWebViewCaptureStatus(isCapturePermissionIssue(cause) ? 'denied' : 'error');
-      await runNativeCaptureFallback();
+      await runNativeCaptureFallback(isCapturePermissionIssue(cause)
+        ? 'Permissão WebView negada. Tentando captura nativa.'
+        : 'WebView falhou. Tentando captura nativa.');
     }
   }
 

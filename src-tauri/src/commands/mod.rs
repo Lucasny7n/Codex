@@ -253,6 +253,8 @@ pub struct VoiceTranscriptionResult {
     backend: Option<String>,
     command: Option<String>,
     technical_details: Option<String>,
+    capture_status: Option<String>,
+    capture_backend: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -277,6 +279,16 @@ pub struct SttModelCandidate {
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
+pub struct SttCaptureSnapshot {
+    webview_status: String,
+    webview_message: String,
+    native_status: String,
+    native_message: String,
+    native_tools: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct LocalSttConfigSnapshot {
     ffmpeg: SttToolStatus,
     backends: Vec<SttToolStatus>,
@@ -286,6 +298,7 @@ pub struct LocalSttConfigSnapshot {
     ready: bool,
     install_command: String,
     message: String,
+    capture: SttCaptureSnapshot,
     checked_at: String,
 }
 
@@ -494,6 +507,8 @@ fn zip_preview(path: &Path) -> (Option<String>, FilePreviewKind, bool) {
 const STT_INSTALL_COMMAND: &str = "sudo pacman -S --needed ffmpeg whisper.cpp";
 const MIC_CAPTURE_FAILURE_MESSAGE: &str =
     "Não consegui acessar o microfone. Verifique PipeWire/WirePlumber ou selecione outro dispositivo.";
+const NATIVE_CAPTURE_FAILURE_MESSAGE: &str =
+    "Não consegui gravar áudio pelo fallback nativo. Verifique o dispositivo de entrada.";
 
 fn command_in_path(program: &str) -> Option<PathBuf> {
     let path = Path::new(program);
@@ -536,6 +551,8 @@ fn voice_result(
         backend: backend.map(str::to_owned),
         command: command.map(str::to_owned),
         technical_details,
+        capture_status: None,
+        capture_backend: None,
     }
 }
 
@@ -543,11 +560,21 @@ fn missing_transcription_backend_result(detail: Option<String>) -> VoiceTranscri
     voice_result(
         VoiceTranscriptionResultStatus::MissingBackend,
         None,
-        "Nenhum backend local de transcrição foi encontrado ou ficou configurado. Instale whisper.cpp e ffmpeg, depois aponte WHISPER_CPP_MODEL para um modelo local em ~/.codex/models.",
+        "Transcrição local indisponível. Verifique ffmpeg, whisper-cli e um modelo em ~/.codex/models.",
         None,
         Some(STT_INSTALL_COMMAND),
         detail,
     )
+}
+
+fn attach_capture_status(
+    mut result: VoiceTranscriptionResult,
+    status: &str,
+    backend: Option<&str>,
+) -> VoiceTranscriptionResult {
+    result.capture_status = Some(status.to_owned());
+    result.capture_backend = backend.map(str::to_owned);
+    result
 }
 
 fn ffmpeg_convert_to_wav(input: &Path, temp_dir: &Path) -> Result<PathBuf, String> {
@@ -634,10 +661,14 @@ fn record_short_native_wav(temp_dir: &Path) -> Result<(PathBuf, String), Vec<Str
         (
             "pw-record",
             vec![
+                "--media-category".to_owned(),
+                "Capture".to_owned(),
                 "--rate".to_owned(),
                 "16000".to_owned(),
                 "--channels".to_owned(),
                 "1".to_owned(),
+                "--sample-count".to_owned(),
+                "32000".to_owned(),
                 temp_dir.join("pw-record.wav").to_string_lossy().to_string(),
             ],
             Duration::from_millis(2300),
@@ -733,8 +764,8 @@ fn stt_model_candidates(configured: Option<&str>) -> Vec<SttModelCandidate> {
     }
 
     for key in [
-        "WHISPER_CPP_MODEL",
         "WHISPER_MODEL",
+        "WHISPER_CPP_MODEL",
         "FASTER_WHISPER_MODEL",
         "VOSK_MODEL",
     ] {
@@ -745,11 +776,11 @@ fn stt_model_candidates(configured: Option<&str>) -> Vec<SttModelCandidate> {
 
     if let Ok(home) = home_dir() {
         let fixed = [
-            home.join(".codex/models/ggml-small.bin"),
             home.join(".codex/models/ggml-base.bin"),
+            home.join(".codex/models/ggml-small.bin"),
             home.join(".codex/models/ggml-tiny.bin"),
-            home.join(".local/share/whisper.cpp/ggml-small.bin"),
             home.join(".local/share/whisper.cpp/ggml-base.bin"),
+            home.join(".local/share/whisper.cpp/ggml-small.bin"),
             home.join(".local/share/whisper.cpp/ggml-tiny.bin"),
         ];
         for path in fixed {
@@ -793,11 +824,11 @@ fn stt_model_candidates(configured: Option<&str>) -> Vec<SttModelCandidate> {
     deduped
 }
 
-fn whisper_cpp_model_path(configured: Option<&str>) -> Option<PathBuf> {
+fn whisper_model_path(configured: Option<&str>) -> Option<PathBuf> {
     if let Some(path) = configured_model_path(configured).filter(|path| path.is_file()) {
         return Some(path);
     }
-    for key in ["WHISPER_CPP_MODEL", "WHISPER_MODEL"] {
+    for key in ["WHISPER_MODEL", "WHISPER_CPP_MODEL"] {
         if let Some(path) = env::var_os(key)
             .map(PathBuf::from)
             .filter(|path| path.is_file())
@@ -807,11 +838,11 @@ fn whisper_cpp_model_path(configured: Option<&str>) -> Option<PathBuf> {
     }
     let home = home_dir().ok()?;
     [
-        home.join(".codex/models/ggml-small.bin"),
         home.join(".codex/models/ggml-base.bin"),
+        home.join(".codex/models/ggml-small.bin"),
         home.join(".codex/models/ggml-tiny.bin"),
-        home.join(".local/share/whisper.cpp/ggml-small.bin"),
         home.join(".local/share/whisper.cpp/ggml-base.bin"),
+        home.join(".local/share/whisper.cpp/ggml-small.bin"),
         home.join(".local/share/whisper.cpp/ggml-tiny.bin"),
     ]
     .into_iter()
@@ -847,6 +878,44 @@ fn tool_status(
     }
 }
 
+fn stt_capture_snapshot() -> SttCaptureSnapshot {
+    let pipewire_active = systemctl_user_active("pipewire.service");
+    let wireplumber_active = systemctl_user_active("wireplumber.service");
+    let portal_active = systemctl_user_active("xdg-desktop-portal.service");
+    let native_tools = ["pw-record", "parecord", "arecord", "ffmpeg"]
+        .into_iter()
+        .filter(|program| command_in_path(program).is_some())
+        .map(str::to_owned)
+        .collect::<Vec<_>>();
+
+    let webview_ready = pipewire_active && wireplumber_active && portal_active;
+    SttCaptureSnapshot {
+        webview_status: if webview_ready { "ok" } else { "warning" }.to_owned(),
+        webview_message: if webview_ready {
+            "PipeWire, WirePlumber e portal ativos. O teste real acontece ao clicar no microfone."
+                .to_owned()
+        } else {
+            "WebView pode pedir permissão ou falhar se PipeWire, WirePlumber ou portal não estiverem ativos."
+                .to_owned()
+        },
+        native_status: if native_tools.is_empty() {
+            "warning"
+        } else {
+            "ok"
+        }
+        .to_owned(),
+        native_message: if native_tools.is_empty() {
+            "Nenhum fallback nativo encontrado: pw-record, parecord, arecord ou ffmpeg.".to_owned()
+        } else {
+            format!(
+                "Fallback nativo disponível via {}.",
+                native_tools.join(", ")
+            )
+        },
+        native_tools,
+    }
+}
+
 fn stt_config_snapshot(model_path_input: Option<&str>) -> AppResult<LocalSttConfigSnapshot> {
     let ffmpeg_binary = command_in_path("ffmpeg");
     let ffmpeg = tool_status(
@@ -873,12 +942,11 @@ fn stt_config_snapshot(model_path_input: Option<&str>) -> AppResult<LocalSttConf
 
     let whisper_cli_binary = command_in_path("whisper-cli");
     let whisper_cpp_binary = command_in_path("whisper.cpp");
-    let whisper_cli_ready = whisper_cli_binary.is_some()
-        && whisper_cpp_model_path(model_path_input).is_some()
-        && ffmpeg.installed;
-    let whisper_cpp_ready = whisper_cpp_binary.is_some()
-        && whisper_cpp_model_path(model_path_input).is_some()
-        && ffmpeg.installed;
+    let whisper_cli_installed = whisper_cli_binary.is_some();
+    let whisper_cpp_installed = whisper_cpp_binary.is_some();
+    let whisper_model = whisper_model_path(model_path_input);
+    let whisper_cli_ready = whisper_cli_installed && whisper_model.is_some() && ffmpeg.installed;
+    let whisper_cpp_ready = whisper_cpp_installed && whisper_model.is_some() && ffmpeg.installed;
     let openai_whisper_binary = command_in_path("whisper");
     let openai_whisper_ready = openai_whisper_binary.is_some()
         && openai_whisper_cached_model().is_some()
@@ -899,8 +967,12 @@ fn stt_config_snapshot(model_path_input: Option<&str>) -> AppResult<LocalSttConf
             whisper_cli_ready,
             if whisper_cli_ready {
                 "whisper-cli pronto com modelo local."
+            } else if whisper_cli_installed && !model_exists {
+                "whisper-cli encontrado; selecione um modelo em ~/.codex/models."
+            } else if whisper_cli_installed && !ffmpeg.installed {
+                "whisper-cli encontrado; ffmpeg ainda é necessário para converter áudio."
             } else {
-                "Requer binário whisper-cli, ffmpeg e modelo .bin/.gguf local."
+                "whisper-cli não encontrado."
             },
         ),
         tool_status(
@@ -910,8 +982,12 @@ fn stt_config_snapshot(model_path_input: Option<&str>) -> AppResult<LocalSttConf
             whisper_cpp_ready,
             if whisper_cpp_ready {
                 "whisper.cpp pronto com modelo local."
+            } else if whisper_cli_ready {
+                "Opcional; whisper-cli já cobre a transcrição local."
+            } else if whisper_cpp_installed && !model_exists {
+                "whisper.cpp encontrado; selecione um modelo local."
             } else {
-                "Requer binário whisper.cpp, ffmpeg e modelo .bin/.gguf local."
+                "Opcional; o backend principal é whisper-cli."
             },
         ),
         tool_status(
@@ -950,35 +1026,48 @@ fn stt_config_snapshot(model_path_input: Option<&str>) -> AppResult<LocalSttConf
     ];
     let ready = ffmpeg.installed && backends.iter().any(|backend| backend.ready);
     let message = if ready {
-        "Transcrição local pronta para teste.".to_owned()
+        match selected_model.as_ref() {
+            Some(path) => format!(
+                "Transcrição local pronta. Modelo: {}",
+                path.to_string_lossy()
+            ),
+            None => "Transcrição local pronta para teste.".to_owned(),
+        }
     } else if !ffmpeg.installed {
-        format!("Backend incompleto: instale os pacotes sugeridos ({STT_INSTALL_COMMAND}).")
+        "ffmpeg não encontrado. Ele é necessário para converter áudio antes da transcrição."
+            .to_owned()
     } else if backends.iter().all(|backend| !backend.installed) {
-        format!("Nenhum backend STT local encontrado. Sugestão Arch: {STT_INSTALL_COMMAND}.")
+        "Nenhum backend STT local encontrado. Instale whisper-cli ou configure outro backend local."
+            .to_owned()
     } else if !model_exists {
-        "Backend encontrado, mas nenhum modelo local foi detectado. Escolha um caminho de modelo em ~/.codex/models.".to_owned()
+        "Modelo Whisper não encontrado. Escolha um arquivo ggml em ~/.codex/models.".to_owned()
     } else {
         "Backend encontrado, mas ainda não está pronto para transcrição local.".to_owned()
     };
+    let selected_model_text = selected_model
+        .as_ref()
+        .map(|path| path.to_string_lossy().to_string());
 
     Ok(LocalSttConfigSnapshot {
         ffmpeg,
         backends,
-        model_path: selected_model.map(|path| path.to_string_lossy().to_string()),
+        model_path: selected_model_text,
         model_exists,
         model_candidates,
         ready,
         install_command: STT_INSTALL_COMMAND.to_owned(),
         message,
+        capture: stt_capture_snapshot(),
         checked_at: crate::models::now_iso(),
     })
 }
 
 fn clean_transcript_output(raw: &str) -> String {
-    let without_timestamps = regex::Regex::new(r"(?m)^\s*\[[^\]]+\]\s*")
-        .ok()
-        .map(|pattern| pattern.replace_all(raw, "").to_string())
-        .unwrap_or_else(|| raw.to_owned());
+    let without_timestamps =
+        regex::Regex::new(r"(?m)^\s*(?:\[[^\]]+\]|[\d:.,]+\s*-->\s*[\d:.,]+)\s*")
+            .ok()
+            .map(|pattern| pattern.replace_all(raw, "").to_string())
+            .unwrap_or_else(|| raw.to_owned());
     without_timestamps
         .lines()
         .map(str::trim)
@@ -987,6 +1076,11 @@ fn clean_transcript_output(raw: &str) -> String {
                 && !line.starts_with("whisper_")
                 && !line.starts_with("system_info:")
                 && !line.starts_with("main:")
+                && !line.starts_with("ggml_")
+                && !line.starts_with("whisper_")
+                && !line.starts_with("whisper_print_timings:")
+                && !line.starts_with("whisper_init")
+                && !line.contains("processing audio")
         })
         .collect::<Vec<_>>()
         .join(" ")
@@ -1030,19 +1124,24 @@ fn run_whisper_cpp(audio_path: &Path, model_path: Option<&str>) -> Result<Option
     else {
         return Ok(None);
     };
-    let Some(model) = whisper_cpp_model_path(model_path) else {
-        return Err("whisper-cli encontrado, mas nenhum modelo local foi encontrado. Defina WHISPER_CPP_MODEL ou coloque ggml-base.bin em ~/.codex/models.".to_owned());
+    let backend_label = binary
+        .file_name()
+        .and_then(|name| name.to_str())
+        .unwrap_or("whisper-cli")
+        .to_owned();
+    let Some(model) = whisper_model_path(model_path) else {
+        return Err("Modelo Whisper não encontrado. Coloque ggml-base.bin em ~/.codex/models ou selecione o caminho no app.".to_owned());
     };
     let output = Command::new(binary)
         .arg("-m")
-        .arg(model)
+        .arg(&model)
         .arg("-f")
         .arg(audio_path)
         .arg("-l")
         .arg("pt")
         .arg("-nt")
         .output()
-        .map_err(|error| format!("falha ao executar whisper-cli: {error}"))?;
+        .map_err(|error| format!("Não consegui executar {backend_label}: {error}"))?;
     let stdout = String::from_utf8_lossy(&output.stdout);
     let stderr = String::from_utf8_lossy(&output.stderr);
     let text = clean_transcript_output(if stdout.trim().is_empty() {
@@ -1053,9 +1152,9 @@ fn run_whisper_cpp(audio_path: &Path, model_path: Option<&str>) -> Result<Option
     if output.status.success() && !text.is_empty() {
         Ok(Some(text))
     } else {
+        let detail = stderr.trim().lines().last().unwrap_or("sem detalhe");
         Err(format!(
-            "whisper-cli falhou: {}",
-            stderr.trim().lines().last().unwrap_or("sem detalhe")
+            "Não consegui transcrever com {backend_label}. Detalhe interno: {detail}"
         ))
     }
 }
@@ -1351,6 +1450,8 @@ pub fn record_and_transcribe_short_test(
             Ok(bytes) => match transcribe_audio(bytes, Some("audio/wav".to_owned()), model_path) {
                 Ok(mut transcription) => {
                     let capture_note = format!("captura nativa: {capture_backend}");
+                    transcription.capture_status = Some("ok".to_owned());
+                    transcription.capture_backend = Some(capture_backend);
                     transcription.technical_details = Some(
                         transcription
                             .technical_details
@@ -1359,31 +1460,43 @@ pub fn record_and_transcribe_short_test(
                     );
                     Ok(transcription)
                 }
-                Err(error) => Ok(voice_result(
-                    VoiceTranscriptionResultStatus::Error,
-                    None,
-                    MIC_CAPTURE_FAILURE_MESSAGE,
+                Err(error) => Ok(attach_capture_status(
+                    voice_result(
+                        VoiceTranscriptionResultStatus::Error,
+                        None,
+                        "Captura nativa funcionou, mas a transcrição local falhou.",
+                        Some("native-capture"),
+                        None,
+                        Some(error.message),
+                    ),
+                    "ok",
                     Some("native-capture"),
-                    None,
-                    Some(error.message),
                 )),
             },
-            Err(error) => Ok(voice_result(
-                VoiceTranscriptionResultStatus::Error,
-                None,
-                MIC_CAPTURE_FAILURE_MESSAGE,
+            Err(error) => Ok(attach_capture_status(
+                voice_result(
+                    VoiceTranscriptionResultStatus::Error,
+                    None,
+                    NATIVE_CAPTURE_FAILURE_MESSAGE,
+                    Some("native-capture"),
+                    None,
+                    Some(error.to_string()),
+                ),
+                "error",
                 Some("native-capture"),
-                None,
-                Some(error.to_string()),
             )),
         },
-        Err(diagnostics) => Ok(voice_result(
-            VoiceTranscriptionResultStatus::Error,
-            None,
-            MIC_CAPTURE_FAILURE_MESSAGE,
+        Err(diagnostics) => Ok(attach_capture_status(
+            voice_result(
+                VoiceTranscriptionResultStatus::Error,
+                None,
+                NATIVE_CAPTURE_FAILURE_MESSAGE,
+                Some("native-capture"),
+                None,
+                Some(diagnostics.join("\n")),
+            ),
+            "error",
             Some("native-capture"),
-            None,
-            Some(diagnostics.join("\n")),
         )),
     };
 
@@ -1488,6 +1601,207 @@ pub fn get_file_attachment(path: String) -> Result<SelectedFileAttachment, Error
         preview_kind,
         preview_truncated,
     })
+}
+
+#[cfg(test)]
+mod stt_tests {
+    use super::*;
+    use std::{ffi::OsString, sync::Mutex};
+
+    static ENV_LOCK: Mutex<()> = Mutex::new(());
+
+    struct TestEnv {
+        root: PathBuf,
+        bin: PathBuf,
+        home: PathBuf,
+        old_home: Option<OsString>,
+        old_path: Option<OsString>,
+        old_log: Option<OsString>,
+        old_whisper_model: Option<OsString>,
+        old_whisper_cpp_model: Option<OsString>,
+        old_faster_whisper_model: Option<OsString>,
+        old_vosk_model: Option<OsString>,
+    }
+
+    impl TestEnv {
+        fn new() -> Self {
+            let root = env::temp_dir().join(format!("ailu-stt-test-{}", Uuid::new_v4()));
+            let bin = root.join("bin");
+            let home = root.join("home");
+            fs::create_dir_all(&bin).expect("bin temporário");
+            fs::create_dir_all(home.join(".codex/models")).expect("modelo temporário");
+            fs::write(home.join(".codex/models/ggml-base.bin"), "fake model").expect("modelo");
+            let old_home = env::var_os("HOME");
+            let old_path = env::var_os("PATH");
+            let old_log = env::var_os("AILU_WHISPER_ARGS_LOG");
+            let old_whisper_model = env::var_os("WHISPER_MODEL");
+            let old_whisper_cpp_model = env::var_os("WHISPER_CPP_MODEL");
+            let old_faster_whisper_model = env::var_os("FASTER_WHISPER_MODEL");
+            let old_vosk_model = env::var_os("VOSK_MODEL");
+            env::set_var("HOME", &home);
+            env::set_var("PATH", &bin);
+            env::remove_var("AILU_WHISPER_ARGS_LOG");
+            env::remove_var("WHISPER_MODEL");
+            env::remove_var("WHISPER_CPP_MODEL");
+            env::remove_var("FASTER_WHISPER_MODEL");
+            env::remove_var("VOSK_MODEL");
+            Self {
+                root,
+                bin,
+                home,
+                old_home,
+                old_path,
+                old_log,
+                old_whisper_model,
+                old_whisper_cpp_model,
+                old_faster_whisper_model,
+                old_vosk_model,
+            }
+        }
+
+        fn model_path(&self) -> PathBuf {
+            self.home.join(".codex/models/ggml-base.bin")
+        }
+
+        fn write_executable(&self, name: &str, body: &str) {
+            let path = self.bin.join(name);
+            fs::write(&path, body).expect("script temporário");
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::PermissionsExt;
+                let mut permissions = fs::metadata(&path).expect("metadata").permissions();
+                permissions.set_mode(0o755);
+                fs::set_permissions(&path, permissions).expect("chmod");
+            }
+        }
+
+        fn add_ffmpeg(&self) {
+            self.write_executable(
+                "ffmpeg",
+                "#!/bin/sh\nlast=\"\"\ninput=\"\"\nprev=\"\"\nfor arg in \"$@\"; do\n  last=\"$arg\"\n  if [ \"$prev\" = \"-i\" ]; then input=\"$arg\"; fi\n  prev=\"$arg\"\ndone\nif [ -n \"$input\" ] && [ -f \"$input\" ]; then /usr/bin/cp \"$input\" \"$last\"; else i=0; : > \"$last\"; while [ \"$i\" -lt 256 ]; do printf x >> \"$last\"; i=$((i + 1)); done; fi\n",
+            );
+        }
+
+        fn add_whisper_cli(&self) -> PathBuf {
+            let log = self.root.join("whisper-args.log");
+            env::set_var("AILU_WHISPER_ARGS_LOG", &log);
+            self.write_executable(
+                "whisper-cli",
+                "#!/bin/sh\nprintf '%s\\n' \"$@\" > \"$AILU_WHISPER_ARGS_LOG\"\nprintf '[00:00:00.000 --> 00:00:01.000] Olá mundo\\n'\n",
+            );
+            log
+        }
+
+        fn add_pw_record(&self) {
+            self.write_executable(
+                "pw-record",
+                "#!/bin/sh\nlast=\"\"\nfor arg in \"$@\"; do last=\"$arg\"; done\ni=0; : > \"$last\"; while [ \"$i\" -lt 256 ]; do printf x >> \"$last\"; i=$((i + 1)); done\n",
+            );
+        }
+    }
+
+    impl Drop for TestEnv {
+        fn drop(&mut self) {
+            match &self.old_home {
+                Some(value) => env::set_var("HOME", value),
+                None => env::remove_var("HOME"),
+            }
+            match &self.old_path {
+                Some(value) => env::set_var("PATH", value),
+                None => env::remove_var("PATH"),
+            }
+            match &self.old_log {
+                Some(value) => env::set_var("AILU_WHISPER_ARGS_LOG", value),
+                None => env::remove_var("AILU_WHISPER_ARGS_LOG"),
+            }
+            match &self.old_whisper_model {
+                Some(value) => env::set_var("WHISPER_MODEL", value),
+                None => env::remove_var("WHISPER_MODEL"),
+            }
+            match &self.old_whisper_cpp_model {
+                Some(value) => env::set_var("WHISPER_CPP_MODEL", value),
+                None => env::remove_var("WHISPER_CPP_MODEL"),
+            }
+            match &self.old_faster_whisper_model {
+                Some(value) => env::set_var("FASTER_WHISPER_MODEL", value),
+                None => env::remove_var("FASTER_WHISPER_MODEL"),
+            }
+            match &self.old_vosk_model {
+                Some(value) => env::set_var("VOSK_MODEL", value),
+                None => env::remove_var("VOSK_MODEL"),
+            }
+            let _ = fs::remove_dir_all(&self.root);
+        }
+    }
+
+    #[test]
+    fn stt_snapshot_accepts_whisper_cli_and_default_base_model() {
+        let _lock = ENV_LOCK.lock().expect("env lock");
+        let env = TestEnv::new();
+        env.add_ffmpeg();
+        env.add_whisper_cli();
+
+        let snapshot = stt_config_snapshot(None).expect("snapshot STT");
+
+        assert!(snapshot.ready);
+        assert_eq!(
+            snapshot.model_path.as_deref(),
+            Some(env.model_path().to_string_lossy().as_ref())
+        );
+        assert!(snapshot
+            .backends
+            .iter()
+            .any(|backend| backend.id == "whisper-cli" && backend.ready));
+        assert!(snapshot
+            .backends
+            .iter()
+            .any(|backend| backend.id == "whisper.cpp" && !backend.installed));
+        assert!(!snapshot.message.contains("Instale whisper.cpp"));
+    }
+
+    #[test]
+    fn transcribe_audio_uses_whisper_cli_model_and_file_arguments() {
+        let _lock = ENV_LOCK.lock().expect("env lock");
+        let env = TestEnv::new();
+        env.add_ffmpeg();
+        let log = env.add_whisper_cli();
+
+        let result = transcribe_audio(vec![1, 2, 3, 4], Some("audio/wav".to_owned()), None)
+            .expect("transcrição");
+
+        assert_eq!(result.status, VoiceTranscriptionResultStatus::Done);
+        assert_eq!(result.text.as_deref(), Some("Olá mundo"));
+        let args = fs::read_to_string(log).expect("args do whisper-cli");
+        assert!(args.contains("-m\n"));
+        assert!(args.contains(&env.model_path().to_string_lossy().to_string()));
+        assert!(args.contains("-f\n"));
+    }
+
+    #[test]
+    fn native_capture_prefers_pw_record_when_it_generates_wav() {
+        let _lock = ENV_LOCK.lock().expect("env lock");
+        let env = TestEnv::new();
+        env.add_pw_record();
+        let temp_dir = env.root.join("capture");
+        fs::create_dir_all(&temp_dir).expect("capture dir");
+
+        let (wav, backend) = record_short_native_wav(&temp_dir).expect("captura nativa");
+
+        assert_eq!(backend, "pw-record");
+        assert!(recorded_file_ok(&wav));
+    }
+
+    #[test]
+    fn native_capture_reports_human_failure_when_no_tool_works() {
+        let _lock = ENV_LOCK.lock().expect("env lock");
+        let env = TestEnv::new();
+        let temp_dir = env.root.join("capture-fail");
+        fs::create_dir_all(&temp_dir).expect("capture dir");
+
+        let diagnostics = record_short_native_wav(&temp_dir).expect_err("deve falhar");
+
+        assert!(diagnostics.iter().any(|line| line.contains("pw-record")));
+    }
 }
 
 #[cfg(test)]
@@ -1795,13 +2109,6 @@ pub async fn get_app_health_check(
     let icon_exists = Path::new(&base_dir)
         .join("src-tauri/icons/512x512.png")
         .is_file();
-    let pipewire_active = systemctl_user_active("pipewire.service");
-    let wireplumber_active = systemctl_user_active("wireplumber.service");
-    let portal_active = systemctl_user_active("xdg-desktop-portal.service");
-    let native_capture_tools = ["pw-record", "parecord", "arecord", "ffmpeg"]
-        .into_iter()
-        .filter(|program| command_in_path(program).is_some())
-        .collect::<Vec<_>>();
     let stt_backend_status = match stt.as_ref() {
         Some(snapshot) if snapshot.ready => "ok",
         Some(snapshot) if !snapshot.ffmpeg.installed => "error",
@@ -1811,6 +2118,9 @@ pub async fn get_app_health_check(
     let stt_backend_detail = stt
         .as_ref()
         .map(|snapshot| {
+            if snapshot.ready {
+                return snapshot.message.clone();
+            }
             let model = snapshot
                 .model_path
                 .clone()
@@ -1818,30 +2128,24 @@ pub async fn get_app_health_check(
             format!("{} Modelo: {model}", snapshot.message)
         })
         .unwrap_or_else(|| "Diagnóstico STT indisponível.".to_owned());
-    let webview_capture_status = if pipewire_active && wireplumber_active && portal_active {
-        "ok"
+    let stt_backend_action = if stt_backend_status == "ok" {
+        Some("Gravar teste curto")
     } else {
-        "warning"
+        Some("Configurar transcrição local")
     };
-    let webview_capture_detail = if pipewire_active && wireplumber_active && portal_active {
-        "PipeWire, WirePlumber e portal ativos; teste real acontece ao clicar no microfone."
-            .to_owned()
+    let stt_backend_command = if stt_backend_status == "ok" {
+        None
     } else {
-        "Captura WebView pode falhar até PipeWire, WirePlumber e portal estarem ativos.".to_owned()
+        stt.as_ref()
+            .map(|snapshot| snapshot.install_command.as_str())
     };
-    let native_capture_status = if native_capture_tools.is_empty() {
-        "warning"
-    } else {
-        "ok"
-    };
-    let native_capture_detail = if native_capture_tools.is_empty() {
-        "Nenhum fallback nativo encontrado: pw-record, parecord, arecord ou ffmpeg.".to_owned()
-    } else {
-        format!(
-            "Fallback nativo disponível via {}.",
-            native_capture_tools.join(", ")
-        )
-    };
+    let capture = stt
+        .as_ref()
+        .map(|snapshot| snapshot.capture.clone())
+        .unwrap_or_else(stt_capture_snapshot);
+    let pipewire_active = systemctl_user_active("pipewire.service");
+    let wireplumber_active = systemctl_user_active("wireplumber.service");
+    let portal_active = systemctl_user_active("xdg-desktop-portal.service");
 
     let mut items = vec![
         health_item(
@@ -1924,23 +2228,22 @@ pub async fn get_app_health_check(
             "Backend STT",
             stt_backend_status,
             stt_backend_detail,
-            Some("Configurar transcrição local"),
-            stt.as_ref()
-                .map(|snapshot| snapshot.install_command.as_str()),
+            stt_backend_action,
+            stt_backend_command,
         ),
         health_item_with_status(
             "microphone-webview",
             "Captura WebView",
-            webview_capture_status,
-            webview_capture_detail,
+            &capture.webview_status,
+            capture.webview_message.clone(),
             Some("Testar microfone no composer"),
             Some("systemctl --user status pipewire wireplumber xdg-desktop-portal"),
         ),
         health_item_with_status(
             "microphone-native",
             "Captura nativa",
-            native_capture_status,
-            native_capture_detail,
+            &capture.native_status,
+            capture.native_message.clone(),
             Some("Gravar teste curto"),
             Some("pw-record / parecord / arecord / ffmpeg"),
         ),

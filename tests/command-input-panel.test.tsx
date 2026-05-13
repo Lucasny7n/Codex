@@ -84,12 +84,21 @@ describe('CommandInputPanel', () => {
       ready: false,
       installCommand: 'sudo pacman -S ffmpeg whisper.cpp',
       message: 'Nenhum backend STT local encontrado.',
+      capture: {
+        webviewStatus: 'ok',
+        webviewMessage: 'PipeWire, WirePlumber e portal ativos.',
+        nativeStatus: 'ok',
+        nativeMessage: 'Fallback nativo disponível via pw-record.',
+        nativeTools: ['pw-record'],
+      },
       checkedAt: new Date().toISOString(),
     });
     vi.mocked(api.recordAndTranscribeShortTest).mockResolvedValue({
       status: 'error',
-      message: 'Não consegui acessar o microfone. Verifique PipeWire/WirePlumber ou selecione outro dispositivo.',
+      message: 'Não consegui gravar áudio pelo fallback nativo. Verifique o dispositivo de entrada.',
       backend: 'native-capture',
+      captureStatus: 'error',
+      captureBackend: 'pw-record',
     });
   });
 
@@ -438,11 +447,81 @@ describe('CommandInputPanel', () => {
 
     fireEvent.click(screen.getByLabelText('Entrada por voz'));
 
-    expect(await screen.findByRole('alert')).toHaveTextContent('Não consegui acessar o microfone');
+    expect(await screen.findByRole('alert')).toHaveTextContent('Não consegui gravar áudio pelo fallback nativo');
     expect(api.recordAndTranscribeShortTest).toHaveBeenCalled();
     fireEvent.click(screen.getByText('Configurar transcrição local'));
     expect(await screen.findByRole('dialog', { name: 'Transcrição e microfone' })).toBeInTheDocument();
     expect(screen.getByText('Permissão no Linux/Hyprland')).toBeInTheDocument();
+  });
+
+  it('não mostra erro falso de modelo Whisper quando o backend está pronto', async () => {
+    vi.mocked(api.getSttConfigState).mockResolvedValueOnce({
+      ffmpeg: {
+        id: 'ffmpeg',
+        label: 'ffmpeg',
+        installed: true,
+        ready: true,
+        message: 'ffmpeg disponível.',
+      },
+      backends: [
+        {
+          id: 'whisper-cli',
+          label: 'whisper-cli',
+          installed: true,
+          ready: true,
+          message: 'whisper-cli pronto com modelo local.',
+        },
+      ],
+      modelPath: '/home/lucas/.codex/models/ggml-base.bin',
+      modelExists: true,
+      modelCandidates: [
+        {
+          label: 'ggml-base.bin',
+          path: '/home/lucas/.codex/models/ggml-base.bin',
+          source: 'default',
+          exists: true,
+        },
+      ],
+      ready: true,
+      installCommand: 'sudo pacman -S ffmpeg whisper.cpp',
+      message: 'Transcrição local pronta. Modelo: /home/lucas/.codex/models/ggml-base.bin',
+      capture: {
+        webviewStatus: 'ok',
+        webviewMessage: 'PipeWire, WirePlumber e portal ativos.',
+        nativeStatus: 'ok',
+        nativeMessage: 'Fallback nativo disponível via pw-record.',
+        nativeTools: ['pw-record'],
+      },
+      checkedAt: new Date().toISOString(),
+    });
+
+    Object.defineProperty(window.navigator, 'mediaDevices', {
+      configurable: true,
+      value: {
+        getUserMedia: vi.fn().mockRejectedValue(new DOMException('denied', 'NotAllowedError')),
+      },
+    });
+    vi.stubGlobal('MediaRecorder', MockMediaRecorder);
+
+    render(
+      <CommandInputPanel
+        busy={false}
+        privilegedActions={[]}
+        actionJsonExamples={{}}
+        onSendOrder={vi.fn()}
+        onExecuteCommand={vi.fn()}
+        onRequestPrivilegedAction={vi.fn()}
+      />,
+    );
+
+    fireEvent.click(screen.getByLabelText('Entrada por voz'));
+    fireEvent.click(await screen.findByText('Configurar transcrição local'));
+
+    expect(await screen.findByRole('dialog', { name: 'Transcrição e microfone' })).toBeInTheDocument();
+    expect(screen.getByText('Transcrição local pronta. Modelo: /home/lucas/.codex/models/ggml-base.bin')).toBeInTheDocument();
+    expect(screen.getByText('/home/lucas/.codex/models/ggml-base.bin')).toBeInTheDocument();
+    expect(screen.queryByText('Modelo Whisper não encontrado.')).not.toBeInTheDocument();
+    expect(screen.queryByText('Comando Arch sugerido')).not.toBeInTheDocument();
   });
 
   it('fallback nativo mockado adiciona texto transcrito ao composer', async () => {
@@ -458,6 +537,8 @@ describe('CommandInputPanel', () => {
       text: 'texto nativo reconhecido',
       message: 'ok',
       backend: 'whisper-cli',
+      captureStatus: 'ok',
+      captureBackend: 'pw-record',
     });
 
     render(

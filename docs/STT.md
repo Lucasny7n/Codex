@@ -7,7 +7,7 @@ Voice input has two separate layers.
 Backend STT needs:
 
 - `ffmpeg`.
-- A local backend such as `whisper-cli`, `whisper.cpp`, `whisper`, `faster-whisper` or Vosk.
+- A local backend. `whisper-cli` is the primary supported path; `whisper.cpp`, `whisper`, `faster-whisper` and Vosk are optional alternatives.
 - A local model path, commonly `~/.codex/models/ggml-base.bin`.
 
 Check:

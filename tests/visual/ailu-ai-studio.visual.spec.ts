@@ -219,14 +219,23 @@ async function installTauriMock(page: Page): Promise<void> {
             ready: false,
             installCommand: 'sudo pacman -S --needed ffmpeg whisper.cpp',
             message: 'Nenhum backend STT local encontrado.',
+            capture: {
+              webviewStatus: 'ok',
+              webviewMessage: 'PipeWire, WirePlumber e portal ativos.',
+              nativeStatus: 'ok',
+              nativeMessage: 'Fallback nativo disponível via pw-record.',
+              nativeTools: ['pw-record'],
+            },
             checkedAt: now,
           };
         }
         if (cmd === 'record_and_transcribe_short_test') {
           return {
             status: 'error',
-            message: 'Não consegui acessar o microfone. Verifique PipeWire/WirePlumber ou selecione outro dispositivo.',
+            message: 'Não consegui gravar áudio pelo fallback nativo. Verifique o dispositivo de entrada.',
             backend: 'native-capture',
+            captureStatus: 'error',
+            captureBackend: 'pw-record',
           };
         }
         if (cmd === 'get_app_health_check') {
@@ -543,7 +552,7 @@ test('captura estado de configuração STT', async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   await openApp(page, 'dark');
   await page.getByLabel('Entrada por voz').click();
-  await expect(page.getByText(/Não consegui acessar o microfone|Backend local não configurado|Microfone indisponível/)).toBeVisible();
+  await expect(page.getByText(/Não consegui gravar áudio pelo fallback nativo|Backend local não configurado|Microfone indisponível/)).toBeVisible();
   await screenshot(page, 'pass-15-mic-permission-flow');
   await page.getByText(/Configurar microfone|Configurar transcrição local/).click();
   await expect(page.getByRole('dialog', { name: 'Transcrição e microfone' })).toBeVisible();

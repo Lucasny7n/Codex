@@ -173,6 +173,8 @@ export interface VoiceTranscriptionResult {
   backend?: string;
   command?: string;
   technicalDetails?: string;
+  captureStatus?: 'ok' | 'error';
+  captureBackend?: string;
 }
 
 export interface LocalSttToolStatus {
@@ -191,6 +193,14 @@ export interface LocalSttModelCandidate {
   exists: boolean;
 }
 
+export interface LocalSttCaptureSnapshot {
+  webviewStatus: 'ok' | 'warning' | 'error';
+  webviewMessage: string;
+  nativeStatus: 'ok' | 'warning' | 'error';
+  nativeMessage: string;
+  nativeTools: string[];
+}
+
 export interface LocalSttConfigSnapshot {
   ffmpeg: LocalSttToolStatus;
   backends: LocalSttToolStatus[];
@@ -200,6 +210,7 @@ export interface LocalSttConfigSnapshot {
   ready: boolean;
   installCommand: string;
   message: string;
+  capture: LocalSttCaptureSnapshot;
   checkedAt: string;
 }
 

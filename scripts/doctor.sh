@@ -37,8 +37,12 @@ systemd_user_unit() {
     warn "$unit: systemctl not found"
     return
   fi
-  if systemctl --user is-active "$unit" >/dev/null 2>&1; then
+  local output
+  output="$(systemctl --user is-active "$unit" 2>&1 || true)"
+  if [ "$output" = "active" ]; then
     ok "$unit: active"
+  elif printf "%s" "$output" | grep -qiE "operation not permitted|failed to connect"; then
+    warn "$unit: user bus not readable from this shell; verify in the desktop session"
   else
     warn "$unit: inactive or unavailable"
   fi
@@ -105,16 +109,37 @@ fi
 
 section "STT and microphone"
 print_cmd ffmpeg
-print_cmd whisper-cli
-print_cmd whisper.cpp
+if has_cmd whisper-cli; then
+  ok "whisper-cli: $(command -v whisper-cli)"
+else
+  warn "whisper-cli: not found (Arch package usually: whisper.cpp)"
+fi
+if has_cmd whisper.cpp; then
+  ok "whisper.cpp: $(command -v whisper.cpp)"
+elif has_cmd whisper-cli; then
+  ok "whisper.cpp: optional, whisper-cli is available"
+else
+  warn "whisper.cpp: not found"
+fi
 print_cmd pw-record
 print_cmd parecord
 print_cmd arecord
-MODEL_PATH="${HOME}/.codex/models/ggml-base.bin"
-if [ -f "$MODEL_PATH" ]; then
+MODEL_PATH=""
+for candidate in \
+  "${WHISPER_MODEL:-}" \
+  "${WHISPER_CPP_MODEL:-}" \
+  "${HOME}/.codex/models/ggml-base.bin" \
+  "${HOME}/.codex/models/ggml-small.bin" \
+  "${HOME}/.codex/models/ggml-tiny.bin"; do
+  if [ -n "$candidate" ] && [ -f "$candidate" ]; then
+    MODEL_PATH="$candidate"
+    break
+  fi
+done
+if [ -n "$MODEL_PATH" ]; then
   ok "STT model: $MODEL_PATH"
 else
-  warn "STT model missing: $MODEL_PATH"
+  warn "STT model missing: expected ~/.codex/models/ggml-base.bin or WHISPER_MODEL"
 fi
 systemd_user_unit pipewire.service
 systemd_user_unit wireplumber.service
