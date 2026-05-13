@@ -388,6 +388,37 @@ describe('CommandInputPanel', () => {
     expect(screen.getByText('sudo pacman -S ffmpeg whisper.cpp')).toBeInTheDocument();
   });
 
+  it('limpa erro bruto de STT antes de mostrar na UI', async () => {
+    Object.defineProperty(window.navigator, 'mediaDevices', {
+      configurable: true,
+      value: {
+        getUserMedia: vi.fn().mockResolvedValue({
+          getTracks: () => [{ stop: vi.fn() }],
+        }),
+      },
+    });
+    vi.stubGlobal('MediaRecorder', MockMediaRecorder);
+    vi.mocked(api.transcribeAudio).mockRejectedValue(new Error('{"error":"stack trace interno","stack":"secret"}\nStack trace: linha 1'));
+
+    render(
+      <CommandInputPanel
+        busy={false}
+        privilegedActions={[]}
+        actionJsonExamples={{}}
+        onSendOrder={vi.fn()}
+        onExecuteCommand={vi.fn()}
+        onRequestPrivilegedAction={vi.fn()}
+      />,
+    );
+
+    fireEvent.click(screen.getByLabelText('Entrada por voz'));
+    fireEvent.click(await screen.findByLabelText('Parar transcrição de voz'));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('Falha ao transcrever áudio local.');
+    expect(screen.queryByText(/stack trace interno/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Stack trace/i)).not.toBeInTheDocument();
+  });
+
   it('orienta configuração quando a permissão do microfone é negada', async () => {
     Object.defineProperty(window.navigator, 'mediaDevices', {
       configurable: true,

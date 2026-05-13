@@ -56,31 +56,21 @@ interface TopBarProps {
 function ModelOptionRow({
   option,
   active,
-  showConfigure,
-  onHover,
   onClick,
   onConfigure,
 }: {
   option: TopBarModelOption;
   active: boolean;
-  showConfigure: boolean;
-  onHover: (active: boolean) => void;
   onClick: () => void;
   onConfigure: () => void;
 }): JSX.Element {
   const canOpenConfig = !option.available;
   return (
     <div
-      className={`model-picker-option-row ${active ? 'active' : ''} ${option.available ? '' : 'disabled'} ${showConfigure ? 'show-config' : ''}`}
+      className={`model-picker-option-row ${active ? 'active' : ''} ${option.available ? '' : 'disabled'}`}
       data-testid={`model-row-${option.id}`}
       data-source={option.source}
       data-provider-type={option.providerType}
-      onMouseEnter={() => onHover(true)}
-      onMouseLeave={() => onHover(false)}
-      onFocus={() => onHover(true)}
-      onBlur={(event) => {
-        if (!event.currentTarget.contains(event.relatedTarget)) onHover(false);
-      }}
     >
       <button
         type="button"
@@ -98,23 +88,21 @@ function ModelOptionRow({
           </small>
         </span>
       </button>
-      {showConfigure ? (
-        <button
-          type="button"
-          className="model-picker-row-config"
-          aria-label={`Configurar ${option.label}`}
-          onMouseDown={(event) => {
-            event.preventDefault();
-            event.stopPropagation();
-          }}
-          onClick={(event) => {
-            event.stopPropagation();
-            onConfigure();
-          }}
-        >
-          ⋯
-        </button>
-      ) : <span className="model-picker-row-config-placeholder" aria-hidden="true" />}
+      <button
+        type="button"
+        className="model-picker-row-config"
+        aria-label={`Configurar ${option.label}`}
+        onMouseDown={(event) => {
+          event.preventDefault();
+          event.stopPropagation();
+        }}
+        onClick={(event) => {
+          event.stopPropagation();
+          onConfigure();
+        }}
+      >
+        ⋯
+      </button>
     </div>
   );
 }
@@ -239,7 +227,6 @@ export function TopBar({
   const [profileMenuId, setProfileMenuId] = useState<string>();
   const [configStatus, setConfigStatus] = useState<'idle' | 'testing' | 'ready' | 'error'>('idle');
   const [configError, setConfigError] = useState<string>();
-  const [hoveredOptionId, setHoveredOptionId] = useState<string>();
   const [ollamaSearchResults, setOllamaSearchResults] = useState<OllamaLibrarySearchResult[]>([]);
   const [ollamaSearchLoading, setOllamaSearchLoading] = useState(false);
   const providerStatusLabel = providerStatus?.state.replace('_', ' ') ?? 'offline';
@@ -512,6 +499,7 @@ export function TopBar({
           ...target.option,
           installed: true,
           available: true,
+          status: 'ready',
           statusLabel: 'Instalado',
         },
       });
@@ -549,7 +537,6 @@ export function TopBar({
   function setPickerTab(mode: ExecutionMode): void {
     setPickerMode(mode);
     setQuery('');
-    setHoveredOptionId(undefined);
   }
 
   function pickerEmptyTitle(): string {
@@ -618,8 +605,6 @@ export function TopBar({
                     key={option.id}
                     option={option}
                     active={executionMode === pickerMode && (selectedModelId === option.id || selectedModelId === option.modelId || selectedModelLabel === option.label)}
-                    showConfigure={hoveredOptionId === option.id}
-                    onHover={(visible) => setHoveredOptionId(visible ? option.id : undefined)}
                     onClick={() => {
                       setModelMenuOpen(false);
                       onSelectModel(pickerMode, option.id);

@@ -52,6 +52,14 @@ describe('ChatPanel', () => {
     expect(screen.getByLabelText('Assistente respondendo')).toBeInTheDocument();
   });
 
+  it('renderiza markdown simples sem bolha técnica pesada', () => {
+    render(<ChatPanel session={chat('### Resultado\n\n- Markdown limpo\n- Ações discretas\n\n`const status = "ok"`')} />);
+
+    expect(screen.getByRole('heading', { name: 'Resultado' })).toBeInTheDocument();
+    expect(screen.getByText('Markdown limpo')).toBeInTheDocument();
+    expect(screen.getByText('const status = "ok"')).toBeInTheDocument();
+  });
+
   it('traduz 429 como cota sem JSON cru', () => {
     const onOpenEnvironment = vi.fn();
 

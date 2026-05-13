@@ -111,6 +111,18 @@ function localTranscriptionMessage(message?: string, command?: string): string {
   return command ? `${reason} Configurar transcrição local: ${command}` : `${reason} Configure transcrição local.`;
 }
 
+function cleanInlineErrorMessage(message: string | undefined, fallback: string): string {
+  const firstUsefulLine = (message ?? '')
+    .split('\n')
+    .map((line) => line.trim())
+    .find((line) => line && !/^(stack trace|payload|traceback|at\s)/iu.test(line));
+  if (!firstUsefulLine) return fallback;
+  if (/^[{[]/u.test(firstUsefulLine) || /"stack"|"trace"|panic|backtrace/iu.test(firstUsefulLine)) {
+    return fallback;
+  }
+  return firstUsefulLine.length > 180 ? `${firstUsefulLine.slice(0, 177)}...` : firstUsefulLine;
+}
+
 function mimeTypeForAttachment(attachment: SelectedFileAttachment): string | undefined {
   const extension = attachment.extension?.toLowerCase();
   if (attachment.kind === 'text') return 'text/plain';
@@ -197,7 +209,7 @@ export function CommandInputPanel({
         setSttModelPath(snapshot.modelPath);
       }
     } catch (cause) {
-      setSttSetupError(cause instanceof Error ? cause.message : 'Falha ao detectar transcrição local.');
+      setSttSetupError(cleanInlineErrorMessage(cause instanceof Error ? cause.message : undefined, 'Falha ao detectar transcrição local.'));
     } finally {
       setSttSetupLoading(false);
     }
@@ -265,7 +277,7 @@ export function CommandInputPanel({
       await transcribeBlob(new Blob(chunks, { type: recorder.mimeType || 'audio/webm' }));
       setSttMicMessage('Teste concluído. Se houve fala, ela foi adicionada ao composer.');
     } catch (cause) {
-      setSttMicMessage(cause instanceof Error ? cause.message : 'Teste de transcrição não concluído.');
+      setSttMicMessage(cleanInlineErrorMessage(cause instanceof Error ? cause.message : undefined, 'Teste de transcrição não concluído.'));
     } finally {
       setSttTestRecording(false);
     }
@@ -357,7 +369,7 @@ export function CommandInputPanel({
       setVoiceMessage(result.message || 'Não foi possível transcrever o áudio local.');
     } catch (cause) {
       setVoiceState('error');
-      setVoiceMessage(cause instanceof Error ? cause.message : 'Falha ao transcrever áudio local.');
+      setVoiceMessage(cleanInlineErrorMessage(cause instanceof Error ? cause.message : undefined, 'Falha ao transcrever áudio local.'));
     }
   }
 

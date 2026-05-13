@@ -130,7 +130,7 @@ describe('TopBar model selector', () => {
     expect(screen.getAllByText('Download')).not.toHaveLength(0);
     expect(screen.queryByText('Disponível para pull')).not.toBeInTheDocument();
 
-    fireEvent.mouseEnter(screen.getByTestId('model-row-ollama-download:gpt-oss:20b'));
+    expect(screen.getByLabelText('Configurar gpt-oss:20b')).toBeInTheDocument();
     fireEvent.click(screen.getByLabelText('Configurar gpt-oss:20b'));
 
     expect(onSelectModel).not.toHaveBeenCalled();

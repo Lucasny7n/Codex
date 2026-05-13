@@ -255,6 +255,8 @@ describe('SettingsPanel', () => {
     expect(screen.getByText('GPT-5.4 Mini via OpenRouter')).toBeInTheDocument();
     expect(screen.getByText('Qwen2.5 Coder 1.5B')).toBeInTheDocument();
     expect(screen.getByText('Gemini 2.5 Flash')).toBeInTheDocument();
+    expect(screen.getByLabelText('Buscar no catálogo de modelos')).toBeInTheDocument();
+    expect(screen.getByText('Mostrando apenas modelos em destaque. Use busca para ver mais.')).toBeInTheDocument();
     expect(screen.getByText('Comprimento máximo do contexto')).toBeInTheDocument();
     expect(screen.getByText('Fornecedor')).toBeInTheDocument();
     expect(screen.queryByText('API Key')).not.toBeInTheDocument();
@@ -416,6 +418,7 @@ describe('SettingsPanel', () => {
     await waitFor(() => {
       expect(api.getAppHealthCheck).toHaveBeenCalled();
       expect(screen.getByText('Ollama API ativa')).toBeInTheDocument();
+      expect(screen.getByText('OK')).toBeInTheDocument();
       expect(screen.getByText('http://127.0.0.1:11434')).toBeInTheDocument();
     });
   });

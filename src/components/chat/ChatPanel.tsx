@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import type { AgentSession, ChatMessage } from '../../types/domain';
 import { UiIcon } from '../common/AppIcons';
 import { PopupMenu } from '../common/PremiumUI';
@@ -116,6 +116,100 @@ function ProviderErrorCard({ error, onOpenEnvironment }: { error: ParsedProvider
   );
 }
 
+function renderInlineMarkdown(text: string, keyPrefix: string): ReactNode[] {
+  const nodes: ReactNode[] = [];
+  const pattern = /`([^`]+)`/gu;
+  let lastIndex = 0;
+  let match: RegExpExecArray | null;
+  while ((match = pattern.exec(text)) !== null) {
+    if (match.index > lastIndex) nodes.push(text.slice(lastIndex, match.index));
+    nodes.push(<code key={`${keyPrefix}-${match.index}`}>{match[1]}</code>);
+    lastIndex = match.index + match[0].length;
+  }
+  if (lastIndex < text.length) nodes.push(text.slice(lastIndex));
+  return nodes.length ? nodes : [text];
+}
+
+function MarkdownContent({ content }: { content: string }): JSX.Element {
+  const blocks: ReactNode[] = [];
+  const paragraph: string[] = [];
+  const bullets: string[] = [];
+  const codeLines: string[] = [];
+  let inCode = false;
+
+  function flushParagraph(): void {
+    if (!paragraph.length) return;
+    const text = paragraph.join(' ');
+    blocks.push(<p key={`p-${blocks.length}`}>{renderInlineMarkdown(text, `p-${blocks.length}`)}</p>);
+    paragraph.length = 0;
+  }
+
+  function flushBullets(): void {
+    if (!bullets.length) return;
+    blocks.push(
+      <ul key={`ul-${blocks.length}`}>
+        {bullets.map((item, index) => (
+          <li key={`${index}-${item}`}>{renderInlineMarkdown(item, `li-${blocks.length}-${index}`)}</li>
+        ))}
+      </ul>,
+    );
+    bullets.length = 0;
+  }
+
+  function flushCode(): void {
+    if (!codeLines.length) return;
+    blocks.push(
+      <pre key={`code-${blocks.length}`}>
+        <code>{codeLines.join('\n')}</code>
+      </pre>,
+    );
+    codeLines.length = 0;
+  }
+
+  for (const line of content.split('\n')) {
+    if (/^\s*```/u.test(line)) {
+      if (inCode) flushCode();
+      else {
+        flushParagraph();
+        flushBullets();
+      }
+      inCode = !inCode;
+      continue;
+    }
+    if (inCode) {
+      codeLines.push(line);
+      continue;
+    }
+    const trimmed = line.trim();
+    if (!trimmed) {
+      flushParagraph();
+      flushBullets();
+      continue;
+    }
+    const heading = trimmed.match(/^(#{1,3})\s+(.+)$/u);
+    if (heading) {
+      flushParagraph();
+      flushBullets();
+      blocks.push(<h3 key={`h-${blocks.length}`}>{renderInlineMarkdown(heading[2], `h-${blocks.length}`)}</h3>);
+      continue;
+    }
+    const bullet = trimmed.match(/^[-*]\s+(.+)$/u);
+    if (bullet) {
+      flushParagraph();
+      bullets.push(bullet[1]);
+      continue;
+    }
+    flushBullets();
+    paragraph.push(trimmed);
+  }
+
+  flushParagraph();
+  flushBullets();
+  flushCode();
+
+  return <div className="message-content message-markdown">{blocks.length ? blocks : content}</div>;
+}
+
 function AssistantTypingIndicator(): JSX.Element {
   return (
     <div className="message-row assistant typing-row" aria-label="Assistente respondendo">
@@ -172,7 +266,7 @@ export function ChatPanel({ session, emptyTitle = 'O que gostaria de explorar?',
                 {providerError ? (
                   <ProviderErrorCard error={providerError} onOpenEnvironment={onOpenEnvironment} />
                 ) : (
-                  <div className="message-content">{cleanVisibleContent(message.content)}</div>
+                  <MarkdownContent content={cleanVisibleContent(message.content)} />
                 )}
                 {message.attachments?.filter((attachment) => !attachment.hidden).length ? (
                   <div className="message-attachment-list" aria-label="Anexos da mensagem">

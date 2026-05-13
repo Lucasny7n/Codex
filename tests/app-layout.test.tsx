@@ -442,7 +442,6 @@ describe('App layout visibility', () => {
 
     fireEvent.click(screen.getByTitle(/mock-development-model/));
     fireEvent.change(screen.getByLabelText('Buscar modelo ou provedor'), { target: { value: 'GPT-5.5' } });
-    fireEvent.mouseEnter(screen.getByTestId('model-row-gpt-5.5'));
     fireEvent.click(screen.getByLabelText('Configurar GPT-5.5'));
 
     expect(screen.getByRole('dialog', { name: 'GPT-5.5' })).toBeInTheDocument();
@@ -490,10 +489,9 @@ describe('App layout visibility', () => {
 
     fireEvent.click(screen.getByTitle(/mock-development-model/));
     fireEvent.change(screen.getByLabelText('Buscar modelo ou provedor'), { target: { value: 'GPT-5.5' } });
-    expect(screen.queryByLabelText('Configurar GPT-5.5')).not.toBeInTheDocument();
     const gptRow = screen.getByTestId('model-row-gpt-5.5');
-    fireEvent.mouseEnter(gptRow);
-    expect(gptRow).toHaveClass('show-config');
+    expect(gptRow).toBeInTheDocument();
+    expect(screen.getByLabelText('Configurar GPT-5.5')).toBeInTheDocument();
     fireEvent.click(screen.getByLabelText('Configurar GPT-5.5'));
 
     expect(screen.getByRole('dialog', { name: 'GPT-5.5' })).toBeInTheDocument();
@@ -549,8 +547,7 @@ describe('App layout visibility', () => {
     expect(screen.getByText('qwen2.5-coder:7b')).toBeInTheDocument();
     expect(screen.getByText('Download')).toBeInTheDocument();
     expect(screen.queryByText('Disponível para pull')).not.toBeInTheDocument();
-    expect(screen.queryByLabelText('Configurar qwen2.5-coder:7b')).not.toBeInTheDocument();
-    fireEvent.mouseEnter(screen.getByTestId('model-row-ollama-download:qwen2.5-coder:7b'));
+    expect(screen.getByLabelText('Configurar qwen2.5-coder:7b')).toBeInTheDocument();
     fireEvent.click(screen.getByLabelText('Configurar qwen2.5-coder:7b'));
 
     expect(screen.getByRole('dialog', { name: 'qwen2.5-coder:7b' })).toBeInTheDocument();
@@ -612,7 +609,6 @@ describe('App layout visibility', () => {
 
     fireEvent.click(screen.getByTitle(/mock-development-model/));
     fireEvent.change(screen.getByLabelText('Buscar modelo ou provedor'), { target: { value: 'GPT-5.5' } });
-    fireEvent.mouseEnter(screen.getByTestId('model-row-gpt-5.5'));
     fireEvent.click(screen.getByLabelText('Configurar GPT-5.5'));
 
     expect(screen.getByText('API keys')).toBeInTheDocument();

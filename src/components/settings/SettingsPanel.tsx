@@ -167,6 +167,24 @@ function normalizeSettingsTab(tab?: SettingsTab): SettingsTab {
   return tab && SETTINGS_TABS.some((item) => item.id === tab) ? tab : 'general';
 }
 
+function cleanSettingsErrorMessage(message: string | undefined, fallback: string): string {
+  const firstUsefulLine = (message ?? '')
+    .split('\n')
+    .map((line) => line.trim())
+    .find((line) => line && !/^(stack trace|payload|traceback|at\s)/iu.test(line));
+  if (!firstUsefulLine) return fallback;
+  if (/^[{[]/u.test(firstUsefulLine) || /"stack"|"trace"|panic|backtrace/iu.test(firstUsefulLine)) {
+    return fallback;
+  }
+  return firstUsefulLine.length > 180 ? `${firstUsefulLine.slice(0, 177)}...` : firstUsefulLine;
+}
+
+function healthStatusLabel(status: 'ok' | 'warning' | 'error'): string {
+  if (status === 'ok') return 'OK';
+  if (status === 'warning') return 'Atenção';
+  return 'Erro';
+}
+
 function preference(settings: AppSettings): AppPersonalizationSettings {
   return { ...DEFAULT_PERSONALIZATION, ...settings.personalization };
 }
@@ -279,6 +297,7 @@ export function SettingsPanel({
   const [fallbackDraft, setFallbackDraft] = useState(() => settings ? fallbackText(settings) : '');
   const [managerRuntimeOverride, setManagerRuntimeOverride] = useState<LocalRuntimeSnapshot>();
   const [managerQuery, setManagerQuery] = useState('');
+  const [catalogQuery, setCatalogQuery] = useState('');
   const [managerBusyId, setManagerBusyId] = useState<string>();
   const [managerProgress, setManagerProgress] = useState<Record<string, LocalModelInstallProgress>>({});
   const [managerMessage, setManagerMessage] = useState<string>();
@@ -357,6 +376,20 @@ export function SettingsPanel({
     })
     : managerInstalled;
   const managerPullCandidate = buildPullCandidateFromQuery(managerQuery, managerRuntime);
+  const normalizedCatalogQuery = catalogQuery.trim().toLowerCase();
+  const visibleModelItems = modelItems.filter((model) => {
+    if (!normalizedCatalogQuery) return FEATURED_MODEL_IDS.includes(model.id);
+    return [
+      model.id,
+      model.modelId,
+      model.displayName,
+      model.providerLabel,
+      model.mode === 'local' ? model.family : undefined,
+      model.recommendedUse,
+      ...model.tags,
+      ...model.bestFor,
+    ].filter(Boolean).join(' ').toLowerCase().includes(normalizedCatalogQuery);
+  });
 
   async function commit(patch: Partial<AppSettings>): Promise<void> {
     setInlineError(undefined);
@@ -400,7 +433,7 @@ export function SettingsPanel({
       setManagerRuntimeOverride(snapshot);
       setManagerMessage(`Ollama atualizado: ${snapshot.installedModels.length} modelo(s) instalado(s).`);
     } catch (cause) {
-      setManagerError(cause instanceof Error ? cause.message : 'Falha ao atualizar Ollama.');
+      setManagerError(cleanSettingsErrorMessage(cause instanceof Error ? cause.message : undefined, 'Falha ao atualizar Ollama.'));
     } finally {
       setManagerBusyId(undefined);
     }
@@ -420,7 +453,7 @@ export function SettingsPanel({
       }
       setManagerMessage(`${target} instalado e confirmado por /api/tags.`);
     } catch (cause) {
-      setManagerError(cause instanceof Error ? cause.message : `Falha ao baixar ${target}.`);
+      setManagerError(cleanSettingsErrorMessage(cause instanceof Error ? cause.message : undefined, `Falha ao baixar ${target}.`));
     } finally {
       setManagerBusyId(undefined);
     }
@@ -436,7 +469,7 @@ export function SettingsPanel({
       setManagerRemoveConfirm(undefined);
       setManagerMessage(`${modelId} removido do Ollama.`);
     } catch (cause) {
-      setManagerError(cause instanceof Error ? cause.message : `Falha ao remover ${modelId}.`);
+      setManagerError(cleanSettingsErrorMessage(cause instanceof Error ? cause.message : undefined, `Falha ao remover ${modelId}.`));
     } finally {
       setManagerBusyId(undefined);
     }
@@ -450,7 +483,7 @@ export function SettingsPanel({
       setManagerTestStatus((current) => ({ ...current, [modelId]: status }));
       if (status.state !== 'ready') setManagerError(status.message);
     } catch (cause) {
-      setManagerError(cause instanceof Error ? cause.message : `Falha ao testar ${modelId}.`);
+      setManagerError(cleanSettingsErrorMessage(cause instanceof Error ? cause.message : undefined, `Falha ao testar ${modelId}.`));
     } finally {
       setManagerBusyId(undefined);
     }
@@ -462,7 +495,7 @@ export function SettingsPanel({
     try {
       setManagerDetails(await showLocalModel(modelId));
     } catch (cause) {
-      setManagerError(cause instanceof Error ? cause.message : `Falha ao carregar detalhes de ${modelId}.`);
+      setManagerError(cleanSettingsErrorMessage(cause instanceof Error ? cause.message : undefined, `Falha ao carregar detalhes de ${modelId}.`));
     } finally {
       setManagerBusyId(undefined);
     }
@@ -505,7 +538,7 @@ export function SettingsPanel({
     try {
       setComparisonResult(await compareModels({ prompt: comparisonPrompt, targets }));
     } catch (cause) {
-      setManagerError(cause instanceof Error ? cause.message : 'Comparação entre modelos falhou.');
+      setManagerError(cleanSettingsErrorMessage(cause instanceof Error ? cause.message : undefined, 'Comparação entre modelos falhou.'));
     } finally {
       setComparisonBusy(false);
     }
@@ -517,7 +550,7 @@ export function SettingsPanel({
     try {
       setHealth(await getAppHealthCheck());
     } catch (cause) {
-      setHealthError(cause instanceof Error ? cause.message : 'Falha ao carregar saúde do sistema.');
+      setHealthError(cleanSettingsErrorMessage(cause instanceof Error ? cause.message : undefined, 'Falha ao carregar saúde do sistema.'));
     } finally {
       setHealthLoading(false);
     }
@@ -836,7 +869,20 @@ export function SettingsPanel({
               </section>
 
               <section className="settings-model-list" aria-label="Informações dos modelos">
-                {modelItems.map((model) => {
+                <div className="settings-model-catalog-toolbar">
+                  <span>
+                    <strong>Catálogo de referência</strong>
+                    <small>{catalogQuery.trim() ? `${visibleModelItems.length} resultado(s)` : 'Mostrando apenas modelos em destaque. Use busca para ver mais.'}</small>
+                  </span>
+                  <input
+                    className="input-modern"
+                    value={catalogQuery}
+                    placeholder="Buscar no catálogo"
+                    aria-label="Buscar no catálogo de modelos"
+                    onChange={(event) => setCatalogQuery(event.target.value)}
+                  />
+                </div>
+                {visibleModelItems.map((model) => {
                   const expanded = expandedModelId === model.id;
                   const installed = model.mode === 'local' && (installedLocalModels.has(model.id) || installedLocalModels.has(model.modelId));
                   const status = modelStatusLabel(model, providers, localRuntime);
@@ -869,6 +915,12 @@ export function SettingsPanel({
                     </article>
                   );
                 })}
+                {visibleModelItems.length === 0 ? (
+                  <div className="model-picker-empty" role="status">
+                    <strong>Nenhum modelo encontrado</strong>
+                    <span>Ajuste a busca para consultar o catálogo de referência.</span>
+                  </div>
+                ) : null}
               </section>
             </div>
           ) : null}
@@ -1057,7 +1109,7 @@ export function SettingsPanel({
               <section className="settings-block health-panel">
                 <div className="ollama-manager-header">
                   <div>
-                    <strong>Status geral: {health?.overallStatus ?? 'não carregado'}</strong>
+                    <strong>Status geral: {health ? healthStatusLabel(health.overallStatus) : 'não carregado'}</strong>
                     <small>{health ? `${health.baseDir} · branch ${health.branch ?? 'desconhecida'}` : 'Carregue o diagnóstico para ver ações sugeridas.'}</small>
                   </div>
                   <button type="button" className="settings-pill-button" disabled={healthLoading} onClick={() => void refreshHealth()}>
@@ -1069,7 +1121,7 @@ export function SettingsPanel({
                   {(health?.items ?? []).map((item) => (
                     <article key={item.id} className={`health-item-card health-${item.status}`}>
                       <strong>{item.label}</strong>
-                      <small>{item.status}</small>
+                      <small>{healthStatusLabel(item.status)}</small>
                       <p>{item.detail}</p>
                       {item.action ? <span>{item.action}</span> : null}
                       {item.command ? <code>{item.command}</code> : null}

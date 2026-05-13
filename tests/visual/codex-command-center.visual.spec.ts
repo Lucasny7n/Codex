@@ -222,6 +222,31 @@ async function installTauriMock(page: Page): Promise<void> {
             checkedAt: now,
           };
         }
+        if (cmd === 'get_app_health_check') {
+          return {
+            baseDir: '/tmp/workspace',
+            expectedBaseDir: '/tmp/workspace',
+            correctBaseDir: true,
+            branch: 'main',
+            nodeOk: true,
+            npmOk: true,
+            cargoOk: true,
+            tauriOk: true,
+            providers: [provider],
+            ollama: localRuntime,
+            credentialsEncrypted: true,
+            items: [
+              { id: 'ollama-installed', label: 'Ollama instalado', status: 'ok', detail: 'Runtime encontrado no PATH.' },
+              { id: 'ollama-api', label: 'Ollama API ativa', status: 'ok', detail: 'http://127.0.0.1:11434' },
+              { id: 'stt-backend', label: 'STT local', status: 'warning', detail: 'Backend Whisper/Vosk ausente.', action: 'Configurar transcrição local', command: 'sudo pacman -S --needed ffmpeg whisper.cpp' },
+              { id: 'api-keys', label: 'API keys', status: 'warning', detail: 'Credencial salva exige teste antes de ficar pronta.', action: 'Testar conexão' },
+              { id: 'git-workspace', label: 'Git/workspace', status: 'ok', detail: '/tmp/workspace · main' },
+            ],
+            recentErrors: [],
+            overallStatus: 'warning',
+            actions: [],
+          };
+        }
         if (cmd === 'send_temporary_order_to_agent') {
           if (String(args?.content ?? '').toLowerCase().includes('loading')) {
             await new Promise((resolve) => window.setTimeout(resolve, 900));
@@ -331,6 +356,7 @@ test('captura home, composer, chat temporário, seletor e modais em tema escuro'
   await expect(page.locator('.prompt-preset-select')).toHaveCount(0);
   await expect(page.locator('select[aria-label="Selecionar preset"]')).toHaveCount(0);
   await screenshot(page, 'pass-15-home-dark');
+  await screenshot(page, 'pass-21-home-dark');
   await screenshot(page, 'pass-19-home-no-preset-select');
   await screenshot(page, 'pass-15-composer-empty');
   await screenshot(page, 'pass-15-send-disabled-neutral');
@@ -356,6 +382,7 @@ test('captura home, composer, chat temporário, seletor e modais em tema escuro'
   await expect(page.getByText('Qwen2.5 Coder 1.5B')).toHaveCount(0);
   await expect(page.getByText('Local Ollama')).toHaveCount(0);
   await screenshot(page, 'pass-15-model-selector-cloud');
+  await screenshot(page, 'pass-21-model-selector-cloud');
   await screenshot(page, 'pass-19-cloud-no-local-ollama');
   await screenshot(page, 'pass-20-cloud-no-local');
   await page.getByLabel('Buscar modelo ou provedor').fill('qwen2.5-coder');
@@ -374,6 +401,7 @@ test('captura home, composer, chat temporário, seletor e modais em tema escuro'
   await page.getByTitle(/mock-development-model/).click();
   await page.getByRole('tab', { name: 'Local' }).click();
   await screenshot(page, 'pass-20-local-empty-installed');
+  await screenshot(page, 'pass-21-model-selector-local-empty');
   await page.getByLabel('Buscar modelos Ollama').fill('GPT-5.5');
   await expect(page.getByText('Nenhum modelo Ollama encontrado para esta busca.')).toBeVisible();
   await page.getByLabel('Buscar modelos Ollama').fill('gpt oss');
@@ -384,9 +412,11 @@ test('captura home, composer, chat temporário, seletor e modais em tema escuro'
   await expect(page.getByText('Disponível para pull')).toHaveCount(0);
   await screenshot(page, 'pass-19-local-search-gpt-oss');
   await screenshot(page, 'pass-20-local-search-gpt-oss');
+  await screenshot(page, 'pass-21-model-selector-local-gpt-oss');
   await page.getByTestId('model-row-ollama-download:gpt-oss:20b').hover();
   await screenshot(page, 'pass-19-model-selector-ellipsis-aligned');
   await screenshot(page, 'pass-20-ellipsis-aligned');
+  await screenshot(page, 'pass-21-model-selector-ellipsis');
   await page.getByLabel('Configurar gpt-oss:20b').click();
   await expect(page.getByRole('dialog', { name: 'gpt-oss:20b' })).toBeVisible();
   await expect(page.getByTitle(/mock-development-model/)).toBeVisible();
@@ -446,7 +476,9 @@ test('captura chat normal, markdown e scrollbar longa', async ({ page }) => {
   await expect(page.getByText(/Markdown limpo/)).toBeVisible();
   await expect(page.getByText('Pensamento concluído')).toHaveCount(0);
   await screenshot(page, 'pass-15-chat-no-thinking-label');
+  await screenshot(page, 'pass-21-chat-clean');
   await screenshot(page, 'pass-15-chat-long-scrollbar');
+  await screenshot(page, 'pass-21-chat-long-scrollbar');
 });
 
 test('captura configurações em todas as abas', async ({ page }) => {
@@ -456,11 +488,17 @@ test('captura configurações em todas as abas', async ({ page }) => {
   await page.getByText('Configurações').click();
   await expect(page.getByRole('dialog', { name: 'Configurações' })).toBeVisible();
   await screenshot(page, 'pass-15-settings-general-dark');
+  await screenshot(page, 'pass-21-settings-general-dark');
 
   const dialog = page.getByRole('dialog', { name: 'Configurações' });
   await dialog.getByRole('button', { name: 'Modelos' }).click();
   await screenshot(page, 'pass-15-settings-modelos');
   await screenshot(page, 'pass-15-settings-models');
+  await screenshot(page, 'pass-21-model-manager');
+  await dialog.getByRole('button', { name: 'Saúde' }).click();
+  await dialog.getByRole('button', { name: 'Atualizar' }).click();
+  await expect(dialog.getByText('Ollama API ativa')).toBeVisible();
+  await screenshot(page, 'pass-21-settings-health');
   await dialog.getByRole('button', { name: 'Personalização' }).click();
   await screenshot(page, 'pass-15-settings-personalization');
 });
@@ -469,12 +507,14 @@ test('captura tema claro, composer, settings e seletor', async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   await openApp(page, 'light');
   await screenshot(page, 'pass-15-home-light');
+  await screenshot(page, 'pass-21-home-light');
   await page.getByPlaceholder('Como posso ajudá-lo hoje?').fill('Enviar visível no tema claro');
   await screenshot(page, 'pass-15-home-light-send-visible');
   await page.getByPlaceholder('Como posso ajudá-lo hoje?').focus();
   await page.getByLabel('Menu do usuário').click();
   await page.getByText('Configurações').click();
   await screenshot(page, 'pass-15-settings-general-light');
+  await screenshot(page, 'pass-21-settings-general-light');
 });
 
 test('captura estado de configuração STT', async ({ page }) => {
@@ -487,6 +527,7 @@ test('captura estado de configuração STT', async ({ page }) => {
   await expect(page.getByRole('dialog', { name: 'Configurar transcrição local' })).toBeVisible();
   await screenshot(page, 'pass-15-mic-state');
   await screenshot(page, 'pass-15-mic-config');
+  await screenshot(page, 'pass-21-mic-diagnostic');
 });
 
 test('mantém data fixa para evitar ruído de screenshots', () => {
