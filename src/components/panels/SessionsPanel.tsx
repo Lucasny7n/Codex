@@ -3,6 +3,8 @@ import { UiIcon } from '../common/AppIcons';
 import { PopupMenu } from '../common/PremiumUI';
 import type { AgentSession } from '../../types/domain';
 import type { SettingsTab } from '../settings/SettingsPanel';
+import type { AiluNavigationView } from '../../config/navigation';
+import { AILU_NAVIGATION_ITEMS } from '../../config/navigation';
 import appLogo from '../../assets/app-logo.svg';
 
 type SessionMenuAction =
@@ -33,6 +35,9 @@ interface SessionsPanelProps {
   onOpenSettings: (tab: SettingsTab) => void;
   onOpenArchivedConversations: () => void;
   onCloseSession: () => void;
+  activeNavigationView?: AiluNavigationView;
+  onOpenAiWorkspace?: () => void;
+  onOpenLlmLibrary?: () => void;
   collapsed?: boolean;
 }
 
@@ -125,6 +130,9 @@ export function SessionsPanel({
   onOpenSettings,
   onOpenArchivedConversations,
   onCloseSession,
+  activeNavigationView = 'chat',
+  onOpenAiWorkspace = () => undefined,
+  onOpenLlmLibrary = () => undefined,
   collapsed = false,
 }: SessionsPanelProps): JSX.Element {
   const [query, setQuery] = useState('');
@@ -193,6 +201,18 @@ export function SessionsPanel({
   function handleSessionAction(session: AgentSession, action: SessionMenuAction): void {
     setMenuSessionId(undefined);
     onSessionMenuAction(session, action);
+  }
+
+  function handleNavigation(view: AiluNavigationView): void {
+    if (view === 'ai-workspace') {
+      onOpenAiWorkspace();
+      return;
+    }
+    if (view === 'llm-library') {
+      onOpenLlmLibrary();
+      return;
+    }
+    onSelect(undefined);
   }
 
   function renderConversationItem(session: AgentSession, nested = false): JSX.Element {
@@ -287,6 +307,17 @@ export function SessionsPanel({
           <button type="button" onClick={() => onNewSession()} aria-label="Nova Conversa">
             <UiIcon name="plus" className="qwen-nav-icon" />
           </button>
+          {AILU_NAVIGATION_ITEMS.filter((item) => item.id !== 'chat').map((item) => (
+            <button
+              key={item.id}
+              type="button"
+              className={activeNavigationView === item.id ? 'active' : ''}
+              onClick={() => handleNavigation(item.id)}
+              aria-label={item.label}
+            >
+              <UiIcon name={item.icon} className="qwen-nav-icon" />
+            </button>
+          ))}
           <button type="button" onClick={onToggleSidebar} aria-label="Pesquisar Conversas">
             <UiIcon name="search" className="qwen-nav-icon" />
           </button>
@@ -332,6 +363,18 @@ export function SessionsPanel({
           <UiIcon name="plus" className="qwen-nav-icon" />
           Nova Conversa
         </button>
+        {AILU_NAVIGATION_ITEMS.filter((item) => item.id !== 'chat').map((item) => (
+          <button
+            key={item.id}
+            type="button"
+            className={activeNavigationView === item.id ? 'active' : ''}
+            title={item.description}
+            onClick={() => handleNavigation(item.id)}
+          >
+            <UiIcon name={item.icon} className="qwen-nav-icon" />
+            {item.label}
+          </button>
+        ))}
         <label className="qwen-search-row">
           <UiIcon name="search" className="qwen-nav-icon" />
           <input

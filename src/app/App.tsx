@@ -64,6 +64,8 @@ import {
   canSelectModel,
   resolveModelStatus,
 } from '../lib/providers/status';
+import { featureFlags } from '../config/features';
+import { useWindowSize } from '../hooks/useWindowSize';
 import type {
   AppSettings,
   ExecutionMode,
@@ -81,11 +83,15 @@ import type {
   ChatAttachment,
 } from '../types/domain';
 import { useAppStore } from '../stores/appStore';
+import type { AiluNavigationView } from '../config/navigation';
 
 import { AppShell } from '../components/layout/AppShell';
 import { TopBar, type TopBarModelOption } from '../components/layout/TopBar';
 import { SessionsPanel } from '../components/panels/SessionsPanel';
 import { ChatPanel } from '../components/chat/ChatPanel';
+import { LlmLibraryPanel } from '../components/library/LlmLibraryPanel';
+import type { LlmResource } from '../data/llm-resources';
+import { AiWorkspacePanel, type WorkspacePlanItem } from '../components/workspace/AiWorkspacePanel';
 import { SettingsPanel, type SettingsTab } from '../components/settings/SettingsPanel';
 import { CommandInputPanel, type InputModeId } from '../components/chat/CommandInputPanel';
 import { ArchivedConversationsModal } from '../components/chat/ArchivedConversationsModal';
@@ -197,6 +203,16 @@ const AILU_STORAGE_PREFIX = 'ailu-ai-studio';
 const LEGACY_STORAGE_PREFIX = 'codex-command-center';
 const SIDEBAR_COLLAPSED_KEY = 'ailu-sidebar-collapsed';
 const LEGACY_SIDEBAR_COLLAPSED_KEY = 'codex-sidebar-collapsed';
+const LAYOUT_MODE_KEY = 'layout-mode';
+const WORKSPACE_PLAN_KEY = 'workspace-plan';
+
+type LayoutMode = 'comfortable' | 'compact' | 'focus';
+
+const LAYOUT_MODE_OPTIONS: Array<{ id: LayoutMode; label: string; description: string }> = [
+  { id: 'comfortable', label: 'Comfort', description: 'Espaço padrão para leitura e chat.' },
+  { id: 'compact', label: 'Compact', description: 'Densidade maior para meia tela e notebooks.' },
+  { id: 'focus', label: 'Focus', description: 'Oculta a sidebar e prioriza o centro.' },
+];
 
 function ailuStorageKey(suffix: string): string {
   return `${AILU_STORAGE_PREFIX}-${suffix}`;
@@ -216,6 +232,41 @@ function readAiluStorage(suffix: string): string | undefined {
     writeLocalStorage(key, legacyValue);
   }
   return legacyValue;
+}
+
+function readLayoutMode(): LayoutMode {
+  const saved = readAiluStorage(LAYOUT_MODE_KEY);
+  if (saved === 'compact' || saved === 'focus' || saved === 'comfortable') return saved;
+  return 'comfortable';
+}
+
+function readPlanStatus(value: unknown): WorkspacePlanItem['status'] {
+  if (value === 'doing' || value === 'done' || value === 'blocked' || value === 'todo') return value;
+  return 'todo';
+}
+
+function readWorkspacePlanItems(): WorkspacePlanItem[] {
+  try {
+    const raw = readAiluStorage(WORKSPACE_PLAN_KEY);
+    const parsed: unknown = raw ? JSON.parse(raw) : [];
+    if (!Array.isArray(parsed)) return [];
+    return parsed
+      .filter((item): item is Partial<WorkspacePlanItem> & { id: string; title: string } => {
+        if (!item || typeof item !== 'object') return false;
+        const candidate = item as Partial<WorkspacePlanItem>;
+        return typeof candidate.id === 'string' && typeof candidate.title === 'string';
+      })
+      .map((item) => ({
+        id: item.id,
+        title: item.title,
+        status: readPlanStatus(item.status),
+        detail: typeof item.detail === 'string' ? item.detail : undefined,
+        source: typeof item.source === 'string' ? item.source : undefined,
+      }))
+      .slice(0, 80);
+  } catch {
+    return [];
+  }
 }
 
 function writeLocalStorage(key: string, value: string): void {
@@ -383,6 +434,57 @@ function createOptimisticUserMessage(content: string, attachments: ChatAttachmen
   };
 }
 
+function LayoutModeControl({
+  mode,
+  viewport,
+  squareish,
+  onChange,
+}: {
+  mode: LayoutMode;
+  viewport: string;
+  squareish: boolean;
+  onChange: (mode: LayoutMode) => void;
+}): JSX.Element {
+  return (
+    <div className="layout-mode-control" aria-label="Densidade do layout">
+      <span>{squareish ? 'square' : viewport}</span>
+      {LAYOUT_MODE_OPTIONS.map((option) => (
+        <button
+          key={option.id}
+          type="button"
+          className={mode === option.id ? 'active' : ''}
+          title={option.description}
+          aria-pressed={mode === option.id}
+          onClick={() => onChange(option.id)}
+        >
+          {option.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function resourceAttachment(resource: LlmResource): ChatAttachment {
+  return {
+    path: `llm-library://${resource.id}`,
+    name: resource.title,
+    kind: 'text',
+    previewAvailable: false,
+    hidden: true,
+    contextSource: 'system',
+    contextText: [
+      `Title: ${resource.title}`,
+      `Provider: ${resource.provider}`,
+      `Category: ${resource.category}`,
+      `Type: ${resource.type}`,
+      `Year: ${resource.year}`,
+      `URL: ${resource.url}`,
+      `Tags: ${resource.tags.join(', ')}`,
+      `Summary: ${resource.summary}`,
+    ].join('\n'),
+  };
+}
+
 export default function App(): JSX.Element {
   const [busy, setBusy] = useState(false);
   const [privilegedActions, setPrivilegedActions] = useState<PrivilegedActionSpec[]>([]);
@@ -407,6 +509,9 @@ export default function App(): JSX.Element {
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
   const [temporaryChatActive, setTemporaryChatActive] = useState(false);
   const [temporaryMessages, setTemporaryMessages] = useState<ChatMessage[]>([]);
+  const [activeNavigationView, setActiveNavigationView] = useState<AiluNavigationView>('chat');
+  const [layoutMode, setLayoutMode] = useState<LayoutMode>(readLayoutMode);
+  const [workspacePlanItems, setWorkspacePlanItems] = useState<WorkspacePlanItem[]>(readWorkspacePlanItems);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
     const current = readLocalStorage(SIDEBAR_COLLAPSED_KEY);
     if (current !== undefined) return current === 'true';
@@ -454,6 +559,9 @@ export default function App(): JSX.Element {
     sessions,
     selectedSessionId,
     logs,
+    changedFiles,
+    statusFeed,
+    pendingPermissions,
     selectedModelId,
     executionMode,
     setError,
@@ -474,6 +582,8 @@ export default function App(): JSX.Element {
     selectModel,
     setExecutionMode,
   } = useAppStore();
+  const windowSize = useWindowSize();
+  const effectiveLayoutMode: LayoutMode = windowSize.kind === 'narrow' && layoutMode === 'comfortable' ? 'compact' : layoutMode;
 
   const selectedSession = useMemo(
     () => sessions.find((session) => session.id === selectedSessionId),
@@ -675,6 +785,70 @@ export default function App(): JSX.Element {
         message,
       },
     ]);
+  }
+
+  function updateLayoutMode(next: LayoutMode): void {
+    writeAiluStorage(LAYOUT_MODE_KEY, next);
+    setLayoutMode(next);
+  }
+
+  function updateWorkspacePlan(next: WorkspacePlanItem[]): void {
+    const clean = next.slice(0, 80);
+    writeAiluStorage(WORKSPACE_PLAN_KEY, JSON.stringify(clean));
+    setWorkspacePlanItems(clean);
+  }
+
+  function openChatView(): void {
+    setActiveNavigationView('chat');
+  }
+
+  function openAiWorkspace(): void {
+    setTemporaryChatActive(false);
+    setTemporaryMessages([]);
+    setActiveProject(undefined);
+    writeAiluStorage('active-project', '');
+    selectSession(undefined);
+    setActiveNavigationView('ai-workspace');
+  }
+
+  function openLlmLibrary(): void {
+    setTemporaryChatActive(false);
+    setTemporaryMessages([]);
+    setActiveProject(undefined);
+    writeAiluStorage('active-project', '');
+    selectSession(undefined);
+    setActiveNavigationView('llm-library');
+  }
+
+  function handleExportWorkspacePlan(markdown: string): void {
+    void navigator.clipboard?.writeText(markdown);
+    pushToast('info', 'Plano exportado para a área de transferência.');
+  }
+
+  function addLibraryResourceToPlan(resource: LlmResource): void {
+    updateWorkspacePlan([
+      {
+        id: `llm-resource-${resource.id}-${Date.now()}`,
+        title: `Estudar ${resource.title}`,
+        detail: resource.summary,
+        source: resource.url,
+        status: 'todo',
+      },
+      ...workspacePlanItems,
+    ]);
+    setActiveNavigationView('ai-workspace');
+    pushToast('info', `${resource.title} foi adicionado ao plano.`);
+  }
+
+  function sendResourcePrompt(resource: LlmResource, intent: 'explain' | 'compare' | 'context'): void {
+    const prompt =
+      intent === 'compare'
+        ? `Compare este recurso com alternativas próximas e diga quando ele deve entrar no fluxo do Ailu: ${resource.title}.`
+        : intent === 'context'
+          ? `Use este recurso como contexto oculto e gere um resumo acionável para o projeto Ailu: ${resource.title}.`
+          : `Explique este recurso para um mantenedor do Ailu, com foco em uso prático, riscos e próximos passos: ${resource.title}.`;
+    setActiveNavigationView('chat');
+    void handleSendPrompt(prompt, 'auto', [resourceAttachment(resource)]);
   }
 
   function toggleSidebar(): void {
@@ -926,6 +1100,7 @@ export default function App(): JSX.Element {
   }
 
   function handleCreateSession(): void {
+    openChatView();
     setTemporaryChatActive(false);
     setTemporaryMessages([]);
     if (!activeProject) {
@@ -935,6 +1110,7 @@ export default function App(): JSX.Element {
   }
 
   function handleSelectProject(project: string): void {
+    openChatView();
     setTemporaryChatActive(false);
     setTemporaryMessages([]);
     setActiveProject(project);
@@ -943,6 +1119,7 @@ export default function App(): JSX.Element {
   }
 
   function handleSelectSession(sessionId?: string): void {
+    openChatView();
     setTemporaryChatActive(false);
     setTemporaryMessages([]);
     setActiveProject(undefined);
@@ -951,6 +1128,7 @@ export default function App(): JSX.Element {
   }
 
   function startTemporaryChat(): void {
+    openChatView();
     setTemporaryChatActive(true);
     setTemporaryMessages([]);
     setActiveProject(undefined);
@@ -961,6 +1139,7 @@ export default function App(): JSX.Element {
   function exitTemporaryChat(): void {
     setTemporaryChatActive(false);
     setTemporaryMessages([]);
+    openChatView();
   }
 
   async function handleSendPrompt(prompt: string, mode: InputModeId = 'auto', attachments: ChatAttachment[] = []): Promise<void> {
@@ -1694,11 +1873,14 @@ export default function App(): JSX.Element {
               setControlModalOpen(false);
               pushToast('info', 'Saída da conta será conectada quando houver auth real.');
             }}
+            activeNavigationView={activeNavigationView}
+            onOpenAiWorkspace={openAiWorkspace}
+            onOpenLlmLibrary={openLlmLibrary}
             collapsed={sidebarCollapsed}
           />
         }
         main={
-          <div className={`main-workspace ${activeChatSession || projectWorkspaceOpen ? '' : 'main-workspace-home'} ${projectWorkspaceOpen ? 'main-workspace-project' : ''} ${temporaryChatActive ? 'main-workspace-temporary' : ''}`}>
+          <div className={`main-workspace main-workspace-${effectiveLayoutMode} viewport-${windowSize.kind} ${windowSize.isSquareish ? 'viewport-squareish' : ''} ${activeNavigationView === 'chat' && (activeChatSession || projectWorkspaceOpen) ? '' : activeNavigationView === 'chat' ? 'main-workspace-home' : 'main-workspace-utility'} ${projectWorkspaceOpen ? 'main-workspace-project' : ''} ${temporaryChatActive ? 'main-workspace-temporary' : ''}`}>
             <TopBar
               providerStatus={selectedProviderStatus}
               executionMode={executionMode}
@@ -1726,6 +1908,12 @@ export default function App(): JSX.Element {
               onStartTemporaryChat={startTemporaryChat}
               onExitTemporaryChat={exitTemporaryChat}
             />
+            <LayoutModeControl
+              mode={layoutMode}
+              viewport={windowSize.kind}
+              squareish={windowSize.isSquareish}
+              onChange={updateLayoutMode}
+            />
             {error ? (
               <div className="actionable-error-banner" role="alert">
                 <strong>{translateError(error).message}</strong>
@@ -1734,7 +1922,28 @@ export default function App(): JSX.Element {
                 </button>
               </div>
             ) : null}
-            {temporaryChatActive ? (
+            {activeNavigationView === 'llm-library' && featureFlags.llmLibraryEnabled ? (
+              <LlmLibraryPanel
+                onExplain={(resource) => sendResourcePrompt(resource, 'explain')}
+                onCompare={(resource) => sendResourcePrompt(resource, 'compare')}
+                onAddToPlan={addLibraryResourceToPlan}
+                onUseAsContext={(resource) => sendResourcePrompt(resource, 'context')}
+              />
+            ) : activeNavigationView === 'ai-workspace' && featureFlags.aiPanelEnabled ? (
+              <AiWorkspacePanel
+                workspaceRoot={settings?.workspaceRoot}
+                providers={providers}
+                pendingPermissions={pendingPermissions}
+                changedFiles={changedFiles}
+                statusFeed={statusFeed}
+                planItems={workspacePlanItems}
+                terminalEnabled={featureFlags.terminalEnabled}
+                webPreviewEnabled={featureFlags.webPreviewEnabled}
+                onOpenTerminal={() => setTerminalOpen(true)}
+                onPlanChange={updateWorkspacePlan}
+                onExportPlan={handleExportWorkspacePlan}
+              />
+            ) : temporaryChatActive ? (
               <>
                 {temporaryMessages.length === 0 ? (
                   <section className="temporary-chat-view" aria-label="Bate-papo Temporário">
@@ -1834,7 +2043,14 @@ export default function App(): JSX.Element {
           </div>
         }
         sidebarRightVisible={false}
+        sidebarLeftVisible={effectiveLayoutMode !== 'focus'}
         sidebarLeftCollapsed={sidebarCollapsed}
+        sidebarRestore={
+          <button type="button" className="sidebar-restore-button app-focus-restore" onClick={() => updateLayoutMode('comfortable')}>
+            <UiIcon name="chevronRight" className="menu-icon" />
+            Sidebar
+          </button>
+        }
         sidebarRight={null}
       />
 

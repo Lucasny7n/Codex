@@ -513,6 +513,33 @@ test('captura chat normal, markdown e scrollbar longa', async ({ page }) => {
   await screenshot(page, 'pass-21-chat-long-scrollbar');
 });
 
+test('captura LLM Library, AI Workspace e modo responsivo compacto', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await openApp(page, 'dark');
+
+  await page.getByRole('button', { name: 'LLM Library' }).click();
+  await expect(page.getByRole('heading', { name: 'LLM Library' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Milestone Papers' })).toBeVisible();
+  await screenshot(page, 'pass-24-llm-library');
+
+  await page.getByLabel('Buscar na LLM Library').fill('qwen coder');
+  await expect(page.getByRole('heading', { name: 'Qwen2.5-Coder' })).toBeVisible();
+  await screenshot(page, 'pass-24-llm-library-qwen');
+
+  await page.getByRole('button', { name: 'Add to plan' }).first().click();
+  await expect(page.getByRole('heading', { name: 'AI Workspace' })).toBeVisible();
+  await expect(page.getByText('Estudar Qwen2.5-Coder')).toBeVisible();
+  await screenshot(page, 'pass-24-ai-workspace-plan');
+
+  await page.getByRole('button', { name: 'Compact' }).click();
+  await page.setViewportSize({ width: 900, height: 900 });
+  await expect(page.getByText('square')).toBeVisible();
+  await screenshot(page, 'pass-24-ai-workspace-square-compact');
+
+  await page.getByRole('button', { name: 'Focus' }).click();
+  await screenshot(page, 'pass-24-ai-workspace-focus');
+});
+
 test('captura configurações em todas as abas', async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   await openApp(page, 'dark');

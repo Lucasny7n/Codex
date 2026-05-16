@@ -7,48 +7,128 @@
 ![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178c6)
 ![License](https://img.shields.io/badge/license-MIT-blue)
 
-Ailu AI Studio is a premium open-source desktop AI studio for local Ollama models and authenticated cloud providers. It is built with Tauri, Rust, React and TypeScript, with a strong bias toward real runtime status, clean diagnostics and no fake readiness.
+Premium desktop AI studio for local Ollama models, authenticated cloud providers, project memory, safe actions and curated LLM research.
 
-## What It Does
+Ailu is a Tauri/Rust/React app for people who want a serious AI workspace without fake readiness. Local and cloud AI are intentionally separate, provider status is validated before use, and risky file or command actions go through explicit approval surfaces.
 
-Ailu gives normal users a focused AI desktop app and gives developers a practical control surface for local models, cloud providers, sessions, attachments, settings and health checks.
+## Overview
 
-The product keeps local and cloud AI separate:
+Ailu combines a clean desktop chat experience with engineering-grade controls:
 
-- **Local** means Ollama only. Installed models come from the real Ollama snapshot.
-- **Cloud** means authenticated providers only. API keys and logins must be configured and tested.
-- A model is selectable only when the underlying runtime/provider is actually ready.
+- persistent and temporary conversations;
+- a unified `[ Local | Cloud ]` selector with hard routing separation;
+- real Ollama snapshots for local models;
+- masked BYOK provider profiles with explicit connection tests;
+- project context, file attachments and hidden context;
+- an AI Workspace for plans, approvals, file context, terminal access and runtime notes;
+- an LLM Library for papers, leaderboards, open models, datasets, evaluation, inference, safety and tutorials;
+- responsive modes for fullscreen, split-screen, small windows and square floating windows.
 
-## Who It Is For
+## Current Status
 
-- Users who want a clean desktop chat app for local Ollama and cloud LLMs.
-- Developers who need transparent provider status, model routing and contributor-friendly tooling.
-- Linux desktop users who care about Wayland, PipeWire, portals, local files and safe diagnostics.
-- Contributors who want a typed React/Rust codebase with tests and clear operational rules.
+| Area | Status | Notes |
+| --- | --- | --- |
+| Chat sessions | Implemented | Persistent sessions, archive/restore, export/import and temporary chat. |
+| Local AI | Implemented | Ollama only. Installed models come from real `/api/tags` or `ollama list`. |
+| Cloud providers | Implemented/experimental by adapter | Credentials must be configured and tested before `ready`. |
+| STT | Implemented with local prerequisites | Backend and microphone capture status are separate. |
+| LLM Library | Implemented initial catalog | Curated subset with filters, favorites, actions and local metadata. |
+| AI Workspace | Implemented shell | Plan board, approvals view, provider status, file context and terminal entrypoint. |
+| Terminal/web preview | Experimental | Terminal drawer exists; web preview is documented for a future backend pass. |
+| Desktop packaging | Implemented baseline | Tauri 2, Linux bundle metadata and `.desktop` helper are present. |
 
-## Main Features
+## Features
 
-- Persistent chat sessions with rename, duplicate, archive, import and export.
-- Temporary chat that uses the same real provider pipeline without persisting history.
-- Unified `[ Local | Cloud ]` model selector with hard separation between Ollama and cloud providers.
-- Ollama Model Manager with installed-model snapshot, search, download candidates, progress, test, details and remove.
-- Cloud provider profiles with masked API keys and explicit connection testing.
-- Composer with file chips, hidden document context and immediate optimistic send behavior.
-- STT/microphone flow with backend status separated from capture permission status.
-- Health panel for Ollama, providers, STT, microphone capture, icons, desktop entry and developer tools.
-- Premium dark and light themes using shared design tokens.
+### AI Command Center
+
+- Central chat with real provider/model routing.
+- Temporary chat uses the same provider pipeline without persisting history.
+- AI Workspace adds plans, approvals, provider routing status, project memory and file context.
+- Terminal access remains behind the existing controlled command/permission path.
+
+### Providers and BYOK
+
+- Cloud providers require real credentials, OAuth, CLI auth or a custom endpoint depending on adapter.
+- Saved keys are masked and must be tested before they become selectable.
+- Provider errors are translated into short user-facing messages.
+- Raw API keys, JSON dumps and stack traces should not appear in UI, logs, screenshots or commits.
+
+See [docs/providers.md](docs/providers.md).
+
+### Local Models
+
+Local means **Ollama only**. Ailu does not mix local models into cloud lists and does not mark a model installed until the refreshed Ollama runtime confirms it.
+
+See [docs/OLLAMA.md](docs/OLLAMA.md).
+
+### LLM Library
+
+The LLM Library is inspired by curated research repositories, but ships as an original, compact product dataset. It includes categories for milestone papers, leaderboards, open LLMs, data, evaluation, training, inference, applications, tutorials, books, security, compression, code LLMs, multimodal models and local models.
+
+See [docs/llm-library.md](docs/llm-library.md).
+
+### Responsive Layout
+
+The current shell preserves the Ailu identity while adding:
+
+- `comfortable`, `compact` and `focus` layout modes;
+- viewport detection for narrow, compact, wide, ultrawide and square-ish windows;
+- collapsible/overlay sidebar behavior for smaller windows;
+- grid/card sizing that avoids horizontal overflow;
+- tighter spacing and stable controls in compact mode.
+
+See [docs/responsive-qa.md](docs/responsive-qa.md).
 
 ## Screenshots
 
-Screenshots are generated by the visual smoke tests and should be committed only when they are intentional release assets.
+Visual smoke screenshots are generated locally and should be promoted to release assets only when they are intentional.
 
 ```bash
 npm run screenshots
 ```
 
-Current screenshot notes live in [docs/screenshots/README.md](docs/screenshots/README.md). If release screenshots are not available yet, keep this section as a clean placeholder instead of committing temporary files from `test-results/` or `screenshots/`.
+Current screenshot notes live in `docs/screenshots/README.md` when release screenshots are available. Do not commit temporary files from `test-results/`.
 
-## Quick Install
+## Why Ailu
+
+Ailu is built around honest operation:
+
+- no fake provider success;
+- no silent model installs;
+- no local/cloud model mixing;
+- no terminal-first UX for normal configuration;
+- no secrets in logs or screenshots;
+- no broad rewrites when a small validated change is safer.
+
+## Architecture
+
+Frontend:
+
+- React 18 + TypeScript + Vite;
+- Zustand store;
+- shared design tokens in `src/styles`;
+- modular components under `src/components`;
+- catalog/search utilities under `src/data` and `src/lib`.
+
+Desktop/backend:
+
+- Tauri 2;
+- Rust services for provider registry, credential storage, sessions, permissions, local runtime and command execution;
+- Linux packaging metadata in `src-tauri/tauri.conf.json` and `assets/ailu-ai-studio.desktop`.
+
+See [docs/architecture.md](docs/architecture.md) and [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+
+## Security and Privacy
+
+- Never commit `.env`, API keys, local databases, model weights, `node_modules`, logs or temporary screenshots.
+- Never use `sudo -S`.
+- Never download runtimes or models silently.
+- Use the app credential flow instead of plain localStorage for provider secrets.
+- Treat every file write, command execution, network/download, install and privileged operation as an explicit permission category.
+
+See [docs/security.md](docs/security.md).
+
+## Installation
 
 ```bash
 git clone https://github.com/Lucasny7n/ailu-ai-studio.git
@@ -58,46 +138,13 @@ npm run doctor
 npm run tauri:dev
 ```
 
-For a frontend-only preview:
+Frontend-only development:
 
 ```bash
 npm run dev
 ```
-
-## Linux / Arch Setup
-
-Recommended host tools:
-
-- Node.js and npm.
-- Rust stable and Cargo.
-- Tauri Linux dependencies for WebKitGTK.
-- Ollama for local models.
-- `ffmpeg` and `whisper-cli` for local STT.
-- PipeWire, WirePlumber and `xdg-desktop-portal` for microphone capture on Wayland.
-
-Run the readable environment doctor:
-
-```bash
-npm run doctor
-```
-
-Run the guided Linux setup helper:
-
-```bash
-bash scripts/setup-linux.sh
-```
-
-The setup helper prints commands and asks before privileged package installation. It does not install runtimes or models silently.
 
 ## Development
-
-```bash
-npm install
-npm run dev
-npm run tauri:dev
-```
-
-Useful scripts:
 
 ```bash
 npm run lint
@@ -121,45 +168,16 @@ cargo test
 
 ## Build
 
-Frontend build:
-
 ```bash
 npm run build
-```
-
-Desktop bundle:
-
-```bash
 npm run tauri:build
 ```
 
-## Local AI With Ollama
+## Desktop App
 
-Local models are discovered from the real Ollama runtime:
+Default window: `1440x900`. Minimum window: `900x600`. The app is configured as a Tauri desktop application with Linux bundle targets and a `.desktop` installer helper.
 
-```bash
-ollama list
-curl -s http://127.0.0.1:11434/api/tags
-```
-
-The Local tab without a query shows installed Ollama models only. Search can show installed models, Ollama discovery results and curated download candidates. Candidates show **Download**, not **Installed**, until a refreshed Ollama snapshot confirms the model exists.
-
-See [docs/OLLAMA.md](docs/OLLAMA.md).
-
-## Cloud Providers / API Keys
-
-Cloud providers require a real API key, login, OAuth or CLI auth depending on the adapter. Saved credentials are masked, and a saved key is not treated as ready until connection testing succeeds.
-
-Provider errors are shown as short user-facing messages. Raw JSON, stack traces and API keys must never appear in the UI, logs, screenshots, tests or commits.
-
-## STT / Microphone
-
-STT is split into two separate concerns:
-
-- **Backend STT**: `ffmpeg`, a supported local transcription backend and a local model path.
-- **Microphone capture**: WebView permission/portal capture first, then native short-capture fallback when WebView capture fails.
-
-See [docs/STT.md](docs/STT.md).
+See [docs/desktop-app.md](docs/desktop-app.md).
 
 ## Troubleshooting
 
@@ -170,7 +188,7 @@ npm run doctor
 npm run healthcheck
 ```
 
-Common guides:
+Useful guides:
 
 - [Installation](docs/INSTALLATION.md)
 - [User Guide](docs/USER_GUIDE.md)
@@ -179,25 +197,21 @@ Common guides:
 - [STT](docs/STT.md)
 - [Troubleshooting](docs/TROUBLESHOOTING.md)
 
-## Security Notes
+## Roadmap
 
-- Do not commit API keys, tokens, `.env`, local databases, logs, screenshots from temp folders, model weights, `node_modules` or Rust targets.
-- Do not use `sudo -S`.
-- Do not download large models without explicit user confirmation.
-- Do not mark providers or models as ready without real validation.
-- Keep local Ollama models out of Cloud, and cloud providers out of Local.
+The roadmap separates implemented, experimental and planned work. Items are not treated as shipped until tests and runtime validation prove them.
 
-See [docs/SECURITY.md](docs/SECURITY.md).
+See [docs/roadmap.md](docs/roadmap.md).
 
 ## Contributing
 
-Read [docs/CONTRIBUTING.md](docs/CONTRIBUTING.md) and use the pull request template. Every behavior change needs validation evidence, and UI changes should include screenshots or visual smoke results.
+Read [docs/CONTRIBUTING.md](docs/CONTRIBUTING.md) and use the pull request template. Behavior changes need validation evidence. UI changes should include screenshots or visual smoke results when practical.
 
-## Roadmap
+## Credits
 
-The roadmap is intentionally honest. Items in the roadmap are not implemented until tests and runtime validation prove them.
+This upgrade studied Terax AI for product architecture patterns and Awesome-LLM for catalog organization. The implementation is original and does not copy branding, assets or substantial source text.
 
-See [docs/ROADMAP.md](docs/ROADMAP.md).
+See [docs/credits.md](docs/credits.md) and [THIRD_PARTY.md](THIRD_PARTY.md).
 
 ## License
 
