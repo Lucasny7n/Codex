@@ -95,3 +95,9 @@ Initial Rust note: plain `cargo check` first failed because the existing target 
 ## Rollback
 
 Before merge, rollback is the branch diff. After merge, revert the final commit for this pass.
+
+## GitHub Delivery
+
+- Branch pushed: `origin/feature/terax-awesome-llm-upgrade`.
+- Pull request creation via `gh` was not completed because `gh auth status` reports: `The token in default is invalid`.
+- Manual PR URL: `https://github.com/Lucasny7n/ailu-ai-studio/pull/new/feature/terax-awesome-llm-upgrade`.
