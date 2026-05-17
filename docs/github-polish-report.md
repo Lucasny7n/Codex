@@ -12,6 +12,7 @@ Date: 2026-05-17
 ## Commit
 
 - `docs: professionalize GitHub repository`
+- `docs: record GitHub metadata application`
 
 ## Summary
 
@@ -73,25 +74,45 @@ Notes:
 
 ## GitHub Metadata
 
-Recommended repo description:
+Applied repo description:
 
 ```text
 Desktop AI workspace for local-first planning, LLM discovery, provider setup, and responsive AI workflows.
 ```
 
-Recommended topics:
+Applied topics:
 
 ```text
 tauri, react, typescript, rust, ai, llm, desktop-app, local-first, developer-tools, ai-workspace
 ```
 
-`gh auth status` reported an invalid token during this pass, so repo metadata, labels and PR comment automation may require re-authentication before applying through the GitHub API.
+Created or updated labels:
+
+- `type: bug`
+- `type: feature`
+- `type: docs`
+- `type: refactor`
+- `type: test`
+- `type: chore`
+- `area: ai-workspace`
+- `area: llm-library`
+- `area: desktop`
+- `area: ui`
+- `area: docs`
+- `area: ci`
+- `priority: high`
+- `priority: medium`
+- `priority: low`
+- `status: blocked`
+- `status: needs-info`
+- `good first issue`
+
+Note: the first `gh repo edit` and `gh label create` attempts hit sandbox/network errors, then succeeded with approved escalation.
 
 ## Risks
 
 - README screenshots can drift as UI evolves; refresh via `npm run screenshots` and promote only intentional assets.
 - Visual smoke remains manual in CI to avoid heavy default browser dependency cost.
-- Labels documented in `docs/github-maintenance.md` still need GitHub-side creation if they do not already exist.
 - Branch protection is recommended but not configured automatically.
 
 ## Rollback
