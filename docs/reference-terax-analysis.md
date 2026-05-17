@@ -1,7 +1,7 @@
 # Terax AI Reference Analysis
 
-Reference: https://github.com/crynta/terax-ai  
-Observed: 2026-05-17  
+Reference: https://github.com/crynta/terax-ai
+Observed: 2026-05-17
 License: Apache-2.0
 
 ## What Was Observed

@@ -1,7 +1,7 @@
 # Upgrade V2 Audit
 
-Date: 2026-05-17  
-Branch: `feature/terax-awesome-llm-upgrade`  
+Date: 2026-05-17
+Branch: `feature/terax-awesome-llm-upgrade`
 PR: https://github.com/Lucasny7n/ailu-ai-studio/pull/4
 
 ## Branch State

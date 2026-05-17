@@ -1,7 +1,7 @@
 # Awesome-LLM Reference Analysis
 
-Reference: https://github.com/hannibal046/awesome-llm  
-Observed: 2026-05-17  
+Reference: https://github.com/hannibal046/awesome-llm
+Observed: 2026-05-17
 License: CC0-1.0
 
 ## What Was Observed
