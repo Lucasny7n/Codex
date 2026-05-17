@@ -57,7 +57,8 @@ jobs:
             'playwright-report/*' \
             '*.log' \
             '.env' \
-            '.env.*')"
+            '.env.*' \
+            ':!.env.example')"
           if [ -n "$forbidden" ]; then
             echo "$forbidden"
             exit 1

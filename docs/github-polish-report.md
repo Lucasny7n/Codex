@@ -13,6 +13,7 @@ Date: 2026-05-17
 
 - `docs: professionalize GitHub repository`
 - `docs: record GitHub metadata application`
+- `ci: allow env example in hygiene check`
 
 ## Summary
 
@@ -69,6 +70,7 @@ Passed:
 Notes:
 
 - First `npm run test:visual` attempt failed by timeout at 30s in the longest screenshot scenario after `npm run screenshots` had passed in 29.3s. Cause: visual smoke timeout too tight for dozens of PNG captures. Fix: `playwright.config.ts` timeout increased to 60s. Rerun passed.
+- First remote `Security Hygiene` job failed because the generated-artifact guard matched the intentional tracked `.env.example`. Fix: allowlisted `.env.example` in the workflow pathspec.
 - `find . -name ".env" -o -name "*.log" -o -name "node_modules" -o -name "target"` reports local ignored folders: `node_modules` and `src-tauri/target`.
 - The broad requested grep pattern reports false positives from `vosk-transcriber`, fake `sk-test...` test fixtures and ignored `dist/`. A high-confidence tracked-file scan for real-looking `sk-`, `ghp_` and `AIza` tokens returned no matches.
 
