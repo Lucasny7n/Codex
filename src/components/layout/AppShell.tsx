@@ -24,7 +24,7 @@ export function AppShell({
   return (
     <div className="app-shell">
       {header ?? null}
-      <div className={`app-main-grid${sidebarRightVisible ? '' : ' app-main-grid-no-right'}${sidebarLeftVisible ? '' : ' app-main-grid-no-left'}${sidebarLeftCollapsed ? ' app-main-grid-left-collapsed' : ''}`}>
+      <div className={`app-main-grid${sidebarRightVisible ? '' : ' app-main-grid-no-right'}${sidebarLeftVisible ? '' : ' app-main-grid-no-left'}${sidebarLeftVisible && sidebarLeftCollapsed ? ' app-main-grid-left-collapsed' : ''}`}>
         {sidebarLeftVisible ? (
           <aside className={`app-column app-sidebar-left${sidebarLeftCollapsed ? ' app-sidebar-left-collapsed' : ''}`}>
             {sidebarLeft}

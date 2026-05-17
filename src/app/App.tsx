@@ -584,6 +584,8 @@ export default function App(): JSX.Element {
   } = useAppStore();
   const windowSize = useWindowSize();
   const effectiveLayoutMode: LayoutMode = windowSize.kind === 'narrow' && layoutMode === 'comfortable' ? 'compact' : layoutMode;
+  const sidebarNeedsCompact = windowSize.width <= 1280 || windowSize.isSquareish;
+  const sidebarRenderedCollapsed = sidebarCollapsed || (activeNavigationView !== 'chat' && sidebarNeedsCompact);
 
   const selectedSession = useMemo(
     () => sessions.find((session) => session.id === selectedSessionId),
@@ -1876,7 +1878,7 @@ export default function App(): JSX.Element {
             activeNavigationView={activeNavigationView}
             onOpenAiWorkspace={openAiWorkspace}
             onOpenLlmLibrary={openLlmLibrary}
-            collapsed={sidebarCollapsed}
+            collapsed={sidebarRenderedCollapsed}
           />
         }
         main={
@@ -1940,6 +1942,7 @@ export default function App(): JSX.Element {
                 terminalEnabled={featureFlags.terminalEnabled}
                 webPreviewEnabled={featureFlags.webPreviewEnabled}
                 onOpenTerminal={() => setTerminalOpen(true)}
+                onOpenProviderSettings={() => openEnvironmentTab('ready')}
                 onPlanChange={updateWorkspacePlan}
                 onExportPlan={handleExportWorkspacePlan}
               />
@@ -2044,11 +2047,10 @@ export default function App(): JSX.Element {
         }
         sidebarRightVisible={false}
         sidebarLeftVisible={effectiveLayoutMode !== 'focus'}
-        sidebarLeftCollapsed={sidebarCollapsed}
+        sidebarLeftCollapsed={sidebarRenderedCollapsed}
         sidebarRestore={
-          <button type="button" className="sidebar-restore-button app-focus-restore" onClick={() => updateLayoutMode('comfortable')}>
+          <button type="button" className="sidebar-restore-button app-focus-restore" title="Mostrar sidebar" aria-label="Mostrar sidebar" onClick={() => updateLayoutMode('comfortable')}>
             <UiIcon name="chevronRight" className="menu-icon" />
-            Sidebar
           </button>
         }
         sidebarRight={null}

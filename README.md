@@ -20,8 +20,8 @@ Ailu combines a clean desktop chat experience with engineering-grade controls:
 - real Ollama snapshots for local models;
 - masked BYOK provider profiles with explicit connection tests;
 - project context, file attachments and hidden context;
-- an AI Workspace for plans, approvals, file context, terminal access and runtime notes;
-- an LLM Library for papers, leaderboards, open models, datasets, evaluation, inference, safety and tutorials;
+- an AI Workspace for editable plans, approvals, context staging, terminal access and runtime notes;
+- an LLM Library for papers, leaderboards, open models, datasets, evaluation, inference, agents, RAG, safety and tutorials;
 - responsive modes for fullscreen, split-screen, small windows and square floating windows.
 
 ## Current Status
@@ -32,8 +32,8 @@ Ailu combines a clean desktop chat experience with engineering-grade controls:
 | Local AI | Implemented | Ollama only. Installed models come from real `/api/tags` or `ollama list`. |
 | Cloud providers | Implemented/experimental by adapter | Credentials must be configured and tested before `ready`. |
 | STT | Implemented with local prerequisites | Backend and microphone capture status are separate. |
-| LLM Library | Implemented initial catalog | Curated subset with filters, favorites, actions and local metadata. |
-| AI Workspace | Implemented shell | Plan board, approvals view, provider status, file context and terminal entrypoint. |
+| LLM Library | Implemented curated catalog | Search, category/type/difficulty/organization/tag filters, favorites, actions and structured metadata. |
+| AI Workspace | Implemented workspace surface | Editable plan board, markdown export, approvals view, provider status, context staging and terminal entrypoint. |
 | Terminal/web preview | Experimental | Terminal drawer exists; web preview is documented for a future backend pass. |
 | Desktop packaging | Implemented baseline | Tauri 2, Linux bundle metadata and `.desktop` helper are present. |
 
@@ -43,7 +43,7 @@ Ailu combines a clean desktop chat experience with engineering-grade controls:
 
 - Central chat with real provider/model routing.
 - Temporary chat uses the same provider pipeline without persisting history.
-- AI Workspace adds plans, approvals, provider routing status, project memory and file context.
+- AI Workspace adds editable plans, approvals, provider routing status, project memory and local context staging.
 - Terminal access remains behind the existing controlled command/permission path.
 
 ### Providers and BYOK
@@ -63,7 +63,9 @@ See [docs/OLLAMA.md](docs/OLLAMA.md).
 
 ### LLM Library
 
-The LLM Library is inspired by curated research repositories, but ships as an original, compact product dataset. It includes categories for milestone papers, leaderboards, open LLMs, data, evaluation, training, inference, applications, tutorials, books, security, compression, code LLMs, multimodal models and local models.
+The LLM Library is inspired by curated research repositories, but ships as an original, compact product dataset. It includes categories for milestone papers, leaderboards, open LLMs, data, evaluation, training, inference, agents, RAG, applications, tutorials, books, security, compression, code LLMs, multimodal models and local models.
+
+Each resource has structured metadata for organization, status, updated date, difficulty, open-source state, local-friendliness and relevance. The catalog is intentionally not exhaustive.
 
 See [docs/llm-library.md](docs/llm-library.md).
 
@@ -74,6 +76,7 @@ The current shell preserves the Ailu identity while adding:
 - `comfortable`, `compact` and `focus` layout modes;
 - viewport detection for narrow, compact, wide, ultrawide and square-ish windows;
 - collapsible/overlay sidebar behavior for smaller windows;
+- compact/square sidebar rail behavior so the workspace is not covered;
 - grid/card sizing that avoids horizontal overflow;
 - tighter spacing and stable controls in compact mode.
 
@@ -196,6 +199,8 @@ Useful guides:
 - [Ollama](docs/OLLAMA.md)
 - [STT](docs/STT.md)
 - [Troubleshooting](docs/TROUBLESHOOTING.md)
+- [Terax reference analysis](docs/reference-terax-analysis.md)
+- [Awesome-LLM reference analysis](docs/reference-awesome-llm-analysis.md)
 
 ## Roadmap
 

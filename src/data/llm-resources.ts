@@ -6,6 +6,8 @@ export type LlmResourceCategory =
   | 'evaluation'
   | 'training-frameworks'
   | 'inference'
+  | 'agents'
+  | 'rag'
   | 'applications'
   | 'tutorials-courses'
   | 'books'
@@ -29,6 +31,7 @@ export type LlmResourceType =
 
 export type LlmResourceDifficulty = 'beginner' | 'intermediate' | 'advanced';
 export type LlmResourceRelevance = 'core' | 'high' | 'specialized';
+export type LlmResourceStatus = 'foundational' | 'active' | 'live' | 'reference' | 'experimental' | 'archived';
 
 export interface LlmResource {
   id: string;
@@ -36,6 +39,7 @@ export interface LlmResource {
   category: LlmResourceCategory;
   type: LlmResourceType;
   provider: string;
+  organization: string;
   year: string;
   url: string;
   tags: string[];
@@ -44,7 +48,12 @@ export interface LlmResource {
   isOpenSource: boolean;
   localFriendly: boolean;
   relevance: LlmResourceRelevance;
+  status: LlmResourceStatus;
+  updatedAt: string;
 }
+
+type LlmResourceSeed = Omit<LlmResource, 'organization' | 'status' | 'updatedAt'> &
+  Partial<Pick<LlmResource, 'organization' | 'status' | 'updatedAt'>>;
 
 export const LLM_CATEGORIES: Array<{ id: LlmResourceCategory; label: string }> = [
   { id: 'milestone-papers', label: 'Milestone Papers' },
@@ -54,6 +63,8 @@ export const LLM_CATEGORIES: Array<{ id: LlmResourceCategory; label: string }> =
   { id: 'evaluation', label: 'Evaluation' },
   { id: 'training-frameworks', label: 'Training' },
   { id: 'inference', label: 'Inference' },
+  { id: 'agents', label: 'Agents' },
+  { id: 'rag', label: 'RAG' },
   { id: 'applications', label: 'Applications' },
   { id: 'tutorials-courses', label: 'Tutorials' },
   { id: 'books', label: 'Books' },
@@ -64,7 +75,16 @@ export const LLM_CATEGORIES: Array<{ id: LlmResourceCategory; label: string }> =
   { id: 'local-models', label: 'Local Models' },
 ];
 
-export const llmResources: LlmResource[] = [
+function defaultStatus(resource: LlmResourceSeed): LlmResourceStatus {
+  if (resource.year === 'Live') return 'live';
+  if (resource.year === 'Active') return 'active';
+  if (resource.category === 'milestone-papers') return 'foundational';
+  if (resource.category === 'leaderboards') return 'live';
+  if (resource.category === 'open-llms' || resource.category === 'local-models') return 'active';
+  return 'reference';
+}
+
+const curatedLlmResources: LlmResourceSeed[] = [
   {
     id: 'attention-is-all-you-need',
     title: 'Attention Is All You Need',
@@ -351,6 +371,81 @@ export const llmResources: LlmResource[] = [
     relevance: 'core',
   },
   {
+    id: 'retrieval-augmented-generation',
+    title: 'Retrieval-Augmented Generation',
+    category: 'rag',
+    type: 'paper',
+    provider: 'Meta AI',
+    year: '2020',
+    url: 'https://arxiv.org/abs/2005.11401',
+    tags: ['rag', 'retrieval', 'grounding'],
+    summary: 'Core paper for grounding language generation with retrieved external knowledge.',
+    difficulty: 'intermediate',
+    isOpenSource: true,
+    localFriendly: true,
+    relevance: 'core',
+  },
+  {
+    id: 'faiss',
+    title: 'FAISS',
+    category: 'rag',
+    type: 'framework',
+    provider: 'Meta AI',
+    year: 'Active',
+    url: 'https://github.com/facebookresearch/faiss',
+    tags: ['retrieval', 'vectors', 'search'],
+    summary: 'Vector search library commonly used to build retrieval layers for local and hosted RAG systems.',
+    difficulty: 'intermediate',
+    isOpenSource: true,
+    localFriendly: true,
+    relevance: 'high',
+  },
+  {
+    id: 'react-paper',
+    title: 'ReAct: Synergizing Reasoning and Acting',
+    category: 'agents',
+    type: 'paper',
+    provider: 'Google Research / Princeton',
+    year: '2022',
+    url: 'https://arxiv.org/abs/2210.03629',
+    tags: ['agents', 'tools', 'reasoning'],
+    summary: 'Reference pattern for interleaving reasoning traces with tool actions in agent workflows.',
+    difficulty: 'advanced',
+    isOpenSource: true,
+    localFriendly: true,
+    relevance: 'core',
+  },
+  {
+    id: 'dspy',
+    title: 'DSPy',
+    category: 'agents',
+    type: 'framework',
+    provider: 'Stanford NLP',
+    year: 'Active',
+    url: 'https://github.com/stanfordnlp/dspy',
+    tags: ['agents', 'optimization', 'programming'],
+    summary: 'Framework for programming and optimizing LLM pipelines without hand-tuning every prompt.',
+    difficulty: 'intermediate',
+    isOpenSource: true,
+    localFriendly: true,
+    relevance: 'high',
+  },
+  {
+    id: 'swe-bench',
+    title: 'SWE-bench',
+    category: 'code-llms',
+    type: 'leaderboard',
+    provider: 'Princeton NLP',
+    year: 'Live',
+    url: 'https://www.swebench.com/',
+    tags: ['coding', 'agents', 'evaluation'],
+    summary: 'Software engineering benchmark for evaluating model behavior on real repository issues.',
+    difficulty: 'intermediate',
+    isOpenSource: true,
+    localFriendly: false,
+    relevance: 'high',
+  },
+  {
     id: 'lm-evaluation-harness',
     title: 'LM Evaluation Harness',
     category: 'evaluation',
@@ -501,3 +596,10 @@ export const llmResources: LlmResource[] = [
     relevance: 'high',
   },
 ];
+
+export const llmResources: LlmResource[] = curatedLlmResources.map((resource) => ({
+  ...resource,
+  organization: resource.organization ?? resource.provider,
+  status: resource.status ?? defaultStatus(resource),
+  updatedAt: resource.updatedAt ?? '2026-05-17',
+}));

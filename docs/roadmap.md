@@ -11,14 +11,17 @@ This roadmap is intentionally honest. A feature is not considered shipped until 
 - Provider profile credential flow with masked keys and explicit tests.
 - STT backend status separated from microphone capture status.
 - LLM Library initial catalog, search, filters, favorites and AI actions.
-- AI Workspace shell with plan board, approvals, provider summary, file context and terminal entrypoint.
+- LLM Library organization/status/update metadata, RAG and Agents categories, tag filters and favorites-only mode.
+- AI Workspace shell with editable plan board, clear-plan confirmation, approvals, provider summary, local context staging and terminal entrypoint.
 - Responsive layout modes: comfortable, compact and focus.
+- Compact/square sidebar rail behavior validated by visual smoke.
 
 ## Experimental
 
 - Terminal as a broader AI-native command surface.
 - Web preview detection.
 - Editor/diff workflow for AI-generated file changes.
+- Backend-backed file context ingestion beyond local staging.
 - Advanced agent tools behind feature flags.
 - Expanded provider adapters and model comparison workflows.
 

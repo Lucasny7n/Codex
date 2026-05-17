@@ -44,6 +44,25 @@ The mode control appears near the topbar and is persisted locally.
 - Modal focus trap still works in Settings and project dialogs.
 - Reduced motion users should not need animation to understand state.
 
+## V2 Findings
+
+- `900x900` square/compact mode initially exposed a real issue: the full sidebar could stay open as an overlay and cover the AI Workspace.
+- The fix is to auto-collapse the sidebar when entering compact/square ranges and let the collapsed rail occupy a stable 64px column.
+- Focus mode now keeps the restore button icon-only and below the topbar so it does not collide with provider/model text.
+- LLM Library filters were compacted so all top-row selects fit better at 1440px and below.
+- AI Workspace keeps cards single-column in compact/focus mode and avoids three squeezed columns.
+
+## Evidence Captured
+
+- `npm run screenshots`: passed after V2 layout changes, 7 visual tests.
+- `npm run test:visual`: passed during initial app/Tauri validation, 7 visual tests.
+- Key screenshots generated under `test-results/screenshots/`:
+  - `pass-24-llm-library.png`
+  - `pass-24-llm-library-qwen.png`
+  - `pass-24-ai-workspace-plan.png`
+  - `pass-24-ai-workspace-square-compact.png`
+  - `pass-24-ai-workspace-focus.png`
+
 ## Validation Commands
 
 ```bash

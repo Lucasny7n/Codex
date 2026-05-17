@@ -9,8 +9,11 @@ describe('LLM Library catalog', () => {
       expect(resource.id).toMatch(/^[a-z0-9-]+$/);
       expect(resource.title.length).toBeGreaterThan(2);
       expect(resource.url).toMatch(/^https?:\/\//u);
+      expect(resource.organization.length).toBeGreaterThan(1);
       expect(resource.summary.length).toBeGreaterThan(32);
       expect(resource.tags.length).toBeGreaterThan(0);
+      expect(resource.status).toMatch(/^(foundational|active|live|reference|experimental|archived)$/u);
+      expect(resource.updatedAt).toMatch(/^\d{4}-\d{2}-\d{2}$/u);
     }
   });
 
@@ -32,6 +35,22 @@ describe('LLM Library catalog', () => {
 
     const cloudBenchmarks = searchLlmResources(llmResources, { category: 'leaderboards', localFriendlyOnly: false });
     expect(cloudBenchmarks.some((resource) => resource.type === 'leaderboard')).toBe(true);
+  });
+
+  it('filters by organization, tags and favorites without changing catalog truth', () => {
+    const stanford = searchLlmResources(llmResources, { organization: 'Stanford NLP' });
+    expect(stanford.some((resource) => resource.id === 'dspy')).toBe(true);
+    expect(stanford.every((resource) => resource.organization === 'Stanford NLP')).toBe(true);
+
+    const rag = searchLlmResources(llmResources, { tag: 'rag' });
+    expect(rag.some((resource) => resource.category === 'rag')).toBe(true);
+
+    const favorites = searchLlmResources(llmResources, {
+      favoritesOnly: true,
+      favorites: ['retrieval-augmented-generation'],
+    });
+    expect(favorites).toHaveLength(1);
+    expect(favorites[0]?.id).toBe('retrieval-augmented-generation');
   });
 
   it('ranks favorites before otherwise similar resources', () => {

@@ -5,6 +5,7 @@ import type {
   FileChangeEntry,
   PermissionRequest,
   ProviderDescriptor,
+  RiskLevel,
   StatusNote,
 } from '../../types/domain';
 
@@ -28,6 +29,7 @@ interface AiWorkspacePanelProps {
   terminalEnabled: boolean;
   webPreviewEnabled: boolean;
   onOpenTerminal: () => void;
+  onOpenProviderSettings: () => void;
   onPlanChange: (items: WorkspacePlanItem[]) => void;
   onExportPlan: (markdown: string) => void;
 }
@@ -63,6 +65,47 @@ function buildPlanMarkdown(items: WorkspacePlanItem[]): string {
   return lines.join('\n');
 }
 
+function buildRuntimeNotesMarkdown(notes: StatusNote[]): string {
+  const lines = ['# Ailu Runtime Notes', ''];
+  if (notes.length === 0) {
+    lines.push('- Sem eventos recentes.');
+    return lines.join('\n');
+  }
+
+  for (const note of notes) {
+    lines.push(`- ${note.kind}: ${note.title}`);
+    if (note.detail) lines.push(`  - ${note.detail}`);
+    lines.push(`  - ${note.at}`);
+  }
+  return lines.join('\n');
+}
+
+function riskTone(risk: RiskLevel): 'neutral' | 'info' | 'warn' | 'danger' {
+  if (risk === 'low') return 'info';
+  if (risk === 'medium') return 'warn';
+  if (risk === 'high' || risk === 'critical') return 'danger';
+  return 'neutral';
+}
+
+function providerTone(provider: ProviderDescriptor): 'neutral' | 'info' | 'warn' | 'danger' | 'ok' {
+  if (provider.status.state === 'ready') return 'ok';
+  if (provider.status.state === 'running' || provider.status.state === 'testing') return 'info';
+  if (provider.status.state === 'error' || provider.status.state === 'invalid_api_key') return 'danger';
+  return 'warn';
+}
+
+function memorySnippet(workspaceRoot?: string): string {
+  return [
+    '# AILU.md snapshot',
+    '',
+    '- Local models are Ollama only.',
+    '- Cloud providers require real credentials and explicit tests.',
+    '- File writes and commands require preview, risk classification and approval.',
+    '- Technical errors must become short user-facing messages.',
+    workspaceRoot ? `- Workspace memory path: ${workspaceRoot.replace(/\/$/, '')}/AILU.md` : '- Workspace memory path: not loaded.',
+  ].join('\n');
+}
+
 export function AiWorkspacePanel({
   workspaceRoot,
   providers,
@@ -73,11 +116,20 @@ export function AiWorkspacePanel({
   terminalEnabled,
   webPreviewEnabled,
   onOpenTerminal,
+  onOpenProviderSettings,
   onPlanChange,
   onExportPlan,
 }: AiWorkspacePanelProps): JSX.Element {
   const [draftTitle, setDraftTitle] = useState('');
   const [draftDetail, setDraftDetail] = useState('');
+  const [editingItemId, setEditingItemId] = useState<string>();
+  const [editingTitle, setEditingTitle] = useState('');
+  const [editingDetail, setEditingDetail] = useState('');
+  const [clearConfirm, setClearConfirm] = useState(false);
+  const [contextDraft, setContextDraft] = useState('');
+  const [stagedContexts, setStagedContexts] = useState<string[]>([]);
+  const [memoryCopied, setMemoryCopied] = useState(false);
+  const [runtimeCopied, setRuntimeCopied] = useState(false);
   const readyProviders = useMemo(
     () => providers.filter((provider) => provider.status.state === 'ready'),
     [providers],
@@ -101,14 +153,62 @@ export function AiWorkspacePanel({
     ]);
     setDraftTitle('');
     setDraftDetail('');
+    setClearConfirm(false);
   }
 
   function updateStatus(itemId: string, status: WorkspacePlanStatus): void {
     onPlanChange(planItems.map((item) => (item.id === itemId ? { ...item, status } : item)));
   }
 
+  function startEditing(item: WorkspacePlanItem): void {
+    setEditingItemId(item.id);
+    setEditingTitle(item.title);
+    setEditingDetail(item.detail ?? '');
+  }
+
+  function saveEditing(itemId: string): void {
+    const title = editingTitle.trim();
+    if (!title) return;
+    onPlanChange(planItems.map((item) => (
+      item.id === itemId
+        ? { ...item, title, detail: editingDetail.trim() || undefined }
+        : item
+    )));
+    setEditingItemId(undefined);
+    setEditingTitle('');
+    setEditingDetail('');
+  }
+
   function removeItem(itemId: string): void {
     onPlanChange(planItems.filter((item) => item.id !== itemId));
+  }
+
+  function clearPlan(): void {
+    if (!clearConfirm) {
+      setClearConfirm(true);
+      return;
+    }
+    onPlanChange([]);
+    setClearConfirm(false);
+  }
+
+  function addStagedContext(): void {
+    const clean = contextDraft.trim();
+    if (!clean) return;
+    setStagedContexts((current) => [clean, ...current.filter((item) => item !== clean)].slice(0, 8));
+    setContextDraft('');
+  }
+
+  function copyMemorySnippet(): void {
+    void navigator.clipboard?.writeText(memorySnippet(workspaceRoot));
+    setMemoryCopied(true);
+    window.setTimeout(() => setMemoryCopied(false), 1600);
+  }
+
+  function copyRuntimeNotes(): void {
+    void navigator.clipboard?.writeText(buildRuntimeNotesMarkdown(statusFeed));
+    setRuntimeCopied(true);
+    window.setTimeout(() => setRuntimeCopied(false), 1600);
   }
 
   return (
@@ -124,6 +224,14 @@ export function AiWorkspacePanel({
           <button type="button" className="btn-modern" onClick={() => onExportPlan(buildPlanMarkdown(planItems))}>
             Export plan
           </button>
+          <button type="button" className="btn-modern" disabled={planItems.length === 0} onClick={clearPlan}>
+            {clearConfirm ? 'Confirm clear' : 'Clear plan'}
+          </button>
+          {clearConfirm ? (
+            <button type="button" className="btn-modern" onClick={() => setClearConfirm(false)}>
+              Cancel
+            </button>
+          ) : null}
         </div>
       </header>
 
@@ -165,22 +273,52 @@ export function AiWorkspacePanel({
             ) : null}
             {planItems.map((item) => (
               <article key={item.id} className={`workspace-plan-row plan-${item.status}`}>
-                <div>
-                  <strong>{item.title}</strong>
-                  {item.detail ? <p>{item.detail}</p> : null}
-                  {item.source ? <small>{item.source}</small> : null}
-                </div>
-                <div>
-                  <select value={item.status} aria-label={`Status de ${item.title}`} onChange={(event) => updateStatus(item.id, event.target.value as WorkspacePlanStatus)}>
-                    {(Object.keys(STATUS_LABELS) as WorkspacePlanStatus[]).map((status) => (
-                      <option key={status} value={status}>{STATUS_LABELS[status]}</option>
-                    ))}
-                  </select>
-                  <Badge tone={statusTone(item.status)}>{item.status}</Badge>
-                  <button type="button" className="icon-button" aria-label={`Remover ${item.title}`} onClick={() => removeItem(item.id)}>
-                    ×
-                  </button>
-                </div>
+                {editingItemId === item.id ? (
+                  <>
+                    <div className="workspace-plan-edit">
+                      <input
+                        value={editingTitle}
+                        aria-label={`Editar título de ${item.title}`}
+                        onChange={(event) => setEditingTitle(event.target.value)}
+                      />
+                      <input
+                        value={editingDetail}
+                        aria-label={`Editar detalhe de ${item.title}`}
+                        onChange={(event) => setEditingDetail(event.target.value)}
+                      />
+                    </div>
+                    <div>
+                      <button type="button" className="btn-modern" disabled={!editingTitle.trim()} onClick={() => saveEditing(item.id)}>
+                        Save
+                      </button>
+                      <button type="button" className="btn-modern" onClick={() => setEditingItemId(undefined)}>
+                        Cancel
+                      </button>
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <div>
+                      <strong>{item.title}</strong>
+                      {item.detail ? <p>{item.detail}</p> : null}
+                      {item.source ? <small>{item.source}</small> : null}
+                    </div>
+                    <div>
+                      <select value={item.status} aria-label={`Status de ${item.title}`} onChange={(event) => updateStatus(item.id, event.target.value as WorkspacePlanStatus)}>
+                        {(Object.keys(STATUS_LABELS) as WorkspacePlanStatus[]).map((status) => (
+                          <option key={status} value={status}>{STATUS_LABELS[status]}</option>
+                        ))}
+                      </select>
+                      <Badge tone={statusTone(item.status)}>{item.status}</Badge>
+                      <button type="button" className="icon-button" aria-label={`Editar ${item.title}`} onClick={() => startEditing(item)}>
+                        <UiIcon name="edit" />
+                      </button>
+                      <button type="button" className="icon-button" aria-label={`Remover ${item.title}`} onClick={() => removeItem(item.id)}>
+                        ×
+                      </button>
+                    </div>
+                  </>
+                )}
               </article>
             ))}
           </div>
@@ -194,17 +332,20 @@ export function AiWorkspacePanel({
           <div className="workspace-provider-list">
             {readyProviders.slice(0, 4).map((provider) => (
               <div key={provider.id} className="workspace-provider-row ready">
-                <strong>{provider.label}</strong>
+                <strong>{provider.label}<Badge tone={providerTone(provider)}>{provider.status.state}</Badge></strong>
                 <span>{provider.status.message}</span>
               </div>
             ))}
             {providersNeedingAction.map((provider) => (
               <div key={provider.id} className="workspace-provider-row">
-                <strong>{provider.label}</strong>
+                <strong>{provider.label}<Badge tone={providerTone(provider)}>{provider.status.state}</Badge></strong>
                 <span>{provider.status.message}</span>
               </div>
             ))}
             {providers.length === 0 ? <p className="workspace-muted">Nenhum provider carregado ainda.</p> : null}
+            <button type="button" className="btn-modern" onClick={onOpenProviderSettings}>
+              Settings & models
+            </button>
           </div>
         </section>
 
@@ -217,6 +358,9 @@ export function AiWorkspacePanel({
             <strong>AILU.md</strong>
             <p>Arquivo de memória e regras do projeto para orientar a IA sem copiar contexto bruto para o composer.</p>
             <code>{workspaceRoot ? `${workspaceRoot}/AILU.md` : 'workspace não carregado'}</code>
+            <button type="button" className="btn-modern" onClick={copyMemorySnippet}>
+              {memoryCopied ? 'Copied memory' : 'Copy memory snippet'}
+            </button>
           </div>
         </section>
 
@@ -229,9 +373,12 @@ export function AiWorkspacePanel({
             {pendingPermissions.length === 0 ? <p className="workspace-muted">Nenhuma ação aguardando aprovação.</p> : null}
             {pendingPermissions.slice(0, 5).map((request) => (
               <article key={request.id}>
-                <strong>{request.title}</strong>
-                <span>{request.category} · risco {request.riskLevel}</span>
+                <strong>{request.title}<Badge tone={riskTone(request.riskLevel)}>risco {request.riskLevel}</Badge></strong>
+                <span>{request.category} · {request.status}</span>
                 <p>{request.reason}</p>
+                <code>{request.command || request.actionId || 'ação registrada'}</code>
+                <small>Target: {request.target || request.cwd}</small>
+                {request.rollback ? <small>Rollback: {request.rollback}</small> : null}
               </article>
             ))}
           </div>
@@ -243,6 +390,30 @@ export function AiWorkspacePanel({
             <Badge tone={changedFiles.length > 0 ? 'info' : 'neutral'}>{changedFiles.length}</Badge>
           </header>
           <div className="workspace-change-list">
+            <p className="workspace-muted">Context staging local. Nada aqui executa leitura ou escreve arquivo sem um fluxo de backend aprovado.</p>
+            <div className="workspace-context-composer">
+              <input
+                value={contextDraft}
+                placeholder="Path, URL ou nota de contexto"
+                aria-label="Adicionar contexto local"
+                onChange={(event) => setContextDraft(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter') addStagedContext();
+                }}
+              />
+              <button type="button" className="btn-modern" disabled={!contextDraft.trim()} onClick={addStagedContext}>
+                Stage
+              </button>
+            </div>
+            {stagedContexts.map((context) => (
+              <div key={context}>
+                <strong>staged</strong>
+                <span>{context}</span>
+                <button type="button" className="icon-button" aria-label={`Remover contexto ${context}`} onClick={() => setStagedContexts((current) => current.filter((item) => item !== context))}>
+                  ×
+                </button>
+              </div>
+            ))}
             {changedFiles.length === 0 ? <p className="workspace-muted">Sem alterações detectadas nesta sessão.</p> : null}
             {changedFiles.slice(0, 6).map((change) => (
               <div key={`${change.path}-${change.at}`}>
@@ -283,6 +454,9 @@ export function AiWorkspacePanel({
                 <p>{note.detail}</p>
               </article>
             ))}
+            <button type="button" className="btn-modern" onClick={copyRuntimeNotes}>
+              {runtimeCopied ? 'Copied notes' : 'Copy runtime notes'}
+            </button>
           </div>
         </section>
       </div>

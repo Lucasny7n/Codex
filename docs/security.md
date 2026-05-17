@@ -23,6 +23,8 @@ Every file write or command action should include:
 
 Permission categories include safe read, workspace write, external write, network, privileged, package install and critical system.
 
+AI Workspace context staging is not backend ingestion. A staged path, URL or note is only local UI state until a separate approved backend flow reads or writes files.
+
 ## Local Runtime
 
 - Do not install Ollama or models silently.

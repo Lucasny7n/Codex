@@ -2,6 +2,8 @@ import type {
   LlmResource,
   LlmResourceCategory,
   LlmResourceDifficulty,
+  LlmResourceRelevance,
+  LlmResourceStatus,
   LlmResourceType,
 } from '../../data/llm-resources';
 
@@ -10,8 +12,13 @@ export interface LlmResourceFilters {
   category?: LlmResourceCategory | 'all';
   type?: LlmResourceType | 'all';
   difficulty?: LlmResourceDifficulty | 'all';
+  organization?: string | 'all';
+  tag?: string;
+  relevance?: LlmResourceRelevance | 'all';
+  status?: LlmResourceStatus | 'all';
   openSourceOnly?: boolean;
   localFriendlyOnly?: boolean;
+  favoritesOnly?: boolean;
   favorites?: string[];
 }
 
@@ -26,9 +33,11 @@ function resourceHaystack(resource: LlmResource): string {
   return normalize([
     resource.title,
     resource.provider,
+    resource.organization,
     resource.category,
     resource.type,
     resource.year,
+    resource.status,
     resource.summary,
     resource.tags.join(' '),
   ].join(' '));
@@ -44,12 +53,14 @@ function scoreResource(resource: LlmResource, query: string, favorites: Set<stri
 
   const normalizedTitle = normalize(resource.title);
   const normalizedProvider = normalize(resource.provider);
+  const normalizedOrganization = normalize(resource.organization);
   const normalizedTags = normalize(resource.tags.join(' '));
   const terms = normalize(query).split(/\s+/u).filter(Boolean);
 
   for (const term of terms) {
     if (normalizedTitle.includes(term)) score += 18;
     if (normalizedProvider.includes(term)) score += 8;
+    if (normalizedOrganization.includes(term)) score += 8;
     if (normalizedTags.includes(term)) score += 12;
     if (resourceHaystack(resource).includes(term)) score += 4;
   }
@@ -67,8 +78,13 @@ export function searchLlmResources(resources: LlmResource[], filters: LlmResourc
       if (filters.category && filters.category !== 'all' && resource.category !== filters.category) return false;
       if (filters.type && filters.type !== 'all' && resource.type !== filters.type) return false;
       if (filters.difficulty && filters.difficulty !== 'all' && resource.difficulty !== filters.difficulty) return false;
+      if (filters.organization && filters.organization !== 'all' && resource.organization !== filters.organization) return false;
+      if (filters.tag && !resource.tags.includes(filters.tag)) return false;
+      if (filters.relevance && filters.relevance !== 'all' && resource.relevance !== filters.relevance) return false;
+      if (filters.status && filters.status !== 'all' && resource.status !== filters.status) return false;
       if (filters.openSourceOnly && !resource.isOpenSource) return false;
       if (filters.localFriendlyOnly && !resource.localFriendly) return false;
+      if (filters.favoritesOnly && !favorites.has(resource.id)) return false;
       if (terms.length === 0) return true;
       const haystack = resourceHaystack(resource);
       return terms.every((term) => haystack.includes(term));

@@ -23,6 +23,23 @@ npm run tauri:dev
 
 If port `5173` is already in use, inspect the process before assuming the app is broken.
 
+## V2 Runtime Smoke
+
+On 2026-05-17, the desktop app was started with an isolated Cargo target:
+
+```bash
+env CARGO_TARGET_DIR=/tmp/ailu-ai-studio-cargo-target npm run tauri:dev
+```
+
+Result:
+
+- Vite served `http://localhost:5173/`.
+- Rust compiled successfully.
+- The Tauri binary ran from `/tmp/ailu-ai-studio-cargo-target/debug/ailu-ai-studio`.
+- The session was stopped after visual validation.
+
+One Playwright screenshots attempt failed while Tauri/Vite already occupied port `5173`; rerunning screenshots after stopping the dev session passed.
+
 ## Build
 
 ```bash

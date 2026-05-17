@@ -101,3 +101,19 @@ Before merge, rollback is the branch diff. After merge, revert the final commit 
 - Branch pushed: `origin/feature/terax-awesome-llm-upgrade`.
 - Pull request creation via `gh` was not completed because `gh auth status` reports: `The token in default is invalid`.
 - Manual PR URL: `https://github.com/Lucasny7n/ailu-ai-studio/pull/new/feature/terax-awesome-llm-upgrade`.
+
+## V2 Follow-Up
+
+The 2026-05-17 V2 pass continues this branch and PR #4 without replacing the V1 architecture.
+
+Main additions:
+
+- `docs/upgrade-v2-audit.md`
+- `docs/reference-terax-analysis.md`
+- `docs/reference-awesome-llm-analysis.md`
+- `docs/upgrade-v2-report.md`
+- LLM Library metadata for organization/status/update date, RAG and Agents categories, tag filters, favorites-only and core filters.
+- AI Workspace editable plan items, clear-plan confirmation, provider settings route, memory snippet copy, local context staging and richer approval cards.
+- Compact/square sidebar rail and focus restore cleanup.
+
+V2 validation results are recorded in `docs/upgrade-v2-report.md`.

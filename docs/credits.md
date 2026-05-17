@@ -23,6 +23,7 @@ The LLM Library dataset is a compact original subset with Ailu-specific fields:
 - category;
 - type;
 - provider;
+- organization;
 - year;
 - tags;
 - summary;
@@ -30,5 +31,12 @@ The LLM Library dataset is a compact original subset with Ailu-specific fields:
 - open-source flag;
 - local-friendly flag;
 - relevance.
+- status;
+- updated date.
+
+V2 reference analysis lives in:
+
+- `docs/reference-terax-analysis.md`
+- `docs/reference-awesome-llm-analysis.md`
 
 See `THIRD_PARTY.md` for repository-level third-party policy.

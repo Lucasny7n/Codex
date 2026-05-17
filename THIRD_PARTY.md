@@ -10,6 +10,7 @@ This repository is MIT licensed. This upgrade used external repositories as desi
 - License: Apache-2.0
 - Usage in this upgrade: product and architecture inspiration for a desktop AI-native workspace, including terminal/editor/file/AI panel concepts, BYOK positioning, project memory and approval flows.
 - Copied code/assets/text: none.
+- V2 analysis: `docs/reference-terax-analysis.md`.
 
 ### Awesome-LLM
 
@@ -17,6 +18,7 @@ This repository is MIT licensed. This upgrade used external repositories as desi
 - License: CC0-1.0
 - Usage in this upgrade: category inspiration for the Ailu LLM Library, including papers, leaderboards, open models, datasets, evaluation, training, inference, applications, tutorials, books, security and compression.
 - Copied code/assets/text: none. The shipped catalog is an original curated subset with Ailu-specific metadata and summaries.
+- V2 analysis: `docs/reference-awesome-llm-analysis.md`.
 
 ## Policy
 

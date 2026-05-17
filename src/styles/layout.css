@@ -162,6 +162,12 @@
   }
 
   .app-main-grid-no-left,
+  .app-main-grid-no-left.app-main-grid-left-collapsed,
+  .app-main-grid-no-left.app-main-grid-no-right {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .app-main-grid-no-left,
   .app-main-grid-no-left.app-main-grid-no-right {
     grid-template-columns: minmax(0, 1fr);
   }
@@ -172,6 +178,11 @@
   .app-main-grid-no-right {
     grid-template-columns: 1fr;
     padding: 0;
+  }
+
+  .app-main-grid-left-collapsed,
+  .app-main-grid-left-collapsed.app-main-grid-no-right {
+    grid-template-columns: 64px minmax(0, 1fr);
   }
 
   .app-column {
@@ -195,6 +206,8 @@
   }
 
   .app-sidebar-left-collapsed {
+    position: relative;
+    inset: auto;
     width: 64px;
     border-radius: 0;
     box-shadow: none;

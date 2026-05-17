@@ -4019,6 +4019,14 @@
   cursor: pointer;
 }
 
+.sidebar-restore-button.app-focus-restore {
+  top: calc(var(--topbar-height) + 12px);
+  left: 12px;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+}
+
 .sidebar-restore-button:hover {
   color: var(--text-primary);
   border-color: var(--border-medium);
@@ -8664,7 +8672,7 @@ body,
 
 .llm-library-toolbar {
   display: grid;
-  grid-template-columns: minmax(260px, 1fr) minmax(160px, 210px) minmax(140px, 170px) minmax(150px, 190px);
+  grid-template-columns: minmax(260px, 1fr) minmax(150px, 190px) minmax(130px, 160px) minmax(145px, 180px) minmax(160px, 210px);
   gap: 10px;
   align-items: center;
 }
@@ -8672,6 +8680,8 @@ body,
 .library-search,
 .llm-library-toolbar select,
 .workspace-plan-composer input,
+.workspace-plan-edit input,
+.workspace-context-composer input,
 .workspace-plan-row select {
   min-width: 0;
   min-height: 38px;
@@ -8718,7 +8728,17 @@ body,
   gap: 8px;
 }
 
+.library-tag-row {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  overflow-x: auto;
+  padding-bottom: 2px;
+}
+
 .library-filter-row button,
+.library-tag-row button,
+.library-tag-list button,
 .library-resource-card footer button {
   min-height: 30px;
   border: 1px solid var(--border-subtle);
@@ -8734,6 +8754,10 @@ body,
 
 .library-filter-row button:hover:not(:disabled),
 .library-filter-row button.active,
+.library-tag-row button:hover,
+.library-tag-row button.active,
+.library-tag-list button:hover,
+.library-tag-list button.active,
 .library-resource-card footer button:hover {
   border-color: rgba(45, 149, 236, 0.32);
   background: rgba(45, 149, 236, 0.11);
@@ -8890,13 +8914,21 @@ body,
   gap: 6px;
 }
 
-.library-tag-list span {
+.library-highlight {
+  border-radius: 4px;
+  background: rgba(45, 149, 236, 0.22);
+  color: var(--text-primary);
+  padding: 0 2px;
+}
+
+.library-tag-list button {
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-pill);
   background: rgba(255, 255, 255, 0.03);
   color: var(--text-muted);
   padding: 3px 8px;
   font-size: 0.72rem;
+  cursor: pointer;
 }
 
 .library-resource-card footer {
@@ -8956,7 +8988,9 @@ body,
   gap: 8px;
 }
 
-.workspace-plan-composer input {
+.workspace-plan-composer input,
+.workspace-plan-edit input,
+.workspace-context-composer input {
   padding: 0 11px;
 }
 
@@ -8989,6 +9023,12 @@ body,
   min-width: 0;
   display: grid;
   gap: 4px;
+}
+
+.workspace-plan-edit {
+  min-width: 0;
+  display: grid;
+  gap: 7px;
 }
 
 .workspace-plan-row strong,
@@ -9053,6 +9093,14 @@ body,
   font-size: 0.86rem;
 }
 
+.workspace-provider-row strong,
+.workspace-approval-list strong {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
 .workspace-provider-row span,
 .workspace-change-list span,
 .workspace-status-feed span,
@@ -9074,6 +9122,12 @@ body,
 .workspace-action-stack {
   display: grid;
   gap: 9px;
+}
+
+.workspace-context-composer {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
 }
 
 @media (max-width: 1280px) {
@@ -9136,6 +9190,8 @@ body,
 
   .llm-library-toolbar,
   .workspace-plan-composer,
+  .workspace-plan-edit,
+  .workspace-context-composer,
   .workspace-plan-row {
     grid-template-columns: 1fr;
   }

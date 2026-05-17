@@ -42,6 +42,8 @@ This file documents domain, auth type, readiness policy and secret policy for ke
 - Do not mark provider/account/model ready just because a key was saved.
 - Mask credentials.
 - Use short actionable errors.
+- AI Workspace may summarize provider state, but Settings > Modelos remains the route for adding keys, testing credentials and selecting models.
+- A saved but untested credential should remain `testing` or action-required until a real adapter test succeeds.
 
 ## Security Rules
 

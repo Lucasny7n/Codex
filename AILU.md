@@ -53,6 +53,14 @@ cd src-tauri && cargo fmt --check && cargo check && cargo test
 - `src/components/workspace/AiWorkspacePanel.tsx` is the current AI workspace shell for plans, approvals and runtime context.
 - `src-tauri/src/services/credential_store.rs` is the sensitive credential boundary.
 
+## V2 Product Notes
+
+- LLM Library resources expose `organization`, `status` and `updatedAt` in addition to category/type/difficulty/relevance.
+- Agents and RAG are first-class library categories, but the catalog remains compact and curated.
+- AI Workspace plan items can be edited, cleared only after inline confirmation and exported as markdown.
+- File Context in AI Workspace is local context staging unless a backend-approved ingestion flow is added.
+- Compact and square windows should show the 64px sidebar rail instead of a full sidebar covering the workspace.
+
 ## Risk Register
 
 - Provider adapters can drift when external APIs change.

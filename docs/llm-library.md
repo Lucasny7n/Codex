@@ -34,6 +34,7 @@ Each resource includes:
 - `category`
 - `type`
 - `provider`
+- `organization`
 - `year`
 - `url`
 - `tags`
@@ -42,6 +43,8 @@ Each resource includes:
 - `isOpenSource`
 - `localFriendly`
 - `relevance`
+- `status`
+- `updatedAt`
 
 ## Categories
 
@@ -52,6 +55,8 @@ Each resource includes:
 - Evaluation
 - Training Frameworks
 - Inference
+- Agents
+- RAG
 - Applications
 - Tutorials & Courses
 - Books
@@ -63,14 +68,19 @@ Each resource includes:
 
 ## UI Behavior
 
-- Search across title, provider, year, tags, category and summary.
-- Filter by category, type and difficulty.
-- Toggle open-source and local-friendly filters.
+- Search across title, provider, organization, year, tags, category, status and summary.
+- Filter by category, type, difficulty and organization.
+- Toggle favorites-only, core, open-source and local-friendly filters.
+- Use popular tag chips or card tags as quick filters.
 - Favorite resources locally.
 - Copy a reference.
 - Open external source links.
 - Send a resource to the chat as hidden context.
 - Add a resource to the AI Workspace plan.
+
+## V2 Scope
+
+The V2 pass added first-class RAG and Agents categories, organization/status/update metadata, tag filters, favorites-only filtering and a small curated set of additional resources. It still avoids importing the full Awesome-LLM list.
 
 ## Adding Resources
 
@@ -78,7 +88,8 @@ Each resource includes:
 2. Keep the summary concise and original.
 3. Use a stable `id` with lowercase letters, numbers and hyphens.
 4. Prefer canonical project, paper or organization URLs.
-5. Run:
+5. Fill organization/status/update metadata explicitly only when the defaults are not enough.
+6. Run:
 
 ```bash
 npm run test -- tests/llm-library.test.ts --run
