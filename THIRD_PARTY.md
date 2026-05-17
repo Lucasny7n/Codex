@@ -1,6 +1,6 @@
 # Third-Party References
 
-This repository is MIT licensed. This upgrade used external repositories as design and organization references only.
+This repository is MIT licensed. External repositories were used as references only; no third-party branding, screenshots, source files or long-form text were copied into Ailu.
 
 ## Reference Repositories
 
@@ -8,9 +8,11 @@ This repository is MIT licensed. This upgrade used external repositories as desi
 
 - Repository: https://github.com/crynta/terax-ai
 - License: Apache-2.0
-- Usage in this upgrade: product and architecture inspiration for a desktop AI-native workspace, including terminal/editor/file/AI panel concepts, BYOK positioning, project memory and approval flows.
+- Usage in this upgrade: product, architecture and GitHub presentation inspiration for a desktop AI-native workspace, including terminal/editor/file/AI panel concepts, BYOK positioning, project memory, approval flows, README structure and repository hygiene.
 - Copied code/assets/text: none.
-- V2 analysis: `docs/reference-terax-analysis.md`.
+- Analyses:
+  - `docs/reference-terax-analysis.md`
+  - `docs/reference-terax-github-polish.md`
 
 ### Awesome-LLM
 

@@ -1,153 +1,126 @@
-# Ailu AI Studio
+<p align="center">
+  <img src="src/assets/app-logo.svg" width="96" height="96" alt="Ailu AI Studio logo">
+</p>
 
-[![CI](https://github.com/Lucasny7n/ailu-ai-studio/actions/workflows/ci.yml/badge.svg)](https://github.com/Lucasny7n/ailu-ai-studio/actions/workflows/ci.yml)
-![Tauri](https://img.shields.io/badge/Tauri-2.x-24c8db)
-![React](https://img.shields.io/badge/React-18-61dafb)
-![Rust](https://img.shields.io/badge/Rust-stable-f46623)
-![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178c6)
-![License](https://img.shields.io/badge/license-MIT-blue)
+<h1 align="center">Ailu AI Studio</h1>
 
-Premium desktop AI studio for local Ollama models, authenticated cloud providers, project memory, safe actions and curated LLM research.
+<p align="center">
+  Desktop AI workspace for local-first planning, LLM discovery, provider setup and responsive AI workflows.
+</p>
 
-Ailu is a Tauri/Rust/React app for people who want a serious AI workspace without fake readiness. Local and cloud AI are intentionally separate, provider status is validated before use, and risky file or command actions go through explicit approval surfaces.
+<p align="center">
+  <a href="https://github.com/Lucasny7n/ailu-ai-studio/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/Lucasny7n/ailu-ai-studio/actions/workflows/ci.yml/badge.svg"></a>
+  <a href="LICENSE"><img alt="License" src="https://img.shields.io/github/license/Lucasny7n/ailu-ai-studio"></a>
+  <img alt="Platform" src="https://img.shields.io/badge/platform-Linux--first-0b7cff">
+  <img alt="Tauri" src="https://img.shields.io/badge/Tauri-2.x-24c8db">
+  <img alt="React" src="https://img.shields.io/badge/React-18-61dafb">
+  <img alt="TypeScript" src="https://img.shields.io/badge/TypeScript-strict-3178c6">
+  <img alt="Rust" src="https://img.shields.io/badge/Rust-stable-f46623">
+  <img alt="PRs welcome" src="https://img.shields.io/badge/PRs-welcome-2ea44f">
+</p>
 
-## Overview
+Ailu AI Studio is a Tauri/Rust/React desktop app for operating AI work without fake readiness. It keeps Local and Cloud routing separate, stages project context explicitly, surfaces provider status honestly and gives users approval points before risky actions.
 
-Ailu combines a clean desktop chat experience with engineering-grade controls:
+It currently focuses on a clean AI workspace, a curated LLM Library, Ollama-local model discovery, BYOK provider setup, responsive desktop layouts and repository hygiene suitable for public open-source iteration.
 
-- persistent and temporary conversations;
-- a unified `[ Local | Cloud ]` selector with hard routing separation;
-- real Ollama snapshots for local models;
-- masked BYOK provider profiles with explicit connection tests;
-- project context, file attachments and hidden context;
-- an AI Workspace for editable plans, approvals, context staging, terminal access and runtime notes;
-- an LLM Library for papers, leaderboards, open models, datasets, evaluation, inference, agents, RAG, safety and tutorials;
-- responsive modes for fullscreen, split-screen, small windows and square floating windows.
+## Screenshots
 
-## Current Status
+| Workspace | LLM Library |
+| --- | --- |
+| ![Ailu AI Workspace](docs/assets/screenshots/ailu-ai-workspace.png) | ![Ailu LLM Library](docs/assets/screenshots/ailu-llm-library.png) |
+
+| App Shell | Responsive Compact |
+| --- | --- |
+| ![Ailu app shell](docs/assets/screenshots/ailu-home.png) | ![Ailu responsive compact mode](docs/assets/screenshots/ailu-responsive.png) |
+
+Release screenshots are stored in `docs/assets/screenshots/`. Temporary Playwright output stays in `test-results/` and is ignored.
+
+## Features
+
+### AI Workspace
+
+- Editable local plan board with markdown export.
+- Approval cards for file, command, install, network and privileged categories.
+- Provider readiness summary routed back to Settings when credentials or tests are missing.
+- Local file/context staging without pretending there is backend indexing.
+- Runtime notes for safe handoff between product, system and implementation work.
+
+### LLM Library
+
+- Curated, original catalog inspired by public LLM taxonomies, not a bulk mirror.
+- Search across title, provider, organization, status, tags and summaries.
+- Filters for category, type, difficulty, organization, favorites, open-source and local-friendly resources.
+- Actions to copy references, open source links, send hidden context to chat and add resources to workspace plans.
+
+### Providers and BYOK
+
+- Unified `[ Local | Cloud ]` selector with hard separation.
+- Cloud providers require real credentials, login, CLI auth or configured endpoint before use.
+- Saved keys are masked and must be tested before a provider becomes `ready`.
+- User-facing provider errors are short and actionable; raw JSON and stack traces stay out of the main UI.
+
+### Desktop and Layout
+
+- Tauri 2 desktop shell with Rust services behind the UI.
+- Default window `1440x900`, minimum `900x600`.
+- `comfortable`, `compact` and `focus` modes for full screen, split screen, small windows and square floating windows.
+- Black Ailu shell with End-4 blue accents, preserving the current product identity.
+
+### Security and Privacy
+
+- No silent model installs.
+- No local/cloud model mixing.
+- No secrets in logs, screenshots, issues or commits.
+- File and command actions need explicit permission categories.
+- Local AI means Ollama runtime state, not a static model list.
+
+## Status
 
 | Area | Status | Notes |
 | --- | --- | --- |
 | Chat sessions | Implemented | Persistent sessions, archive/restore, export/import and temporary chat. |
 | Local AI | Implemented | Ollama only. Installed models come from real `/api/tags` or `ollama list`. |
 | Cloud providers | Implemented/experimental by adapter | Credentials must be configured and tested before `ready`. |
-| STT | Implemented with local prerequisites | Backend and microphone capture status are separate. |
-| LLM Library | Implemented curated catalog | Search, category/type/difficulty/organization/tag filters, favorites, actions and structured metadata. |
-| AI Workspace | Implemented workspace surface | Editable plan board, markdown export, approvals view, provider status, context staging and terminal entrypoint. |
-| Terminal/web preview | Experimental | Terminal drawer exists; web preview is documented for a future backend pass. |
-| Desktop packaging | Implemented baseline | Tauri 2, Linux bundle metadata and `.desktop` helper are present. |
+| LLM Library | Implemented | Curated catalog with search, filters, favorites and workspace actions. |
+| AI Workspace | Implemented | Local planning, approvals, provider status and context staging. |
+| STT | Implemented with prerequisites | Backend readiness and microphone capture are separate states. |
+| Terminal | Experimental | Drawer exists; broader command workflows remain approval-gated. |
+| Web preview/editor diffs | Planned | Not marketed as ready until backend/runtime validation exists. |
 
-## Features
+## Quick Start
 
-### AI Command Center
+Prerequisites:
 
-- Central chat with real provider/model routing.
-- Temporary chat uses the same provider pipeline without persisting history.
-- AI Workspace adds editable plans, approvals, provider routing status, project memory and local context staging.
-- Terminal access remains behind the existing controlled command/permission path.
-
-### Providers and BYOK
-
-- Cloud providers require real credentials, OAuth, CLI auth or a custom endpoint depending on adapter.
-- Saved keys are masked and must be tested before they become selectable.
-- Provider errors are translated into short user-facing messages.
-- Raw API keys, JSON dumps and stack traces should not appear in UI, logs, screenshots or commits.
-
-See [docs/providers.md](docs/providers.md).
-
-### Local Models
-
-Local means **Ollama only**. Ailu does not mix local models into cloud lists and does not mark a model installed until the refreshed Ollama runtime confirms it.
-
-See [docs/OLLAMA.md](docs/OLLAMA.md).
-
-### LLM Library
-
-The LLM Library is inspired by curated research repositories, but ships as an original, compact product dataset. It includes categories for milestone papers, leaderboards, open LLMs, data, evaluation, training, inference, agents, RAG, applications, tutorials, books, security, compression, code LLMs, multimodal models and local models.
-
-Each resource has structured metadata for organization, status, updated date, difficulty, open-source state, local-friendliness and relevance. The catalog is intentionally not exhaustive.
-
-See [docs/llm-library.md](docs/llm-library.md).
-
-### Responsive Layout
-
-The current shell preserves the Ailu identity while adding:
-
-- `comfortable`, `compact` and `focus` layout modes;
-- viewport detection for narrow, compact, wide, ultrawide and square-ish windows;
-- collapsible/overlay sidebar behavior for smaller windows;
-- compact/square sidebar rail behavior so the workspace is not covered;
-- grid/card sizing that avoids horizontal overflow;
-- tighter spacing and stable controls in compact mode.
-
-See [docs/responsive-qa.md](docs/responsive-qa.md).
-
-## Screenshots
-
-Visual smoke screenshots are generated locally and should be promoted to release assets only when they are intentional.
-
-```bash
-npm run screenshots
-```
-
-Current screenshot notes live in `docs/screenshots/README.md` when release screenshots are available. Do not commit temporary files from `test-results/`.
-
-## Why Ailu
-
-Ailu is built around honest operation:
-
-- no fake provider success;
-- no silent model installs;
-- no local/cloud model mixing;
-- no terminal-first UX for normal configuration;
-- no secrets in logs or screenshots;
-- no broad rewrites when a small validated change is safer.
-
-## Architecture
-
-Frontend:
-
-- React 18 + TypeScript + Vite;
-- Zustand store;
-- shared design tokens in `src/styles`;
-- modular components under `src/components`;
-- catalog/search utilities under `src/data` and `src/lib`.
-
-Desktop/backend:
-
-- Tauri 2;
-- Rust services for provider registry, credential storage, sessions, permissions, local runtime and command execution;
-- Linux packaging metadata in `src-tauri/tauri.conf.json` and `assets/ailu-ai-studio.desktop`.
-
-See [docs/architecture.md](docs/architecture.md) and [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
-
-## Security and Privacy
-
-- Never commit `.env`, API keys, local databases, model weights, `node_modules`, logs or temporary screenshots.
-- Never use `sudo -S`.
-- Never download runtimes or models silently.
-- Use the app credential flow instead of plain localStorage for provider secrets.
-- Treat every file write, command execution, network/download, install and privileged operation as an explicit permission category.
-
-See [docs/security.md](docs/security.md).
-
-## Installation
+- Node.js 22+
+- npm
+- Rust stable
+- Tauri Linux dependencies for desktop builds
+- Ollama only if you want local models
 
 ```bash
 git clone https://github.com/Lucasny7n/ailu-ai-studio.git
 cd ailu-ai-studio
 npm install
 npm run doctor
-npm run tauri:dev
-```
-
-Frontend-only development:
-
-```bash
 npm run dev
 ```
 
-## Development
+Desktop development:
+
+```bash
+npm run tauri:dev
+```
+
+Production build:
+
+```bash
+npm run build
+npm run tauri:build
+```
+
+## Validation
+
+Run the checks before opening a PR:
 
 ```bash
 npm run lint
@@ -157,7 +130,7 @@ npm run build
 npm run screenshots
 npm run test:visual
 npm run icons:validate
-npm run healthcheck
+git diff --check
 ```
 
 Rust checks:
@@ -169,54 +142,65 @@ cargo check
 cargo test
 ```
 
-## Build
+When Cargo target contamination appears between worktrees, use an isolated target:
 
 ```bash
-npm run build
-npm run tauri:build
+env CARGO_TARGET_DIR=/tmp/ailu-ai-studio-cargo-target cargo check
+env CARGO_TARGET_DIR=/tmp/ailu-ai-studio-cargo-target cargo test
 ```
 
-## Desktop App
+## Tech Stack
 
-Default window: `1440x900`. Minimum window: `900x600`. The app is configured as a Tauri desktop application with Linux bundle targets and a `.desktop` installer helper.
+| Layer | Stack |
+| --- | --- |
+| Desktop | Tauri 2, Rust |
+| Frontend | React 18, TypeScript, Vite |
+| State/UI | Zustand, CSS tokens, modular React components |
+| Tests | Vitest, Testing Library, Playwright visual smoke |
+| Local AI | Ollama runtime discovery |
+| Packaging | Tauri Linux `deb` and `rpm` metadata |
 
-See [docs/desktop-app.md](docs/desktop-app.md).
+## Project Structure
 
-## Troubleshooting
-
-Start with:
-
-```bash
-npm run doctor
-npm run healthcheck
+```text
+.
+├── .github/              # CI, issue templates, PR template, ownership
+├── assets/               # Desktop integration source assets
+├── docs/                 # Architecture, providers, release and maintenance docs
+├── src/                  # React app, components, data and frontend services
+├── src-tauri/            # Tauri config, Rust services and desktop backend
+├── tests/                # Unit, component and visual smoke tests
+├── AILU.md               # Project memory and operating contract
+├── README.md             # GitHub landing page
+└── THIRD_PARTY.md        # Reference and dependency credit policy
 ```
 
-Useful guides:
+## Documentation
 
-- [Installation](docs/INSTALLATION.md)
-- [User Guide](docs/USER_GUIDE.md)
-- [Developer Guide](docs/DEVELOPER_GUIDE.md)
-- [Ollama](docs/OLLAMA.md)
-- [STT](docs/STT.md)
-- [Troubleshooting](docs/TROUBLESHOOTING.md)
-- [Terax reference analysis](docs/reference-terax-analysis.md)
-- [Awesome-LLM reference analysis](docs/reference-awesome-llm-analysis.md)
-
-## Roadmap
-
-The roadmap separates implemented, experimental and planned work. Items are not treated as shipped until tests and runtime validation prove them.
-
-See [docs/roadmap.md](docs/roadmap.md).
+- [Architecture](docs/architecture.md)
+- [Desktop app](docs/desktop-app.md)
+- [Providers](docs/providers.md)
+- [Security](docs/security.md)
+- [LLM Library](docs/llm-library.md)
+- [Responsive QA](docs/responsive-qa.md)
+- [Roadmap](docs/roadmap.md)
+- [Release process](docs/release-process.md)
+- [GitHub maintenance](docs/github-maintenance.md)
+- [Third-party references](THIRD_PARTY.md)
 
 ## Contributing
 
-Read [docs/CONTRIBUTING.md](docs/CONTRIBUTING.md) and use the pull request template. Behavior changes need validation evidence. UI changes should include screenshots or visual smoke results when practical.
+Read [CONTRIBUTING.md](CONTRIBUTING.md) before opening a PR. Use focused branches, Conventional Commits, scoped changes and the pull request template. UI changes should include screenshots or explain why they are not needed.
+
+## Support and Security
+
+- For help, use [SUPPORT.md](SUPPORT.md).
+- For vulnerabilities or secret exposure, use [SECURITY.md](SECURITY.md) and do not open a public issue.
+- For planned work, see [ROADMAP.md](ROADMAP.md) and [docs/roadmap.md](docs/roadmap.md).
 
 ## Credits
 
-This upgrade studied Terax AI for product architecture patterns and Awesome-LLM for catalog organization. The implementation is original and does not copy branding, assets or substantial source text.
-
-See [docs/credits.md](docs/credits.md) and [THIRD_PARTY.md](THIRD_PARTY.md).
+This repository studied Terax AI for open-source presentation and desktop AI workspace patterns, and Awesome-LLM for high-level catalog taxonomy. Ailu does not copy their branding, screenshots, source code or long-form text. See [THIRD_PARTY.md](THIRD_PARTY.md) and [docs/credits.md](docs/credits.md).
 
 ## License
 

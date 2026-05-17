@@ -37,6 +37,7 @@ The LLM Library dataset is a compact original subset with Ailu-specific fields:
 V2 reference analysis lives in:
 
 - `docs/reference-terax-analysis.md`
+- `docs/reference-terax-github-polish.md`
 - `docs/reference-awesome-llm-analysis.md`
 
 See `THIRD_PARTY.md` for repository-level third-party policy.

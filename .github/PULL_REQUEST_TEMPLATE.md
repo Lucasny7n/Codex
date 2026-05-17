@@ -2,9 +2,22 @@
 
 -
 
+## Type of Change
+
+- [ ] Feature
+- [ ] Fix
+- [ ] Documentation
+- [ ] Refactor
+- [ ] Test
+- [ ] CI/repository maintenance
+
 ## Changed Areas
 
 -
+
+## Screenshots or Recording
+
+Add UI evidence, visual smoke output or explain why screenshots are not needed.
 
 ## Validation
 
@@ -16,21 +29,28 @@
 - [ ] `npm run test:visual` or not needed
 - [ ] `npm run icons:validate`
 - [ ] `git diff --check`
-- [ ] `cd src-tauri && cargo fmt --check`
-- [ ] `cd src-tauri && cargo check`
-- [ ] `cd src-tauri && cargo test`
+- [ ] `cargo fmt --check`
+- [ ] `cargo check`
+- [ ] `cargo test`
 
-## UI Evidence
+## Risk
 
-Add screenshots or explain why they are not needed.
-
-## Security
-
-- [ ] No API keys, tokens, secrets, local model weights, generated logs or temp screenshots were added.
-- [ ] Cloud/local separation is preserved.
-- [ ] Provider/model readiness remains based on real validation.
-- [ ] User-facing errors are sanitized.
+-
 
 ## Rollback
 
 Describe the safest rollback path.
+
+## Related Docs or Issues
+
+-
+
+## Confirmations
+
+- [ ] No API keys, tokens, secrets, local model weights, generated logs or temp screenshots were added.
+- [ ] Documentation was updated or is not needed.
+- [ ] UI was checked responsively or is not affected.
+- [ ] No generated artifacts were committed.
+- [ ] Cloud/local separation is preserved.
+- [ ] Provider/model readiness remains based on real validation.
+- [ ] User-facing errors are sanitized.

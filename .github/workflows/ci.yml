@@ -39,6 +39,40 @@ jobs:
       - name: Validate icons
         run: npm run icons:validate
 
+  hygiene:
+    name: Security Hygiene
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: No generated artifacts are tracked
+        run: |
+          forbidden="$(git ls-files \
+            'node_modules/*' \
+            'dist/*' \
+            'target/*' \
+            'src-tauri/target/*' \
+            'test-results/*' \
+            'playwright-report/*' \
+            '*.log' \
+            '.env' \
+            '.env.*')"
+          if [ -n "$forbidden" ]; then
+            echo "$forbidden"
+            exit 1
+          fi
+
+      - name: Secret pattern scan
+        run: |
+          if git grep -nE '(sk-[A-Za-z0-9]{20,}|ghp_[A-Za-z0-9]{20,}|AIza[0-9A-Za-z_-]{20,})' -- . ':!package-lock.json'; then
+            echo "Potential secret pattern found. Remove or redact it before merging."
+            exit 1
+          fi
+
+      - name: Whitespace check
+        run: git diff --check
+
   rust:
     name: Rust
     runs-on: ubuntu-latest
