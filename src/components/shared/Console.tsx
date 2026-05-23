@@ -20,24 +20,38 @@ export function Console({ isOpen, toggle }: ConsoleProps) {
 
   const getLogColor = (level: string) => {
     switch(level) {
-      case 'info': return 'text-blue-400';
-      case 'warn': return 'text-yellow-400';
-      case 'error': return 'text-red-400';
-      case 'success': return 'text-green-400';
-      default: return 'text-gray-400';
+      case 'info': return 'var(--text-active)';
+      case 'warn': return 'var(--color-warning)';
+      case 'error': return 'var(--color-danger)';
+      case 'success': return 'var(--color-success)';
+      default: return 'var(--text-muted)';
     }
   };
 
   return (
-    <div className={`console-panel flex flex-col ${isOpen ? 'h-64' : 'h-10'} bg-[#121216] border-t border-[var(--border-color)] transition-all duration-300 absolute bottom-0 w-full z-40`}>
-      <div className="flex justify-between items-center px-4 py-2 cursor-pointer bg-[#1a1a20] hover:bg-[#202028] border-b border-[var(--border-color)]" onClick={toggle}>
-        <div className="flex items-center gap-3">
-          <span className="font-semibold text-gray-300 text-sm flex items-center gap-2">
+    <div className={`app-console ${isOpen ? 'open' : 'closed'}`}>
+      <div 
+        onClick={toggle}
+        style={{
+          height: '40px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', 
+          padding: '0 var(--space-4)', backgroundColor: 'var(--bg-panel)', borderBottom: '1px solid var(--border-color)',
+          cursor: 'pointer'
+        }}
+        onMouseOver={(e) => e.currentTarget.style.backgroundColor = 'var(--bg-hover)'}
+        onMouseOut={(e) => e.currentTarget.style.backgroundColor = 'var(--bg-panel)'}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)' }}>
+          <span style={{ fontWeight: 600, color: 'var(--text-main)', fontSize: '0.875rem', display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
             🖥️ Console & Logs
           </span>
           {isOpen && (
-             <div className="flex gap-2 ml-4" onClick={e => e.stopPropagation()}>
-               <select className="bg-black border border-gray-700 text-xs text-gray-300 rounded px-2 py-0.5 outline-none" value={filter} onChange={e => setFilter(e.target.value)}>
+             <div style={{ display: 'flex', gap: 'var(--space-2)', marginLeft: 'var(--space-4)' }} onClick={e => e.stopPropagation()}>
+               <select 
+                 className="app-input"
+                 style={{ padding: '0.25rem 0.5rem', fontSize: '0.75rem', height: 'auto' }}
+                 value={filter} 
+                 onChange={e => setFilter(e.target.value)}
+               >
                  <option value="all">Todos</option>
                  <option value="chat">Chat</option>
                  <option value="approval">Aprovação</option>
@@ -47,29 +61,29 @@ export function Console({ isOpen, toggle }: ConsoleProps) {
              </div>
           )}
         </div>
-        <div className="flex items-center gap-3" onClick={e => e.stopPropagation()}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)' }} onClick={e => e.stopPropagation()}>
           {isOpen && (
             <>
-              <button onClick={clearLogs} className="text-xs text-gray-400 hover:text-white px-2 py-0.5 rounded bg-gray-800">Limpar</button>
-              <button onClick={copyLogs} className="text-xs text-blue-400 hover:text-blue-300 px-2 py-0.5 rounded bg-blue-900/30">Copiar</button>
+              <button onClick={clearLogs} className="app-button app-button-secondary" style={{ padding: '0.25rem 0.5rem', fontSize: '0.75rem' }}>Limpar</button>
+              <button onClick={copyLogs} className="app-button app-button-secondary" style={{ padding: '0.25rem 0.5rem', fontSize: '0.75rem' }}>Copiar</button>
             </>
           )}
-          <span className="text-gray-500 hover:text-white cursor-pointer" onClick={toggle}>{isOpen ? '▼' : '▲'}</span>
+          <span style={{ color: 'var(--text-muted)', cursor: 'pointer', fontSize: '0.75rem' }} onClick={toggle}>{isOpen ? '▼' : '▲'}</span>
         </div>
       </div>
       
       {isOpen && (
-        <div className="flex-1 overflow-y-auto p-4 font-mono text-xs bg-[#09090b] space-y-1">
+        <div style={{ flex: 1, overflowY: 'auto', backgroundColor: 'var(--bg-main)' }}>
           {filteredLogs.map(log => (
-            <div key={log.id} className="flex gap-3 hover:bg-gray-800/50 py-0.5 px-1 rounded group">
-              <span className="text-gray-600 shrink-0">[{new Date(log.timestamp).toLocaleTimeString()}]</span>
-              <span className={`shrink-0 w-16 font-semibold ${getLogColor(log.level)}`}>[{log.level.toUpperCase()}]</span>
-              <span className="text-gray-500 shrink-0 w-20">[{log.type}]</span>
-              <span className="text-gray-300 break-words">{log.message}</span>
+            <div key={log.id} className="app-log-row">
+              <span style={{ color: 'var(--text-muted)', flexShrink: 0 }}>[{new Date(log.timestamp).toLocaleTimeString()}]</span>
+              <span style={{ flexShrink: 0, width: '60px', fontWeight: 600, color: getLogColor(log.level) }}>[{log.level.toUpperCase()}]</span>
+              <span style={{ color: 'var(--text-muted)', flexShrink: 0, width: '80px' }}>[{log.type}]</span>
+              <span style={{ color: 'var(--text-main)', wordBreak: 'break-word' }}>{log.message}</span>
             </div>
           ))}
           {filteredLogs.length === 0 && (
-            <div className="text-gray-500 italic">Nenhum log registrado.</div>
+            <div style={{ color: 'var(--text-muted)', fontStyle: 'italic', padding: 'var(--space-4)', fontSize: '0.75rem', fontFamily: 'var(--font-mono)' }}>Nenhum log registrado.</div>
           )}
         </div>
       )}

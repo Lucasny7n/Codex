@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { useModelStore, ModelItem } from '../../stores/modelStore';
-import { HardwareProfile, calculateCompatibility, getCompatibilityColor, CompatibilityLevel } from '../../utils/compatibility';
+import { HardwareProfile, calculateCompatibility, CompatibilityLevel } from '../../utils/compatibility';
+import { useApprovalStore } from '../../stores/approvalStore';
 
 export function ModelCatalog() {
   const { models, primaryModelId, fallbackModelId, setPrimaryModel, setFallbackModel } = useModelStore();
@@ -24,37 +25,34 @@ export function ModelCatalog() {
   });
 
   return (
-    <div className="p-6 bg-[var(--bg-main)] h-full flex flex-col">
-      <div className="flex justify-between items-start mb-4">
-        <h2 className="text-2xl font-bold text-white">Catálogo de Modelos</h2>
+    <div style={{ padding: 'var(--space-6)', display: 'flex', flexDirection: 'column', height: '100%' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 'var(--space-6)' }}>
+        <h2 className="app-section-title" style={{ marginBottom: 0 }}>Catálogo de Modelos</h2>
         {hwProfile && (
-          <div className="text-right text-xs text-gray-400 bg-[var(--bg-panel)] p-2 rounded border border-[var(--border-color)]">
-            <span className="font-semibold text-gray-300 block mb-1">Seu Hardware:</span>
-            {hwProfile.total_ram_gb.toFixed(1)}GB RAM • {hwProfile.cpu_name}
-            {hwProfile.zram_detected && <span className="text-blue-400 ml-2">(ZRAM Detectado)</span>}
+          <div className="app-panel" style={{ padding: 'var(--space-2) var(--space-4)', display: 'flex', flexDirection: 'column', alignItems: 'flex-end' }}>
+            <span style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-muted)' }}>Seu Hardware:</span>
+            <span style={{ fontSize: '0.875rem' }}>{hwProfile.total_ram_gb.toFixed(1)}GB RAM • {hwProfile.cpu_name}</span>
+            {hwProfile.zram_detected && <span style={{ fontSize: '0.75rem', color: 'var(--color-primary)' }}>(ZRAM Detectado)</span>}
           </div>
         )}
       </div>
       
-      <div className="mb-6 space-y-4 flex-shrink-0">
+      <div className="app-toolbar">
         <input 
           type="text" 
           placeholder="Buscar modelos..." 
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          className="w-full bg-[var(--bg-input)] border border-[var(--border-color)] rounded-lg p-3 text-white outline-none focus:border-blue-500"
+          className="app-input"
+          style={{ maxWidth: '400px' }}
         />
         
-        <div className="flex flex-wrap gap-2">
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--space-2)' }}>
           {filterOptions.map((filter) => (
             <button
               key={filter}
               onClick={() => setActiveFilter(filter)}
-              className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${
-                activeFilter === filter 
-                  ? 'bg-blue-600 text-white' 
-                  : 'bg-[var(--bg-hover)] text-gray-400 hover:text-gray-200'
-              }`}
+              className={`app-chip ${activeFilter === filter ? 'app-chip-active' : ''}`}
             >
               {filter}
             </button>
@@ -62,23 +60,28 @@ export function ModelCatalog() {
         </div>
       </div>
 
-      <div className="flex-1 overflow-y-auto space-y-4 pb-4">
-        {filteredModels.map((model) => {
-          const compLevel = calculateCompatibility(model.ramRequired, hwProfile, model.tags.includes('experimental'));
-          return (
-            <ModelCard 
-              key={model.id} 
-              model={model} 
-              isPrimary={primaryModelId === model.id}
-              isFallback={fallbackModelId === model.id}
-              compatibility={compLevel}
-              onSetPrimary={() => setPrimaryModel(model.id)}
-              onSetFallback={() => setFallbackModel(model.id)}
-            />
-          );
-        })}
+      <div style={{ flex: 1, overflowY: 'auto', paddingBottom: 'var(--space-4)' }}>
+        <div className="app-card-grid">
+          {filteredModels.map((model) => {
+            const compLevel = calculateCompatibility(model.ramRequired, hwProfile, model.tags.includes('experimental'));
+            return (
+              <ModelCard 
+                key={model.id} 
+                model={model} 
+                isPrimary={primaryModelId === model.id}
+                isFallback={fallbackModelId === model.id}
+                compatibility={compLevel}
+                onSetPrimary={() => setPrimaryModel(model.id)}
+                onSetFallback={() => setFallbackModel(model.id)}
+              />
+            );
+          })}
+        </div>
         {filteredModels.length === 0 && (
-          <p className="text-gray-400 text-center py-8">Nenhum modelo encontrado.</p>
+          <div className="app-empty-state">
+            <span style={{ fontSize: '2rem', marginBottom: 'var(--space-4)' }}>🔍</span>
+            <p style={{ color: 'var(--text-muted)' }}>Nenhum modelo encontrado para este filtro.</p>
+          </div>
         )}
       </div>
     </div>
@@ -86,51 +89,89 @@ export function ModelCatalog() {
 }
 
 function ModelCard({ model, isPrimary, isFallback, compatibility, onSetPrimary, onSetFallback }: { model: ModelItem, isPrimary: boolean, isFallback: boolean, compatibility: CompatibilityLevel, onSetPrimary: () => void, onSetFallback: () => void }) {
+  const { requestApproval } = useApprovalStore();
+
+  const handleDownloadPlan = () => {
+    requestApproval({
+      id: `download-${model.id}-${Date.now()}`,
+      summary: `Baixar Modelo: ${model.name}`,
+      reason: `O usuário solicitou o download do modelo ${model.name} (${model.weight}). Será necessário conexão com a internet e espaço em disco.`,
+      totalRisk: 'Médio',
+      requiresSudo: false,
+      requiresInternet: true,
+      backupRequired: false,
+      skillId: 'download-model',
+      steps: [
+        { order: 1, description: `Baixar ${model.id} via backend selecionado`, command: 'python', args: ['-m', 'airllm', 'download', model.id], riskLevel: 'Seguro', requiresSudo: false }
+      ]
+    });
+  };
+
+  const compBadgeClass = compatibility === 'Excelente' ? 'app-badge-success' : compatibility === 'Sofrido' ? 'app-badge-danger' : 'app-badge-warning';
+  const statusBadgeClass = model.status === 'installed' ? 'app-badge-success' : model.status === 'needs_validation' ? 'app-badge-warning' : 'app-badge-muted';
+
   return (
-    <div className={`p-5 rounded-xl border ${isPrimary ? 'border-blue-500 bg-blue-900/10' : 'border-[var(--border-color)] bg-[var(--bg-panel)]'}`}>
-      <div className="flex justify-between items-start mb-2">
+    <div className={`app-card ${isPrimary ? 'primary' : ''}`}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 'var(--space-3)' }}>
         <div>
-          <h3 className="text-lg font-bold text-gray-200 flex items-center gap-2">
+          <h3 style={{ fontSize: '1.25rem', fontWeight: 700, display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
             {model.name}
-            {isPrimary && <span className="text-xs bg-blue-600 px-2 py-0.5 rounded text-white font-medium">Principal</span>}
-            {isFallback && <span className="text-xs bg-gray-600 px-2 py-0.5 rounded text-white font-medium">Fallback</span>}
+            {isPrimary && <span className="app-badge app-badge-info">Principal</span>}
+            {isFallback && <span className="app-badge app-badge-muted">Fallback</span>}
           </h3>
-          <p className="text-sm text-gray-400 mt-1">{model.description}</p>
-        </div>
-        <div className="flex flex-col items-end gap-1">
-          <span className={`text-xs px-2 py-1 rounded font-medium ${model.status === 'installed' ? 'bg-green-900/50 text-green-400' : model.status === 'needs_validation' ? 'bg-yellow-900/50 text-yellow-400' : 'bg-gray-800 text-gray-500'}`}>
-            {model.status === 'installed' ? 'Instalado' : model.status === 'needs_validation' ? 'Necessita Validação' : 'Não Instalado'}
-          </span>
-          <span className={`text-xs px-2 py-1 rounded font-medium mt-1 ${getCompatibilityColor(compatibility)}`}>
-            {compatibility}
-          </span>
-          <span className="text-xs text-gray-500 mt-1">{model.weight} • RAM: {model.ramRequired}GB</span>
+          <p className="app-subtitle">{model.description}</p>
         </div>
       </div>
       
-      <div className="mt-4 grid grid-cols-2 gap-4 text-xs text-gray-400">
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-1)', marginBottom: 'var(--space-4)', fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+          <span>Status:</span>
+          <span className={`app-badge ${statusBadgeClass}`}>
+            {model.status === 'installed' ? 'Instalado' : model.status === 'needs_validation' ? 'Necessita Validação' : 'Não Instalado'}
+          </span>
+        </div>
+        <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+          <span>Compatibilidade:</span>
+          <span className={`app-badge ${compBadgeClass}`}>{compatibility}</span>
+        </div>
+        <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+          <span>Tamanho:</span>
+          <strong style={{ color: 'var(--text-main)', fontFamily: 'var(--font-mono)' }}>{model.weight}</strong>
+        </div>
+        <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+          <span>RAM estimada:</span>
+          <strong style={{ color: 'var(--text-main)', fontFamily: 'var(--font-mono)' }}>{model.ramRequired} GB</strong>
+        </div>
+      </div>
+      
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--space-3)', padding: 'var(--space-3)', backgroundColor: 'var(--bg-input)', borderRadius: 'var(--radius-md)', marginBottom: 'var(--space-4)', fontSize: '0.75rem', color: 'var(--text-muted)' }}>
         <div>
-          <span className="font-semibold text-gray-500 block mb-1">Recomendado para:</span>
-          {model.recommendedUse}
+          <span style={{ fontWeight: 600, display: 'block', marginBottom: 'var(--space-1)', textTransform: 'uppercase', fontSize: '0.625rem' }}>Recomendado</span>
+          <span style={{ color: 'var(--text-main)' }}>{model.recommendedUse}</span>
         </div>
         <div>
-          <span className="font-semibold text-gray-500 block mb-1">Backends:</span>
-          {model.backends.join(', ')}
+          <span style={{ fontWeight: 600, display: 'block', marginBottom: 'var(--space-1)', textTransform: 'uppercase', fontSize: '0.625rem' }}>Backends</span>
+          <span style={{ color: 'var(--text-main)' }}>{model.backends.join(', ')}</span>
         </div>
       </div>
 
-      <div className="mt-4 flex flex-wrap gap-2">
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--space-2)', marginBottom: 'var(--space-4)' }}>
         {model.tags.map(tag => (
-          <span key={tag} className="text-[10px] px-2 py-1 bg-[var(--bg-hover)] text-gray-400 rounded">#{tag}</span>
+          <span key={tag} className="app-badge app-badge-muted">#{tag}</span>
         ))}
       </div>
 
-      <div className="mt-4 pt-4 border-t border-[var(--border-color)] flex gap-2">
-        <button onClick={onSetPrimary} disabled={isPrimary} className="text-xs px-3 py-1.5 bg-[var(--bg-input)] hover:bg-[var(--bg-hover)] disabled:opacity-50 text-gray-300 rounded transition-colors">
-          Definir Principal
+      <div style={{ marginTop: 'auto', paddingTop: 'var(--space-4)', borderTop: '1px solid var(--border-color)', display: 'flex', flexWrap: 'wrap', gap: 'var(--space-2)' }}>
+        {model.status !== 'installed' && (
+          <button onClick={handleDownloadPlan} className="app-button app-button-primary" style={{ width: '100%', marginBottom: 'var(--space-2)' }}>
+            ⬇️ Criar Plano de Download
+          </button>
+        )}
+        <button onClick={onSetPrimary} disabled={isPrimary} className="app-button app-button-secondary" style={{ flex: 1 }}>
+          Principal
         </button>
-        <button onClick={onSetFallback} disabled={isFallback} className="text-xs px-3 py-1.5 bg-[var(--bg-input)] hover:bg-[var(--bg-hover)] disabled:opacity-50 text-gray-300 rounded transition-colors">
-          Definir Fallback
+        <button onClick={onSetFallback} disabled={isFallback} className="app-button app-button-secondary" style={{ flex: 1 }}>
+          Fallback
         </button>
       </div>
     </div>

@@ -1,4 +1,4 @@
-use rusqlite::{params, Connection, Result as SqlResult};
+use rusqlite::{params, Connection};
 use serde::{Deserialize, Serialize};
 use std::sync::Mutex;
 use tauri::State;

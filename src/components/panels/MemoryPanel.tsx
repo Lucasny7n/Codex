@@ -16,32 +16,36 @@ export function MemoryPanel() {
   const [loading, setLoading] = useState(false);
   const { addLog } = useLogStore();
 
-  const fetchMemories = async () => {
-    setLoading(true);
+  const fetchMemories = async (searchQuery: string, isSubscribed = true) => {
+    if (isSubscribed) setLoading(true);
     try {
       let data;
-      if (search.trim() === '') {
+      if (searchQuery.trim() === '') {
         data = await invoke<MemoryItem[]>('list_memories');
       } else {
-        data = await invoke<MemoryItem[]>('search_memories', { query: search });
+        data = await invoke<MemoryItem[]>('search_memories', { query: searchQuery });
       }
-      setMemories(data);
+      if (isSubscribed) setMemories(data);
     } catch (err) {
       console.error('Falha ao buscar memórias:', err);
     } finally {
-      setLoading(false);
+      if (isSubscribed) setLoading(false);
     }
   };
 
   useEffect(() => {
-    fetchMemories();
+    let active = true;
+    Promise.resolve().then(() => {
+      if (active) fetchMemories(search, active);
+    });
+    return () => { active = false; };
   }, [search]);
 
   const handleDelete = async (id: number) => {
     try {
       await invoke('delete_memory', { id });
       addLog('memory', 'warn', `Memória apagada (id: ${id})`);
-      fetchMemories();
+      fetchMemories(search);
     } catch (err) {
       addLog('memory', 'error', `Falha ao deletar memória: ${err}`);
       console.error('Falha ao deletar:', err);
@@ -52,78 +56,87 @@ export function MemoryPanel() {
     try {
       await invoke('create_memory', { content: 'Teste de conexão com banco SQLite local', tags: 'teste,sqlite' });
       addLog('memory', 'success', 'Memória de teste inserida com sucesso no SQLite.');
-      fetchMemories();
+      fetchMemories(search);
     } catch (err) {
       addLog('memory', 'error', `Erro ao testar SQLite: ${err}`);
     }
   };
 
   return (
-    <div className="p-6 bg-[var(--bg-main)] h-full flex flex-col">
-      <div className="flex justify-between items-start mb-6">
+    <div style={{ padding: 'var(--space-6)', backgroundColor: 'var(--bg-main)', height: '100%', display: 'flex', flexDirection: 'column' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 'var(--space-6)' }}>
         <div>
-          <h2 className="text-2xl font-bold text-white flex items-center gap-2">
+          <h2 className="app-section-title" style={{ marginBottom: 0, display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
             💾 Memória do Sistema
           </h2>
-          <p className="text-sm text-gray-400 mt-1">Conhecimento persistente salvo no banco SQLite local.</p>
+          <p className="app-subtitle">Conhecimento persistente salvo no banco SQLite local.</p>
         </div>
         
-        <div className="flex gap-2">
-          <button onClick={handleTestSqlite} className="px-3 py-1.5 bg-[#21262d] border border-[#30363d] hover:bg-[#30363d] text-gray-300 rounded text-xs font-medium transition-colors">
+        <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
+          <button onClick={handleTestSqlite} className="app-button app-button-secondary">
             Testar SQLite
           </button>
-          <button className="px-3 py-1.5 bg-[#21262d] border border-[#30363d] hover:bg-[#30363d] text-gray-300 rounded text-xs font-medium transition-colors">
+          <button className="app-button app-button-secondary">
             Importar
           </button>
-          <button className="px-3 py-1.5 bg-[#21262d] border border-[#30363d] hover:bg-[#30363d] text-gray-300 rounded text-xs font-medium transition-colors">
+          <button className="app-button app-button-secondary">
             Exportar
           </button>
         </div>
       </div>
       
-      <div className="mb-6 flex gap-3">
+      <div className="app-toolbar">
         <input 
           type="text" 
           placeholder="Buscar decisões, comandos, correções..." 
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          className="flex-1 bg-[#0d1117] border border-[#30363d] rounded-lg p-3 text-sm text-white outline-none focus:border-blue-500"
+          className="app-input"
+          style={{ flex: 1 }}
         />
-        <button className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-lg font-medium text-sm transition-colors shadow-sm whitespace-nowrap">
+        <button className="app-button app-button-primary" style={{ whiteSpace: 'nowrap' }}>
           + Nova Memória
         </button>
       </div>
 
-      <div className="flex-1 overflow-y-auto space-y-4">
-        {loading && <p className="text-gray-400 text-sm">Carregando memórias...</p>}
+      <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
+        {loading && <p style={{ color: 'var(--text-muted)', fontSize: '0.875rem' }}>Carregando memórias...</p>}
         
         {!loading && memories.length === 0 && search === '' && (
-          <div className="flex flex-col items-center justify-center py-16 bg-[#161b22] border border-[#30363d] rounded-xl text-center px-6">
-            <span className="text-4xl mb-4">📭</span>
-            <h3 className="text-lg font-semibold text-gray-200 mb-2">O banco de memória está vazio.</h3>
-            <p className="text-sm text-gray-400 max-w-md">
+          <div className="app-empty-state">
+            <span style={{ fontSize: '2.5rem', marginBottom: 'var(--space-4)' }}>📭</span>
+            <h3 style={{ fontSize: '1.125rem', fontWeight: 600, color: 'var(--text-main)', marginBottom: 'var(--space-2)' }}>O banco de memória está vazio.</h3>
+            <p style={{ color: 'var(--text-muted)', fontSize: '0.875rem', maxWidth: '400px', margin: '0 auto' }}>
               Salve decisões, preferências ou resultados de comandos no chat para que o Ailu aprenda com seu uso contínuo e mantenha contexto através das reinicializações do sistema.
             </p>
-            <button onClick={handleTestSqlite} className="mt-6 px-4 py-2 bg-[#21262d] hover:bg-[#30363d] border border-[#30363d] text-white rounded-lg text-sm transition-colors">
+            <button onClick={handleTestSqlite} className="app-button app-button-secondary" style={{ marginTop: 'var(--space-6)' }}>
               Inserir memória de teste
             </button>
           </div>
         )}
 
         {!loading && memories.length === 0 && search !== '' && (
-          <p className="text-gray-400 text-center py-8">Nenhuma memória encontrada para a busca.</p>
+          <p style={{ color: 'var(--text-muted)', textAlign: 'center', padding: 'var(--space-8)' }}>Nenhuma memória encontrada para a busca.</p>
         )}
         
         {memories.map((mem) => (
-          <div key={mem.id} className="bg-[#161b22] p-5 rounded-xl border border-[#30363d] hover:border-[#8b949e] transition-colors group">
-            <div className="flex justify-between items-start mb-3">
-              <span className="text-[10px] uppercase tracking-wider font-mono text-gray-500">{new Date(mem.created_at).toLocaleString()} • ID: {mem.id}</span>
-              <button onClick={() => handleDelete(mem.id)} className="text-[10px] uppercase tracking-wider text-red-500 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-opacity">Apagar</button>
+          <div key={mem.id} className="app-card" style={{ cursor: 'default' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 'var(--space-3)' }}>
+              <span style={{ fontSize: '0.625rem', textTransform: 'uppercase', letterSpacing: '0.05em', fontFamily: 'var(--font-mono)', color: 'var(--text-muted)' }}>
+                {new Date(mem.created_at).toLocaleString()} • ID: {mem.id}
+              </span>
+              <button 
+                onClick={() => handleDelete(mem.id)} 
+                className="app-button app-button-danger" 
+                style={{ padding: '0.25rem 0.5rem', fontSize: '0.625rem' }}
+              >
+                Apagar
+              </button>
             </div>
-            <p className="text-gray-200 mb-4 text-sm leading-relaxed">{mem.content}</p>
-            <div className="flex flex-wrap gap-2">
+            <p style={{ color: 'var(--text-main)', marginBottom: 'var(--space-4)', fontSize: '0.875rem', lineHeight: 1.6 }}>{mem.content}</p>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--space-2)' }}>
               {mem.tags.split(',').filter(Boolean).map(tag => (
-                <span key={tag} className="text-[10px] px-2 py-0.5 bg-[#0d1117] border border-[#30363d] text-gray-400 rounded-full">
+                <span key={tag} className="app-badge app-badge-muted">
                   #{tag.trim()}
                 </span>
               ))}

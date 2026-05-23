@@ -57,28 +57,28 @@ export function VoicePanel() {
   if (!backends) return <div className="p-6 text-red-400">Falha ao detectar backends de voz.</div>;
 
   return (
-    <div className="p-6 bg-[var(--bg-main)] h-full flex flex-col">
-      <h2 className="text-2xl font-bold text-white mb-6">Integração de Voz</h2>
+    <div style={{ padding: 'var(--space-6)', backgroundColor: 'var(--bg-main)', height: '100%', overflowY: 'auto' }}>
+      <h2 className="app-section-title">Integração de Voz</h2>
       
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        <div className="bg-[#161b22] p-6 rounded-xl border border-[#30363d]">
-          <h3 className="text-lg font-bold text-gray-200 mb-4 flex items-center gap-2">
+      <div className="app-card-grid">
+        <div className="app-panel">
+          <h3 style={{ fontSize: '1.25rem', fontWeight: 700, display: 'flex', alignItems: 'center', gap: 'var(--space-2)', marginBottom: 'var(--space-4)' }}>
             🎤 Microfone (STT)
           </h3>
-          <p className="text-sm text-gray-400 mb-4 bg-[#0d1117] p-3 rounded-lg border border-[#30363d] flex justify-between items-center">
+          <p style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', backgroundColor: 'var(--bg-input)', padding: 'var(--space-3)', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-color)', marginBottom: 'var(--space-4)', fontSize: '0.875rem', color: 'var(--text-muted)' }}>
             Detectado pelo sistema
-            <span className={`px-2 py-0.5 rounded text-[10px] uppercase tracking-wider font-bold border ${backends.has_mic ? "bg-green-900/20 text-green-400 border-green-900/50" : "bg-red-900/20 text-red-400 border-red-900/50"}`}>
+            <span className={`app-badge ${backends.has_mic ? "app-badge-success" : "app-badge-danger"}`}>
               {backends.has_mic ? "Sim" : "Não encontrado"}
             </span>
           </p>
           
-          <h4 className="text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-2">Backends Instalados (Speech-to-Text)</h4>
+          <h4 style={{ fontSize: '0.625rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--text-muted)', marginBottom: 'var(--space-2)' }}>Backends Instalados (Speech-to-Text)</h4>
           {backends.stt.length > 0 ? (
-            <div className="flex gap-2 flex-wrap mb-6">
-              {backends.stt.map(b => <span key={b} className="px-2.5 py-1 bg-blue-900/20 text-blue-400 rounded-full text-xs border border-blue-900/50 font-medium">{b}</span>)}
+            <div style={{ display: 'flex', gap: 'var(--space-2)', flexWrap: 'wrap', marginBottom: 'var(--space-6)' }}>
+              {backends.stt.map(b => <span key={b} className="app-badge app-badge-info">{b}</span>)}
             </div>
           ) : (
-            <p className="text-sm text-orange-400 bg-orange-900/10 p-3 rounded-lg border border-orange-900/30 mb-6">
+            <p style={{ fontSize: '0.875rem', color: 'var(--color-warning)', backgroundColor: 'rgba(234, 179, 8, 0.1)', padding: 'var(--space-3)', borderRadius: 'var(--radius-md)', border: '1px solid rgba(234, 179, 8, 0.3)', marginBottom: 'var(--space-6)' }}>
               Nenhum backend STT real encontrado. Fallback apenas texto ativo.
             </p>
           )}
@@ -86,46 +86,46 @@ export function VoicePanel() {
           {backends.stt.length > 0 ? (
             <button 
               disabled={!backends.has_mic}
-              className="w-full py-2.5 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white rounded-lg font-medium transition-colors"
+              className="app-button app-button-primary" style={{ width: '100%' }}
             >
               Ouvir Agora
             </button>
           ) : (
             <button 
               onClick={handleInstallSTT}
-              className="w-full py-2.5 bg-[#21262d] hover:bg-[#30363d] border border-[#30363d] text-white rounded-lg font-medium transition-colors"
+              className="app-button app-button-secondary" style={{ width: '100%' }}
             >
               Criar Plano de Instalação (STT)
             </button>
           )}
         </div>
 
-        <div className="bg-[#161b22] p-6 rounded-xl border border-[#30363d]">
-          <h3 className="text-lg font-bold text-gray-200 mb-4 flex items-center gap-2">
+        <div className="app-panel" style={{ display: 'flex', flexDirection: 'column' }}>
+          <h3 style={{ fontSize: '1.25rem', fontWeight: 700, display: 'flex', alignItems: 'center', gap: 'var(--space-2)', marginBottom: 'var(--space-4)' }}>
             🔊 Alto-falante (TTS)
           </h3>
           
-          <h4 className="text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-2">Backends Instalados (Text-to-Speech)</h4>
+          <h4 style={{ fontSize: '0.625rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--text-muted)', marginBottom: 'var(--space-2)' }}>Backends Instalados (Text-to-Speech)</h4>
           {backends.tts.length > 0 ? (
-            <div className="flex gap-2 flex-wrap mb-6">
-              {backends.tts.map(b => <span key={b} className="px-2.5 py-1 bg-green-900/20 text-green-400 rounded-full text-xs border border-green-900/50 font-medium">{b}</span>)}
+            <div style={{ display: 'flex', gap: 'var(--space-2)', flexWrap: 'wrap', marginBottom: 'var(--space-6)' }}>
+              {backends.tts.map(b => <span key={b} className="app-badge app-badge-success">{b}</span>)}
             </div>
           ) : (
-            <p className="text-sm text-orange-400 bg-orange-900/10 p-3 rounded-lg border border-orange-900/30 mb-6 mt-16">
+            <p style={{ fontSize: '0.875rem', color: 'var(--color-warning)', backgroundColor: 'rgba(234, 179, 8, 0.1)', padding: 'var(--space-3)', borderRadius: 'var(--radius-md)', border: '1px solid rgba(234, 179, 8, 0.3)', marginBottom: 'var(--space-6)', marginTop: 'var(--space-8)' }}>
               Nenhum backend TTS local encontrado. Leitura em voz alta desativada.
             </p>
           )}
 
           {backends.tts.length > 0 ? (
             <button 
-              className="w-full py-2.5 bg-green-600 hover:bg-green-500 text-white rounded-lg font-medium transition-colors mt-auto"
+              className="app-button app-button-primary" style={{ width: '100%', marginTop: 'auto' }}
             >
               Testar Sintetizador
             </button>
           ) : (
             <button 
               onClick={handleInstallTTS}
-              className="w-full py-2.5 bg-[#21262d] hover:bg-[#30363d] border border-[#30363d] text-white rounded-lg font-medium transition-colors mt-auto"
+              className="app-button app-button-secondary" style={{ width: '100%', marginTop: 'auto' }}
             >
               Criar Plano de Instalação (TTS)
             </button>

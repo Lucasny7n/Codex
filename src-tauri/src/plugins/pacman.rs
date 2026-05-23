@@ -16,7 +16,7 @@ pub fn check_package(name: String) -> Result<PackageInfo, String> {
         .map_err(|e| e.to_string())?;
 
     if output.status.success() {
-        let stdout = String::from_utf8_lossy(&output.stdout);
+        let _stdout = String::from_utf8_lossy(&output.stdout);
         // Simplification: parse version
         Ok(PackageInfo {
             name,

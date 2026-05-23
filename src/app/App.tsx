@@ -33,25 +33,24 @@ export default function App() {
     }, 10000);
     
     return () => clearInterval(interval);
-  }, []);
+  }, [setHardware, setRuntime]);
 
   return (
-    <div className="app-container">
+    <div className="app-shell">
       <Sidebar isOpen={sidebarOpen} toggle={() => setSidebarOpen(!sidebarOpen)} activeView={activeView} setActiveView={setActiveView} />
 
-      <div className="main-content">
+      <div className="app-main">
         <Header 
           toggleSidebar={() => setSidebarOpen(!sidebarOpen)}
           toggleRightPanel={() => setRightPanelOpen(!rightPanelOpen)}
         />
         
-        <main className="main-area">
+        <main className="app-content-area">
           {activeView === 'operator' && <OperatorView />}
           {activeView === 'runtime' && <RuntimePanel />}
           {activeView === 'models' && <ModelCatalog />}
           {activeView === 'memory' && <MemoryPanel />}
           {activeView === 'voice' && <VoicePanel />}
-          {/* Outras telas virão aqui */}
           
           <Console isOpen={consoleOpen} toggle={() => setConsoleOpen(!consoleOpen)} />
         </main>

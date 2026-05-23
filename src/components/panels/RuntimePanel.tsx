@@ -59,56 +59,61 @@ export function RuntimePanel() {
   if (!status) return <div className="p-4 text-red-400">Erro ao carregar status.</div>;
 
   return (
-    <div className="p-6 bg-[var(--bg-main)] h-full overflow-y-auto">
-      <h2 className="text-2xl font-bold text-white mb-6">Runtime & Inteligência Artificial</h2>
+    <div style={{ padding: 'var(--space-6)', backgroundColor: 'var(--bg-main)', height: '100%', overflowY: 'auto' }}>
+      <h2 className="app-section-title">Runtime & Inteligência Artificial</h2>
       
-      <div className="space-y-6">
-        <section className="bg-[#161b22] p-6 rounded-xl border border-[#30363d]">
-          <div className="flex justify-between items-center mb-4">
-            <h3 className="text-lg font-bold text-gray-200 flex items-center gap-2">
-              <span className="text-yellow-500">🐍</span> Python Environment
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-6)' }}>
+        <section className="app-panel">
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 'var(--space-4)' }}>
+            <h3 style={{ fontSize: '1.25rem', fontWeight: 700, display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
+              <span style={{ color: 'var(--color-warning)' }}>🐍</span> Python Environment
             </h3>
-            <span className={`px-2.5 py-0.5 rounded uppercase tracking-wider text-[10px] font-bold border ${status.python.status === 'Ready' ? 'bg-green-900/20 text-green-400 border-green-900/50' : 'bg-red-900/20 text-red-400 border-red-900/50'}`}>
+            <span className={`app-badge ${status.python.status === 'Ready' ? 'app-badge-success' : 'app-badge-danger'}`}>
               {status.python.status}
             </span>
           </div>
-          <div className="text-gray-400 text-sm">
-            <p>Versão Detectada: <span className="text-white font-mono bg-[#0d1117] px-2 py-0.5 rounded border border-[#30363d] ml-2">{status.python.version || 'Não instalada'}</span></p>
+          <div style={{ color: 'var(--text-muted)', fontSize: '0.875rem' }}>
+            <p style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
+              Versão Detectada: 
+              <span style={{ fontFamily: 'var(--font-mono)', backgroundColor: 'var(--bg-input)', padding: 'var(--space-1) var(--space-2)', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border-color)' }}>
+                {status.python.version || 'Não instalada'}
+              </span>
+            </p>
           </div>
         </section>
 
-        <section className="bg-[#161b22] p-6 rounded-xl border border-[#30363d]">
-          <div className="flex justify-between items-center mb-4">
-            <h3 className="text-lg font-bold text-gray-200 flex items-center gap-2">
-              <span className="text-blue-500">🧠</span> AirLLM (Modelos Gigantes)
+        <section className="app-panel">
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 'var(--space-4)' }}>
+            <h3 style={{ fontSize: '1.25rem', fontWeight: 700, display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
+              <span style={{ color: 'var(--color-primary)' }}>🧠</span> AirLLM (Modelos Gigantes)
             </h3>
-            <span className={`px-2.5 py-0.5 rounded uppercase tracking-wider text-[10px] font-bold border ${status.airllm.installed ? 'bg-green-900/20 text-green-400 border-green-900/50' : 'bg-orange-900/20 text-orange-400 border-orange-900/50'}`}>
+            <span className={`app-badge ${status.airllm.installed ? 'app-badge-success' : 'app-badge-warning'}`}>
               {status.airllm.status}
             </span>
           </div>
-          <div className="text-gray-400 text-sm space-y-3">
-            <div className="flex items-center gap-2">
-              <span className="w-24 text-gray-500 font-semibold uppercase text-[10px] tracking-wider">Diretório</span>
-              <span className="font-mono text-gray-300 bg-[#0d1117] px-2 py-0.5 rounded border border-[#30363d]">~/.local/share/ailu/airllm-venv</span>
+          <div style={{ color: 'var(--text-muted)', fontSize: '0.875rem', display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
+              <span style={{ width: '100px', fontWeight: 600, textTransform: 'uppercase', fontSize: '0.625rem', letterSpacing: '0.05em' }}>Diretório</span>
+              <span style={{ fontFamily: 'var(--font-mono)', backgroundColor: 'var(--bg-input)', padding: 'var(--space-1) var(--space-2)', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border-color)', color: 'var(--text-main)' }}>~/.local/share/ailu/airllm-venv</span>
             </div>
-            <div className="flex items-center gap-2">
-              <span className="w-24 text-gray-500 font-semibold uppercase text-[10px] tracking-wider">Venv Existe</span>
-              <span className={status.airllm.venv_exists ? 'text-green-400' : 'text-gray-500'}>{status.airllm.venv_exists ? 'Sim' : 'Não'}</span>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
+              <span style={{ width: '100px', fontWeight: 600, textTransform: 'uppercase', fontSize: '0.625rem', letterSpacing: '0.05em' }}>Venv Existe</span>
+              <span style={{ color: status.airllm.venv_exists ? 'var(--color-success)' : 'var(--text-muted)' }}>{status.airllm.venv_exists ? 'Sim' : 'Não'}</span>
             </div>
-            <div className="flex items-center gap-2">
-              <span className="w-24 text-gray-500 font-semibold uppercase text-[10px] tracking-wider">Instalado</span>
-              <span className={status.airllm.installed ? 'text-green-400' : 'text-gray-500'}>{status.airllm.installed ? 'Sim' : 'Não'}</span>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
+              <span style={{ width: '100px', fontWeight: 600, textTransform: 'uppercase', fontSize: '0.625rem', letterSpacing: '0.05em' }}>Instalado</span>
+              <span style={{ color: status.airllm.installed ? 'var(--color-success)' : 'var(--text-muted)' }}>{status.airllm.installed ? 'Sim' : 'Não'}</span>
             </div>
           </div>
           
           {!status.airllm.installed && (
-            <div className="mt-6 p-4 bg-[#0d1117] border border-[#30363d] rounded-lg">
-              <div className="flex items-start gap-3">
-                <span className="text-xl">🛠️</span>
+            <div style={{ marginTop: 'var(--space-6)', padding: 'var(--space-4)', backgroundColor: 'var(--bg-input)', border: '1px solid var(--border-color)', borderRadius: 'var(--radius-md)' }}>
+              <div style={{ display: 'flex', alignItems: 'flex-start', gap: 'var(--space-3)' }}>
+                <span style={{ fontSize: '1.5rem' }}>🛠️</span>
                 <div>
-                  <p className="font-semibold text-gray-200 mb-1">AirLLM pendente de instalação</p>
-                  <p className="text-gray-400 text-sm mb-4">Crie um ambiente isolado (venv) seguro para gerenciar os modelos gigantes e evitar poluição no seu Arch Linux.</p>
-                  <button onClick={handleInstallEnv} className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white font-medium rounded-lg transition-colors text-sm flex items-center gap-2">
+                  <p style={{ fontWeight: 600, color: 'var(--text-main)', marginBottom: 'var(--space-1)' }}>AirLLM pendente de instalação</p>
+                  <p style={{ color: 'var(--text-muted)', fontSize: '0.875rem', marginBottom: 'var(--space-4)' }}>Crie um ambiente isolado (venv) seguro para gerenciar os modelos gigantes e evitar poluição no seu Arch Linux.</p>
+                  <button onClick={handleInstallEnv} className="app-button app-button-primary">
                     Criar Ambiente Isolado
                   </button>
                 </div>
