@@ -19,7 +19,16 @@ describe('Stores and Utils', () => {
 
   it('ApprovalStore requests plan', () => {
     const store = useApprovalStore.getState();
-    store.requestApproval({ id: '1', summary: 'test', reason: 'r', steps: [], totalRisk: 'Seguro', requiresSudo: false, backupRequired: false });
+    store.requestApproval({ 
+      id: '1', 
+      skillId: 'mock-skill',
+      summary: 'test', 
+      reason: 'r', 
+      steps: [], 
+      totalRisk: 'Seguro', 
+      requiresSudo: false, 
+      backupRequired: false
+    });
     expect(useApprovalStore.getState().pendingPlan).not.toBeNull();
   });
 

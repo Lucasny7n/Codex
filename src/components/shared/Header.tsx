@@ -1,6 +1,6 @@
 
-import { useModelStore } from '../../stores/modelStore';
 import { useRuntimeStore } from '../../stores/runtimeStore';
+import { getRuntimeStatus } from '../../core/runtime/runtimeClient';
 
 interface HeaderProps {
   toggleSidebar: () => void;
@@ -8,28 +8,23 @@ interface HeaderProps {
 }
 
 export function Header({ toggleRightPanel }: HeaderProps) {
-  const { primaryModelId, fallbackModelId } = useModelStore();
-  const { runtime, hardware } = useRuntimeStore();
+  const { hardware } = useRuntimeStore();
+  
+  const status = getRuntimeStatus();
 
   let runtimeStatus = 'Verificando...';
   let runtimeBadgeClass = 'app-badge-muted';
   
-  if (runtime) {
-    if (runtime.airllm_installed) {
-      runtimeStatus = 'Runtime: AirLLM Pronto';
-      runtimeBadgeClass = 'app-badge-success';
-    } else {
-      runtimeStatus = 'Runtime: AirLLM Não Instalado';
-      runtimeBadgeClass = 'app-badge-danger';
-    }
+  if (status.installed) {
+    runtimeStatus = 'Runtime: AirLLM Pronto';
+    runtimeBadgeClass = 'app-badge-success';
+  } else {
+    runtimeStatus = 'Runtime: AirLLM Não Instalado';
+    runtimeBadgeClass = 'app-badge-danger';
   }
 
-  // Model states (loaded vs selected)
-  // At the MVP phase, we just mock "Loaded" based on whether it's primary or fallback.
-  // The user prompt: "Não misturar selecionado com carregado. Se nenhum modelo carregado: Modelo carregado: nenhum"
-  // For now, let's treat selection.
-  const selectedModel = primaryModelId || fallbackModelId || 'Nenhum';
-  const loadedModel = 'Nenhum';
+  const selectedModel = status.selectedModelId || 'Nenhum';
+  const loadedModel = status.loadedModelId || 'Nenhum';
 
   return (
     <header className="app-header">

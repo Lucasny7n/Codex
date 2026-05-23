@@ -90,7 +90,7 @@ pub fn run() {
             runtime::python_sidecar::detect_python_env,
             runtime::airllm::detect_airllm,
             runtime::airllm::get_runtime_status,
-            executor::execute_safe_command,
+            executor::execute_approved_plan,
             executor::backup_file_for_rollback,
             plugins::pacman::check_package,
             diagnostics::hardware::get_system_hardware,

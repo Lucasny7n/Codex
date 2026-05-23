@@ -1,6 +1,6 @@
 import { useApprovalStore } from '../../stores/approvalStore';
 import { useLogStore } from '../../stores/logStore';
-import { ExecutionStep } from '../../types/approval';
+import { SkillStep } from '../../core/skills/skillTypes';
 
 export function ApprovalModal() {
   const { pendingPlan, resolveApproval } = useApprovalStore();
@@ -8,8 +8,10 @@ export function ApprovalModal() {
 
   if (!pendingPlan) return null;
 
+  const isExecuting = pendingPlan.status === 'executing';
+
   const copyCommands = () => {
-    const cmds = pendingPlan.steps.map((s: ExecutionStep) => `${s.command} ${s.args.join(' ')}`).join('\n');
+    const cmds = pendingPlan.steps.map((s: SkillStep) => `${s.command} ${s.args.join(' ')}`).join('\n');
     navigator.clipboard.writeText(cmds);
     addLog('approval', 'info', `Comandos copiados para a área de transferência: ${pendingPlan.id}`);
   };
@@ -25,7 +27,8 @@ export function ApprovalModal() {
         <div style={{ padding: 'var(--space-6)', backgroundColor: 'var(--bg-panel)', borderBottom: '1px solid var(--border-color)' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 'var(--space-4)' }}>
             <h2 style={{ fontSize: '1.25rem', fontWeight: 700, color: '#fff', display: 'flex', alignItems: 'center', gap: 'var(--space-3)' }}>
-              <span style={{ fontSize: '1.5rem' }}>⚠️</span> Aprovação Necessária
+              <span style={{ fontSize: '1.5rem' }}>{isExecuting ? '⏳' : '⚠️'}</span> 
+              {isExecuting ? 'Executando Plano...' : 'Aprovação Necessária'}
             </h2>
             <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
               <span className={`app-badge ${
@@ -59,13 +62,15 @@ export function ApprovalModal() {
           <div style={{ marginBottom: 'var(--space-6)' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 'var(--space-3)' }}>
               <h3 style={{ fontSize: '0.625rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Passos a Executar</h3>
-              <button onClick={copyCommands} className="app-button app-button-secondary" style={{ padding: '0.25rem 0.5rem', fontSize: '0.75rem' }}>
-                📋 Copiar Scripts
-              </button>
+              {!isExecuting && (
+                <button onClick={copyCommands} className="app-button app-button-secondary" style={{ padding: '0.25rem 0.5rem', fontSize: '0.75rem' }}>
+                  📋 Copiar Scripts
+                </button>
+              )}
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
-              {pendingPlan.steps.map((step: ExecutionStep) => (
-                <div key={step.order} className="app-card" style={{ padding: 0, overflow: 'hidden' }}>
+              {pendingPlan.steps.map((step: SkillStep) => (
+                <div key={step.order} className="app-card" style={{ padding: 0, overflow: 'hidden', opacity: isExecuting ? 0.7 : 1 }}>
                   <div style={{ padding: 'var(--space-3)', backgroundColor: 'var(--bg-panel)', borderBottom: '1px solid var(--border-color)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                     <span style={{ fontWeight: 600, color: 'var(--text-main)', fontSize: '0.875rem' }}>{step.order}. {step.description}</span>
                     <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
@@ -73,37 +78,36 @@ export function ApprovalModal() {
                       <span className="app-badge app-badge-muted">{step.riskLevel}</span>
                     </div>
                   </div>
-                  <div style={{ padding: 'var(--space-3)', backgroundColor: '#09090b', fontFamily: 'var(--font-mono)', fontSize: '0.875rem', color: 'var(--color-success)', overflowX: 'auto' }}>
+                  <div style={{ padding: 'var(--space-3)', backgroundColor: '#09090b', fontFamily: 'var(--font-mono)', fontSize: '0.875rem', color: isExecuting ? 'var(--color-warning)' : 'var(--color-success)', overflowX: 'auto' }}>
                     {step.command} {step.args.join(' ')}
                   </div>
                 </div>
               ))}
             </div>
           </div>
-          
-          {pendingPlan.rollbackPlan && (
-             <div style={{ marginTop: 'var(--space-6)', paddingTop: 'var(--space-6)', borderTop: '1px solid var(--border-color)' }}>
-               <h3 style={{ fontSize: '0.625rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 'var(--space-3)' }}>Plano de Rollback</h3>
-               <div style={{ padding: 'var(--space-3)', backgroundColor: 'rgba(234, 179, 8, 0.1)', border: '1px solid rgba(234, 179, 8, 0.3)', borderRadius: 'var(--radius-lg)', fontFamily: 'var(--font-mono)', fontSize: '0.875rem', color: 'var(--color-warning)', overflowX: 'auto' }}>
-                 {pendingPlan.rollbackPlan}
-               </div>
-             </div>
-          )}
         </div>
 
         <div style={{ padding: 'var(--space-4)', borderTop: '1px solid var(--border-color)', backgroundColor: 'var(--bg-panel)', display: 'flex', justifyContent: 'flex-end', gap: 'var(--space-3)' }}>
-          <button 
-            onClick={() => handleResolve(false)}
-            className="app-button app-button-secondary"
-          >
-            Cancelar (Bloquear)
-          </button>
-          <button 
-            onClick={() => handleResolve(true)}
-            className="app-button app-button-danger"
-          >
-            Aprovar Execução
-          </button>
+          {isExecuting ? (
+            <div style={{ color: 'var(--text-muted)', fontSize: '0.875rem', display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
+              <span className="animate-spin">⚙️</span> Executando no ambiente Arch...
+            </div>
+          ) : (
+            <>
+              <button 
+                onClick={() => handleResolve(false)}
+                className="app-button app-button-secondary"
+              >
+                Cancelar (Bloquear)
+              </button>
+              <button 
+                onClick={() => handleResolve(true)}
+                className="app-button app-button-danger"
+              >
+                Aprovar Execução
+              </button>
+            </>
+          )}
         </div>
       </div>
     </div>
