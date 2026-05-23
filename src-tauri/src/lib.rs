@@ -3,6 +3,9 @@ mod error;
 mod models;
 mod services;
 mod state;
+mod runtime;
+mod executor;
+mod plugins;
 
 use state::AppState;
 use tauri::Manager;
@@ -79,6 +82,10 @@ pub fn run() {
             commands::update_settings,
             commands::get_base_prompt,
             commands::update_base_prompt,
+            runtime::python_sidecar::detect_python_env,
+            runtime::airllm::detect_airllm,
+            executor::execute_safe_command,
+            plugins::pacman::check_package,
         ])
         .run(tauri::generate_context!())
         .expect("erro ao iniciar aplicativo");

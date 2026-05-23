@@ -11,6 +11,6 @@ export default defineConfig({
     environment: 'jsdom',
     setupFiles: ['./tests/setup.ts'],
     globals: true,
-    exclude: ['tests/visual/**', 'node_modules/**', 'dist/**', 'src-tauri/target/**']
+    exclude: ['tests/visual/**', 'tests/e2e/**', 'node_modules/**', 'dist/**', 'src-tauri/target/**']
   }
 });

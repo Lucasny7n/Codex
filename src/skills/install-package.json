@@ -1,0 +1,14 @@
+{
+  "id": "install-package",
+  "name": "Instalar Pacote",
+  "description": "Instala um pacote de sistema via pacman, yay ou flatpak de forma segura.",
+  "whenToUse": "Sempre que o usuário pedir para instalar, baixar ou adicionar um app ou pacote.",
+  "whenNotToUse": "Para desinstalar pacotes ou modificar arquivos locais.",
+  "allowedCommands": ["pacman", "yay", "flatpak"],
+  "forbiddenCommands": ["rm", "chmod", "chown", "sh", "bash"],
+  "risks": ["Pode consumir disco", "Pode instalar dependências conflitantes", "Requer privilégios (sudo/pkexec)"],
+  "requiredPermissions": ["installPackages"],
+  "preChecks": ["Checar espaço em disco"],
+  "steps": ["Verificar pacote", "Executar instalador"],
+  "riskLevel": "Médio"
+}
