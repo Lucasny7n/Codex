@@ -1,0 +1,14 @@
+{
+  "id": "restart-pipewire",
+  "name": "Reiniciar Subsistema de Áudio",
+  "description": "Reinicia serviços PipeWire, WirePlumber e Pulse localmente.",
+  "whenToUse": "Após o diagnóstico confirmar que o serviço travou.",
+  "whenNotToUse": "Se o usuário estiver em gravação crítica.",
+  "allowedCommands": ["systemctl"],
+  "forbiddenCommands": ["rm", "sudo", "pacman"],
+  "risks": ["Derruba chamadas de áudio ativas"],
+  "requiredPermissions": ["restartServices"],
+  "preChecks": ["Avisar usuário sobre queda"],
+  "steps": ["systemctl --user restart pipewire wireplumber pipewire-pulse"],
+  "riskLevel": "Baixo"
+}

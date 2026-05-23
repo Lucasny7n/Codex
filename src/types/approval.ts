@@ -15,6 +15,9 @@ export interface ExecutionPlan {
   steps: ExecutionStep[];
   totalRisk: string;
   requiresSudo: boolean;
+  requiresInternet?: boolean;
+  modifiesFiles?: boolean;
+  modifiesServices?: boolean;
   backupRequired: boolean;
   rollbackPlan?: string;
   skillId?: string;

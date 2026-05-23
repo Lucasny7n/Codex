@@ -1,0 +1,14 @@
+{
+  "id": "diagnose-network",
+  "name": "Diagnosticar Rede",
+  "description": "Verifica interfaces de rede e conectividade.",
+  "whenToUse": "Sem internet, ping alto, DNS falhando.",
+  "whenNotToUse": "",
+  "allowedCommands": ["ping", "ip", "nmcli", "resolvectl"],
+  "forbiddenCommands": ["sudo", "rm"],
+  "risks": ["Seguro"],
+  "requiredPermissions": [],
+  "preChecks": [],
+  "steps": ["ip a", "ping -c 4 1.1.1.1"],
+  "riskLevel": "Seguro"
+}
