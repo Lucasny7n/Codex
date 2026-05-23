@@ -1,13 +1,13 @@
 mod commands;
+mod diagnostics;
 mod error;
+mod executor;
+pub mod memory;
 mod models;
+mod plugins;
+mod runtime;
 mod services;
 mod state;
-mod runtime;
-mod executor;
-mod plugins;
-mod diagnostics;
-pub mod memory;
 pub mod voice;
 
 use state::AppState;
@@ -21,7 +21,9 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
         .manage(app_state)
-        .manage(memory::DbState { conn: std::sync::Mutex::new(db_conn) })
+        .manage(memory::DbState {
+            conn: std::sync::Mutex::new(db_conn),
+        })
         .setup(|app| {
             if let (Some(window), Some(icon)) = (
                 app.get_webview_window("main"),
@@ -88,8 +90,11 @@ pub fn run() {
             commands::get_base_prompt,
             commands::update_base_prompt,
             runtime::python_sidecar::detect_python_env,
-            runtime::airllm::detect_airllm,
-            runtime::airllm::get_runtime_status,
+            runtime::airllm::run_airllm_status,
+            runtime::airllm::run_airllm_generate,
+            runtime::airllm::run_airllm_benchmark,
+            runtime::airllm::list_local_models,
+            runtime::airllm::create_airllm_setup_plan,
             executor::execute_approved_plan,
             executor::backup_file_for_rollback,
             plugins::pacman::check_package,

@@ -1,125 +1,126 @@
-import { useState, useEffect } from 'react';
-import { invoke } from '@tauri-apps/api/core';
-
-interface RuntimeStatus {
-  python: {
-    installed: boolean;
-    version: string | null;
-    status: string;
-  };
-  airllm: {
-    venv_exists: boolean;
-    installed: boolean;
-    status: string;
-  };
-}
-
+import { useEffect, useState } from 'react';
+import { useRuntimeStore } from '../../stores/runtimeStore';
 import { useApprovalStore } from '../../stores/approvalStore';
 
 export function RuntimePanel() {
-  const [status, setStatus] = useState<RuntimeStatus | null>(null);
-  const [loading, setLoading] = useState(true);
+  const { status, checkRuntimeStatus, generateText, createSetupPlan } = useRuntimeStore();
   const { requestApproval } = useApprovalStore();
+  const [testPrompt, setTestPrompt] = useState('Olá! Como você está?');
+  const [testResult, setTestResult] = useState<string | null>(null);
+  const [logs, setLogs] = useState<string[]>([]);
+  
+  const addLog = (msg: string) => setLogs(l => [...l, `[${new Date().toLocaleTimeString()}] ${msg}`]);
 
   useEffect(() => {
-    let active = true;
-    const loadStatus = async () => {
-      setLoading(true);
-      try {
-        const data = await invoke<RuntimeStatus>('get_runtime_status');
-        if (active) setStatus(data);
-      } catch (err) {
-        console.error("Erro ao carregar runtime", err);
-      } finally {
-        if (active) setLoading(false);
-      }
-    };
-    loadStatus();
-    return () => { active = false; };
-  }, []);
+    checkRuntimeStatus();
+  }, [checkRuntimeStatus]);
 
-  const handleInstallEnv = () => {
-    requestApproval({
-      id: `install-airllm-${Date.now()}`,
-      summary: 'Criar Ambiente Isolado (AirLLM)',
-      reason: 'O Ailu precisa criar um venv seguro e instalar o AirLLM para rodar os modelos grandes sem conflitos no sistema base.',
-      totalRisk: 'Seguro',
-      requiresSudo: false,
-      backupRequired: false,
-      skillId: 'install-airllm',
-      steps: [
-        { order: 1, description: 'Criar diretório venv', command: 'python', args: ['-m', 'venv', '~/.local/share/ailu/airllm-venv'], riskLevel: 'Seguro', requiresSudo: false },
-        { order: 2, description: 'Atualizar PIP local', command: '~/.local/share/ailu/airllm-venv/bin/pip', args: ['install', '--upgrade', 'pip'], riskLevel: 'Seguro', requiresSudo: false },
-        { order: 3, description: 'Instalar AirLLM', command: '~/.local/share/ailu/airllm-venv/bin/pip', args: ['install', 'airllm'], riskLevel: 'Seguro', requiresSudo: false }
-      ]
-    });
+  const handleInstallEnv = async () => {
+    addLog('Solicitando plano de setup AirLLM...');
+    try {
+      const plan = await createSetupPlan();
+      requestApproval(plan as unknown as import('../../core/skills/skillTypes').ExecutionPlan);
+      addLog('Plano gerado e pendente de aprovação.');
+    } catch (e) {
+      addLog(`Erro ao criar plano: ${e}`);
+    }
   };
 
-  if (loading) return <div className="p-4 text-gray-400">Verificando ambientes...</div>;
-  if (!status) return <div className="p-4 text-red-400">Erro ao carregar status.</div>;
+  const handleTestGenerate = async () => {
+    if (!status.selectedModelId) {
+      addLog('Selecione um modelo local no catálogo primeiro.');
+      return;
+    }
+    
+    addLog(`Testando geração com modelo ${status.selectedModelId}...`);
+    setTestResult('Gerando...');
+    
+    try {
+      // Assuming model is installed in ~/.local/share/ailu/models/<id>
+      const path = `~/.local/share/ailu/models/${status.selectedModelId}`;
+      const res = await generateText(path, testPrompt);
+      if (res.ok) {
+        addLog(`Sucesso: ${res.tokens_per_second} tokens/s`);
+        setTestResult(res.response || '');
+      } else {
+        addLog(`Falha do Sidecar: ${res.message}`);
+        setTestResult(`Erro: ${res.message}`);
+      }
+    } catch (e) {
+      addLog(`Falha Crítica: ${e}`);
+      setTestResult(`Falha: ${e}`);
+    }
+  };
+
+  const handleCheckStatus = async () => {
+    addLog('Verificando status do Sidecar...');
+    await checkRuntimeStatus();
+    addLog('Status atualizado.');
+  };
 
   return (
     <div style={{ padding: 'var(--space-6)', backgroundColor: 'var(--bg-main)', height: '100%', overflowY: 'auto' }}>
-      <h2 className="app-section-title">Runtime & Inteligência Artificial</h2>
+      <h2 className="app-section-title">Runtime Local via Sidecar (AirLLM)</h2>
       
+      <div style={{ display: 'flex', gap: 'var(--space-4)', marginBottom: 'var(--space-6)' }}>
+        <button onClick={handleCheckStatus} className="app-button app-button-secondary">
+          🔄 Verificar Runtime
+        </button>
+        <button onClick={handleCheckStatus} className="app-button app-button-secondary">
+          🩺 Testar status do Sidecar
+        </button>
+      </div>
+
       <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-6)' }}>
         <section className="app-panel">
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 'var(--space-4)' }}>
-            <h3 style={{ fontSize: '1.25rem', fontWeight: 700, display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
-              <span style={{ color: 'var(--color-warning)' }}>🐍</span> Python Environment
-            </h3>
-            <span className={`app-badge ${status.python.status === 'Ready' ? 'app-badge-success' : 'app-badge-danger'}`}>
-              {status.python.status}
+            <h3 style={{ fontSize: '1.25rem', fontWeight: 700 }}>Python & AirLLM State</h3>
+            <span className={`app-badge ${status.installed ? 'app-badge-success' : 'app-badge-danger'}`}>
+              {status.installed ? 'Instalado' : 'Não Instalado'}
             </span>
           </div>
-          <div style={{ color: 'var(--text-muted)', fontSize: '0.875rem' }}>
-            <p style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
-              Versão Detectada: 
-              <span style={{ fontFamily: 'var(--font-mono)', backgroundColor: 'var(--bg-input)', padding: 'var(--space-1) var(--space-2)', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border-color)' }}>
-                {status.python.version || 'Não instalada'}
-              </span>
-            </p>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)', fontSize: '0.875rem' }}>
+            <div><strong>Python:</strong> {status.pythonVersion || 'Desconhecido'}</div>
+            <div><strong>Device:</strong> {status.device || 'Desconhecido'}</div>
+            <div><strong>Ready (Sidecar OK):</strong> {status.ready ? 'Sim' : 'Não'}</div>
+            {status.lastRuntimeError && (
+              <div style={{ color: 'var(--color-danger)' }}><strong>Erro:</strong> {status.lastRuntimeError}</div>
+            )}
           </div>
+          
+          {!status.installed && (
+             <div style={{ marginTop: 'var(--space-6)', padding: 'var(--space-4)', backgroundColor: 'var(--bg-input)', borderRadius: 'var(--radius-md)' }}>
+               <h4 style={{ marginBottom: 'var(--space-2)' }}>Instalação Pendente</h4>
+               <button onClick={handleInstallEnv} className="app-button app-button-primary">
+                 Criar plano de ambiente AirLLM
+               </button>
+             </div>
+          )}
         </section>
 
         <section className="app-panel">
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 'var(--space-4)' }}>
-            <h3 style={{ fontSize: '1.25rem', fontWeight: 700, display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
-              <span style={{ color: 'var(--color-primary)' }}>🧠</span> AirLLM (Modelos Gigantes)
-            </h3>
-            <span className={`app-badge ${status.airllm.installed ? 'app-badge-success' : 'app-badge-warning'}`}>
-              {status.airllm.status}
-            </span>
-          </div>
-          <div style={{ color: 'var(--text-muted)', fontSize: '0.875rem', display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
-              <span style={{ width: '100px', fontWeight: 600, textTransform: 'uppercase', fontSize: '0.625rem', letterSpacing: '0.05em' }}>Diretório</span>
-              <span style={{ fontFamily: 'var(--font-mono)', backgroundColor: 'var(--bg-input)', padding: 'var(--space-1) var(--space-2)', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border-color)', color: 'var(--text-main)' }}>~/.local/share/ailu/airllm-venv</span>
-            </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
-              <span style={{ width: '100px', fontWeight: 600, textTransform: 'uppercase', fontSize: '0.625rem', letterSpacing: '0.05em' }}>Venv Existe</span>
-              <span style={{ color: status.airllm.venv_exists ? 'var(--color-success)' : 'var(--text-muted)' }}>{status.airllm.venv_exists ? 'Sim' : 'Não'}</span>
-            </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
-              <span style={{ width: '100px', fontWeight: 600, textTransform: 'uppercase', fontSize: '0.625rem', letterSpacing: '0.05em' }}>Instalado</span>
-              <span style={{ color: status.airllm.installed ? 'var(--color-success)' : 'var(--text-muted)' }}>{status.airllm.installed ? 'Sim' : 'Não'}</span>
-            </div>
-          </div>
-          
-          {!status.airllm.installed && (
-            <div style={{ marginTop: 'var(--space-6)', padding: 'var(--space-4)', backgroundColor: 'var(--bg-input)', border: '1px solid var(--border-color)', borderRadius: 'var(--radius-md)' }}>
-              <div style={{ display: 'flex', alignItems: 'flex-start', gap: 'var(--space-3)' }}>
-                <span style={{ fontSize: '1.5rem' }}>🛠️</span>
-                <div>
-                  <p style={{ fontWeight: 600, color: 'var(--text-main)', marginBottom: 'var(--space-1)' }}>AirLLM pendente de instalação</p>
-                  <p style={{ color: 'var(--text-muted)', fontSize: '0.875rem', marginBottom: 'var(--space-4)' }}>Crie um ambiente isolado (venv) seguro para gerenciar os modelos gigantes e evitar poluição no seu Arch Linux.</p>
-                  <button onClick={handleInstallEnv} className="app-button app-button-primary">
-                    Criar Ambiente Isolado
-                  </button>
-                </div>
-              </div>
+          <h3 style={{ fontSize: '1.25rem', fontWeight: 700, marginBottom: 'var(--space-4)' }}>Testar Prompt</h3>
+          <input 
+            value={testPrompt} 
+            onChange={e => setTestPrompt(e.target.value)} 
+            className="app-textarea" 
+            style={{ marginBottom: 'var(--space-4)' }}
+          />
+          <button onClick={handleTestGenerate} className="app-button app-button-primary" disabled={!status.installed}>
+            🚀 Testar Prompt
+          </button>
+          {testResult && (
+            <div style={{ marginTop: 'var(--space-4)', padding: 'var(--space-4)', backgroundColor: 'var(--bg-input)', whiteSpace: 'pre-wrap', fontFamily: 'var(--font-mono)' }}>
+              {testResult}
             </div>
           )}
+        </section>
+
+        <section className="app-panel">
+          <h3 style={{ fontSize: '1.25rem', fontWeight: 700, marginBottom: 'var(--space-4)' }}>Logs do Runtime</h3>
+          <div style={{ backgroundColor: 'black', color: 'lime', padding: 'var(--space-4)', borderRadius: 'var(--radius-md)', fontFamily: 'var(--font-mono)', fontSize: '0.875rem', maxHeight: '200px', overflowY: 'auto' }}>
+            {logs.length === 0 ? 'Sem logs.' : logs.map((l, i) => <div key={i}>{l}</div>)}
+          </div>
         </section>
       </div>
     </div>

@@ -17,7 +17,7 @@ pub struct HardwareProfile {
 pub fn get_system_hardware() -> Result<HardwareProfile, String> {
     let mut sys = System::new_all();
     sys.refresh_all();
-    
+
     let total_ram_gb = sys.total_memory() as f64 / 1_073_741_824.0;
     let free_ram_gb = sys.free_memory() as f64 / 1_073_741_824.0;
     let swap_total_gb = sys.total_swap() as f64 / 1_073_741_824.0;
@@ -35,7 +35,7 @@ pub fn get_system_hardware() -> Result<HardwareProfile, String> {
 
     // Detect Wayland via env
     let wayland_detected = std::env::var("WAYLAND_DISPLAY").is_ok();
-    
+
     // Check if any swap device contains 'zram' (simplificado para MVP)
     let zram_detected = swap_total_gb > 0.0 && std::path::Path::new("/dev/zram0").exists();
 

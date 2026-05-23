@@ -1,6 +1,6 @@
-use std::process::Command;
 use serde::{Deserialize, Serialize};
 use std::fs;
+use std::process::Command;
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 #[serde(rename_all = "camelCase")]
@@ -42,15 +42,33 @@ pub struct ExecutionResult {
 }
 
 const GLOBAL_WHITELIST: &[&str] = &[
-    "pacman", "yay", "flatpak", "systemctl", "wpctl", "journalctl", 
-    "aplay", "arecord", "bluetoothctl", "rfkill", "ping", "ip", "nmcli", "resolvectl",
-    "python", "pip", "~/.local/share/ailu/airllm-venv/bin/pip", "sudo"
+    "pacman",
+    "yay",
+    "flatpak",
+    "systemctl",
+    "wpctl",
+    "journalctl",
+    "aplay",
+    "arecord",
+    "bluetoothctl",
+    "rfkill",
+    "ping",
+    "ip",
+    "nmcli",
+    "resolvectl",
+    "python",
+    "pip",
+    "~/.local/share/ailu/airllm-venv/bin/pip",
+    "sudo",
 ];
 
 #[tauri::command]
 pub fn execute_approved_plan(plan: ApprovedExecutionPlan) -> Result<ExecutionResult, String> {
     if plan.status != "approved" {
-        return Err(format!("Plano {} bloqueado: Status não é 'approved'.", plan.id));
+        return Err(format!(
+            "Plano {} bloqueado: Status não é 'approved'.",
+            plan.id
+        ));
     }
 
     if plan.requires_sudo {
@@ -64,80 +82,88 @@ pub fn execute_approved_plan(plan: ApprovedExecutionPlan) -> Result<ExecutionRes
 
     for step in plan.steps {
         if !GLOBAL_WHITELIST.contains(&step.command.as_str()) {
-            return Err(format!("Plano bloqueado: Comando '{}' não está na whitelist.", step.command));
+            return Err(format!(
+                "Plano bloqueado: Comando '{}' não está na whitelist.",
+                step.command
+            ));
         }
 
         if step.command == "sudo" {
             return Err("Execução direta de sudo pelo motor básico não permitida.".into());
         }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
+        #[cfg(test)]
+        mod tests {
+            use super::*;
 
-    #[test]
-    fn test_execute_approved_plan_requires_approved_status() {
-        let plan = ApprovedExecutionPlan {
-            id: "1".into(),
-            skill_id: "test".into(),
-            summary: "test".into(),
-            reason: "test".into(),
-            total_risk: "Seguro".into(),
-            requires_sudo: false,
-            requires_internet: None,
-            modifies_files: None,
-            modifies_services: None,
-            backup_required: None,
-            status: "pending".into(),
-            steps: vec![],
-            rollback_plan: None,
-            created_at: "now".into(),
-            approved_at: None,
-        };
-        let res = execute_approved_plan(plan);
-        assert!(res.is_err());
-        assert!(res.unwrap_err().contains("Status não é 'approved'"));
-    }
+            #[test]
+            fn test_execute_approved_plan_requires_approved_status() {
+                let plan = ApprovedExecutionPlan {
+                    id: "1".into(),
+                    skill_id: "test".into(),
+                    summary: "test".into(),
+                    reason: "test".into(),
+                    total_risk: "Seguro".into(),
+                    requires_sudo: false,
+                    requires_internet: None,
+                    modifies_files: None,
+                    modifies_services: None,
+                    backup_required: None,
+                    status: "pending".into(),
+                    steps: vec![],
+                    rollback_plan: None,
+                    created_at: "now".into(),
+                    approved_at: None,
+                };
+                let res = execute_approved_plan(plan);
+                assert!(res.is_err());
+                assert!(res.unwrap_err().contains("Status não é 'approved'"));
+            }
 
-    #[test]
-    fn test_execute_approved_plan_blocks_sudo() {
-        let plan = ApprovedExecutionPlan {
-            id: "1".into(),
-            skill_id: "test".into(),
-            summary: "test".into(),
-            reason: "test".into(),
-            total_risk: "Seguro".into(),
-            requires_sudo: true,
-            requires_internet: None,
-            modifies_files: None,
-            modifies_services: None,
-            backup_required: None,
-            status: "approved".into(),
-            steps: vec![],
-            rollback_plan: None,
-            created_at: "now".into(),
-            approved_at: None,
-        };
-        let res = execute_approved_plan(plan);
-        assert!(res.is_err());
-        assert!(res.unwrap_err().contains("Este plano exige sudo"));
-    }
-}
-
-        if step.command == "sh" && step.args.contains(&"-c".to_string()) {
-             return Err("Execução arbitrária de shell (sh -c) não permitida por segurança.".into());
+            #[test]
+            fn test_execute_approved_plan_blocks_sudo() {
+                let plan = ApprovedExecutionPlan {
+                    id: "1".into(),
+                    skill_id: "test".into(),
+                    summary: "test".into(),
+                    reason: "test".into(),
+                    total_risk: "Seguro".into(),
+                    requires_sudo: true,
+                    requires_internet: None,
+                    modifies_files: None,
+                    modifies_services: None,
+                    backup_required: None,
+                    status: "approved".into(),
+                    steps: vec![],
+                    rollback_plan: None,
+                    created_at: "now".into(),
+                    approved_at: None,
+                };
+                let res = execute_approved_plan(plan);
+                assert!(res.is_err());
+                assert!(res.unwrap_err().contains("Este plano exige sudo"));
+            }
         }
 
-        println!("[EXECUTOR] Executando Passo {}: {} {:?}", step.order, step.command, step.args);
-        
+        if step.command == "sh" && step.args.contains(&"-c".to_string()) {
+            return Err("Execução arbitrária de shell (sh -c) não permitida por segurança.".into());
+        }
+
+        println!(
+            "[EXECUTOR] Executando Passo {}: {} {:?}",
+            step.order, step.command, step.args
+        );
+
         let mut cmd = Command::new(&step.command);
         cmd.args(&step.args);
 
-        let output = cmd.output().map_err(|e| format!("Falha ao iniciar comando: {}", e))?;
+        let output = cmd
+            .output()
+            .map_err(|e| format!("Falha ao iniciar comando: {}", e))?;
 
         let stdout = String::from_utf8_lossy(&output.stdout).to_string();
         let stderr = String::from_utf8_lossy(&output.stderr).to_string();
-        
+
         full_stdout.push_str(&stdout);
         full_stderr.push_str(&stderr);
 

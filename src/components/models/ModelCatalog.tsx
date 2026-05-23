@@ -3,18 +3,23 @@ import { invoke } from '@tauri-apps/api/core';
 import { useModelStore, ModelItem } from '../../stores/modelStore';
 import { HardwareProfile, calculateCompatibility, CompatibilityLevel } from '../../utils/compatibility';
 import { useApprovalStore } from '../../stores/approvalStore';
+import { useRuntimeStore } from '../../stores/runtimeStore';
+import { LocalModel } from '../../core/runtime/runtimeTypes';
 
 export function ModelCatalog() {
   const { models, primaryModelId, fallbackModelId, setPrimaryModel, setFallbackModel } = useModelStore();
   const [search, setSearch] = useState('');
   const [activeFilter, setActiveFilter] = useState<string>('todos');
   const [hwProfile, setHwProfile] = useState<HardwareProfile | null>(null);
+  const { localModels, fetchLocalModels } = useRuntimeStore();
 
   useEffect(() => {
     invoke<HardwareProfile>('get_system_hardware')
       .then(setHwProfile)
       .catch(console.error);
-  }, []);
+      
+    fetchLocalModels();
+  }, [fetchLocalModels]);
 
   const filterOptions = ['todos', 'código', 'conversa', 'raciocínio', 'leve', 'médio', 'pesado', 'experimental', 'AirLLM', 'Ollama', 'llama.cpp'];
 
@@ -22,6 +27,13 @@ export function ModelCatalog() {
     const matchesSearch = m.name.toLowerCase().includes(search.toLowerCase()) || m.description.toLowerCase().includes(search.toLowerCase());
     const matchesFilter = activeFilter === 'todos' || m.tags.includes(activeFilter);
     return matchesSearch && matchesFilter;
+  }).map(m => {
+    // Override installed status if found in localModels
+    const isLocal = localModels.some((lm: LocalModel) => lm.id.toLowerCase() === m.id.toLowerCase() || lm.id.toLowerCase() === m.name.toLowerCase());
+    return {
+      ...m,
+      status: isLocal ? 'installed' : m.status
+    } as ModelItem;
   });
 
   return (

@@ -1,5 +1,5 @@
-use std::process::Command;
 use serde::{Deserialize, Serialize};
+use std::process::Command;
 
 #[derive(Serialize, Deserialize, Clone)]
 pub struct PackageInfo {

@@ -52,7 +52,42 @@ export function OperatorView() {
         return;
       }
 
-      // Default responses
+      // V5: Runtime Check
+      const lowerText = text.toLowerCase();
+      const isTestRequest = lowerText.includes('teste o modelo') || lowerText.includes('faz uma pergunta para o modelo') || lowerText.includes('gerar texto');
+
+      const { canGenerate } = await import('../../core/runtime/runtimeClient');
+      const { useRuntimeStore } = await import('../../stores/runtimeStore');
+      const store = useRuntimeStore.getState();
+      
+      if (canGenerate()) {
+         addMessage({ sender: 'ai', content: `Conectando ao AirLLM...` });
+         addLog('runtime', 'info', `Sidecar chamado para geração. Modelo: ${store.status.selectedModelId}`);
+         
+         try {
+           const res = await store.generateText(store.status.selectedModelId || '', text);
+           if (res.ok && res.response) {
+             addMessage({ sender: 'ai', content: res.response });
+             addLog('runtime', 'success', `Geração concluída. Tokens/s: ${res.tokens_per_second}`);
+           } else {
+             addMessage({ sender: 'ai', content: `Falha na geração: ${res.message}` });
+             addLog('runtime', 'error', `Sidecar erro: ${res.code} - ${res.message}`);
+           }
+         } catch(e) {
+           addMessage({ sender: 'ai', content: `Erro crítico de sidecar: ${String(e)}` });
+           addLog('runtime', 'error', `Erro ao chamar sidecar: ${String(e)}`);
+         }
+         return;
+      }
+
+      if (isTestRequest) {
+        addMessage({ sender: 'ai', content: "AirLLM ainda não está pronto. Posso criar um plano de instalação do ambiente se você pedir ou usar o painel Runtime." });
+        addLog('chat', 'warn', 'Tentativa de uso de modelo com runtime indisponível.');
+        return;
+      }
+
+      // Default fallback local
+      addLog('chat', 'info', 'Runtime local indisponível. Usando fallback local.');
       const response = composeResponse(intent, context);
       addMessage({ sender: 'ai', content: response });
 

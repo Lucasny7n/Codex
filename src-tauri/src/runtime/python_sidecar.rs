@@ -1,5 +1,5 @@
-use std::process::Command;
 use serde::{Deserialize, Serialize};
+use std::process::Command;
 
 #[derive(Serialize, Deserialize, Clone)]
 pub struct PythonEnvState {
@@ -17,11 +17,11 @@ pub fn detect_python_env() -> Result<PythonEnvState, String> {
 
     if output.status.success() {
         let version_str = String::from_utf8_lossy(&output.stdout).trim().to_string();
-        
+
         // Verifica se é Python 3.10+
-        let is_valid = version_str.contains("Python 3.10") 
-                    || version_str.contains("Python 3.11") 
-                    || version_str.contains("Python 3.12");
+        let is_valid = version_str.contains("Python 3.10")
+            || version_str.contains("Python 3.11")
+            || version_str.contains("Python 3.12");
 
         if is_valid {
             Ok(PythonEnvState {

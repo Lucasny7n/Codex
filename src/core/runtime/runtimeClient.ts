@@ -3,24 +3,20 @@ import { useModelStore } from '../../stores/modelStore';
 import { RuntimeStatus } from './runtimeTypes';
 
 export function getRuntimeStatus(): RuntimeStatus {
-  const { runtime } = useRuntimeStore.getState();
+  // O estado no V5 é buscado de forma honesta, sem mock.
+  const { status } = useRuntimeStore.getState();
   const { primaryModelId, fallbackModelId } = useModelStore.getState();
 
-  const isInstalled = !!runtime?.airllm_installed;
-  
-  // No V4, ainda não temos carregamento de modelo real, então vamos simular honestamente
-  // se o AirLLM não está instalado, não está ready.
+  // Em versões reais, nós só definimos selectedModelId baseando na store.
+  // E o loadedModelId continuará nulo até chamarmos "generateText" ou uma API de load dedicada.
   return {
-    installed: isInstalled,
-    ready: isInstalled,
+    ...status,
     selectedModelId: primaryModelId || fallbackModelId || null,
-    loadedModelId: null, // Motor real ainda não carregou modelo
-    fallbackActive: !isInstalled
   };
 }
 
 export function canGenerate(): boolean {
   const status = getRuntimeStatus();
-  // Só podemos gerar se estiver ready e com modelo carregado (ou em modo mock/fallback por enquanto)
-  return status.ready && status.loadedModelId !== null;
+  // V5: só permite gerar via runtime se estiver instalado e "ready" e não estiver em fallback
+  return status.installed && status.ready && !status.fallbackActive;
 }
