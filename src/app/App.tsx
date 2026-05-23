@@ -10,11 +10,30 @@ import { ModelCatalog } from '../components/models/ModelCatalog';
 import { MemoryPanel } from '../components/panels/MemoryPanel';
 import { VoicePanel } from '../components/panels/VoicePanel';
 
+import { useEffect } from 'react';
+import { invoke } from '@tauri-apps/api/core';
+import { RuntimeStatus, HardwareInfo, useRuntimeStore } from '../stores/runtimeStore';
+
 export default function App() {
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [rightPanelOpen, setRightPanelOpen] = useState(false);
   const [consoleOpen, setConsoleOpen] = useState(false);
   const [activeView, setActiveView] = useState('operator');
+  
+  const { setRuntime, setHardware } = useRuntimeStore();
+
+  useEffect(() => {
+    // Global fetch for header state
+    invoke<RuntimeStatus>('get_runtime_status').then(setRuntime).catch(console.error);
+    invoke<HardwareInfo>('get_hardware_info').then(setHardware).catch(console.error);
+    
+    const interval = setInterval(() => {
+      invoke<RuntimeStatus>('get_runtime_status').then(setRuntime).catch(console.error);
+      invoke<HardwareInfo>('get_hardware_info').then(setHardware).catch(console.error);
+    }, 10000);
+    
+    return () => clearInterval(interval);
+  }, []);
 
   return (
     <div className="app-container">

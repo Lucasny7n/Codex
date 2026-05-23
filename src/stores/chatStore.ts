@@ -18,7 +18,7 @@ export const useChatStore = create<ChatStore>((set) => ({
     {
       id: 'init-1',
       sender: 'system',
-      content: 'Ailu Neural Core carregado. Modo Operador Local ativo. Como posso ajudar?',
+      content: 'Ailu Studio carregado. Modo Operador Local ativo. Posso conversar, diagnosticar, preparar planos seguros e gerenciar IA local.',
       timestamp: Date.now(),
     }
   ],
