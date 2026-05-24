@@ -1,8 +1,14 @@
 mod commands;
+mod diagnostics;
 mod error;
+mod executor;
+pub mod memory;
 mod models;
+mod plugins;
+mod runtime;
 mod services;
 mod state;
+pub mod voice;
 
 use state::AppState;
 use tauri::Manager;
@@ -10,10 +16,14 @@ use tauri::Manager;
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let app_state = AppState::new().expect("falha ao inicializar estado da aplicação");
+    let db_conn = memory::init_db().expect("falha ao inicializar banco SQLite");
 
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
         .manage(app_state)
+        .manage(memory::DbState {
+            conn: std::sync::Mutex::new(db_conn),
+        })
         .setup(|app| {
             if let (Some(window), Some(icon)) = (
                 app.get_webview_window("main"),
@@ -86,6 +96,23 @@ pub fn run() {
             commands::update_settings,
             commands::get_base_prompt,
             commands::update_base_prompt,
+            runtime::python_sidecar::detect_python_env,
+            runtime::airllm::run_airllm_status,
+            runtime::airllm::run_airllm_generate,
+            runtime::airllm::run_airllm_benchmark,
+            runtime::airllm::list_local_models,
+            runtime::airllm::create_airllm_setup_plan,
+            runtime::airllm::create_ollama_pull_plan,
+            runtime::airllm::create_ollama_rm_plan,
+            executor::execute_approved_plan,
+            executor::backup_file_for_rollback,
+            plugins::pacman::check_package,
+            diagnostics::hardware::get_system_hardware,
+            memory::create_memory,
+            memory::list_memories,
+            memory::delete_memory,
+            memory::search_memories,
+            voice::detect_voice_backends,
         ])
         .run(tauri::generate_context!())
         .expect("erro ao iniciar aplicativo");

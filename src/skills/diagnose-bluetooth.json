@@ -1,0 +1,14 @@
+{
+  "id": "diagnose-bluetooth",
+  "name": "Diagnosticar Bluetooth",
+  "description": "Lista dispositivos Bluetooth e checa status do serviço bluetooth.service.",
+  "whenToUse": "Mouse não conecta, fone bluetooth falhando.",
+  "whenNotToUse": "",
+  "allowedCommands": ["bluetoothctl", "systemctl", "rfkill"],
+  "forbiddenCommands": ["sudo", "rm"],
+  "risks": ["Seguro"],
+  "requiredPermissions": [],
+  "preChecks": [],
+  "steps": ["systemctl status bluetooth", "rfkill list bluetooth"],
+  "riskLevel": "Seguro"
+}

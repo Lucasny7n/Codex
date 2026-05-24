@@ -1,0 +1,14 @@
+{
+  "id": "diagnose-audio",
+  "name": "Diagnosticar Áudio (PipeWire)",
+  "description": "Verifica logs do PipeWire/WirePlumber e estado do hardware de áudio.",
+  "whenToUse": "Usuário reclamando de som mudo, microfone que não funciona ou problemas de áudio.",
+  "whenNotToUse": "Para trocar de dispositivo ativamente.",
+  "allowedCommands": ["wpctl", "systemctl", "journalctl", "aplay", "arecord"],
+  "forbiddenCommands": ["rm", "pacman", "sudo", "sh", "bash"],
+  "risks": ["Apenas leitura de estado"],
+  "requiredPermissions": [],
+  "preChecks": [],
+  "steps": ["Verificar status do pipewire", "Checar dispositivos padrão"],
+  "riskLevel": "Seguro"
+}
