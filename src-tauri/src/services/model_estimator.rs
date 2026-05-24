@@ -1,4 +1,4 @@
-use crate::models::{ModelEstimateInput, ModelEstimateOutput, ModelFitLabel, QuantPreset};
+use crate::models::{ModelEstimateInput, ModelEstimateOutput, ModelFitLabel};
 
 pub fn estimate(input: &ModelEstimateInput) -> ModelEstimateOutput {
     let weight_gb = input.params_billions * input.quant.bits_per_weight() / 8.0;
@@ -35,6 +35,7 @@ pub fn estimate(input: &ModelEstimateInput) -> ModelEstimateOutput {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::models::QuantPreset;
 
     #[test]
     fn fit_in_gpu_for_small_model() {

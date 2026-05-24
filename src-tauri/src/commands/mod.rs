@@ -18,13 +18,14 @@ use crate::models::{
     ActionableError, ActionableErrorSeverity, AgentSession, AppHealthAction, AppHealthCheck,
     AppHealthOverallStatus, AppHealthProvider, AppSettings, BootstrapPayload, ChatMessage,
     ChatRole, CommandLogChunk, ConversationImportResult, ExecutionRequestInput, ExecutionResponse,
-    LocalModelInstallProgress, LocalRuntimeSnapshot, LogStream, ModelComparisonRequest,
-    ModelComparisonResponse, ModelComparisonResult, ModelEstimateInput, ModelEstimateOutput,
-    OllamaLibrarySearchResult, OllamaModelDetails, PendingIntentKind, PermissionDecision,
-    PermissionOutcome, PermissionOutcomeStatus, PermissionRequest, PrivilegedActionRequestInput,
-    PrivilegedActionSpec, ProviderAccountProfile, ProviderCredentialStatus,
-    ProviderGenerateRequest, ProviderRuntimeStatus, ProviderStatusState, SessionExportFormat,
-    SessionExportResult, SessionStatus, StatusKind, SystemHealthItem, TaskStatus, WorkspaceMeta,
+    HardwareSnapshot, LocalModelInstallProgress, LocalRuntimeSnapshot, LogStream,
+    ModelComparisonRequest, ModelComparisonResponse, ModelComparisonResult, ModelEstimateInput,
+    ModelEstimateOutput, OllamaLibrarySearchResult, OllamaModelDetails, PendingIntentKind,
+    PermissionDecision, PermissionOutcome, PermissionOutcomeStatus, PermissionRequest,
+    PrivilegedActionRequestInput, PrivilegedActionSpec, ProviderAccountProfile,
+    ProviderCredentialStatus, ProviderGenerateRequest, ProviderRuntimeStatus, ProviderStatusState,
+    SessionExportFormat, SessionExportResult, SessionStatus, StatusKind, SystemHealthItem,
+    TaskStatus, WorkspaceMeta,
 };
 use crate::services::ai_router::{AiRouteRequest, AiRouter};
 use crate::services::privileged_actions;
