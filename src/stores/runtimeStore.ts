@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { invoke } from '@tauri-apps/api/core';
+import { checkOllamaStatus, getOllamaModels } from '../core/runtime/ollamaClient';
 import { HardwareInfo, RuntimeStatus, SidecarStatusResponse, SidecarGenerateResponse, LocalModel } from '../core/runtime/runtimeTypes';
 import { ExecutionPlan } from '../types/approval';
 
@@ -26,6 +27,8 @@ export const useRuntimeStore = create<RuntimeStore>((set) => ({
     lastRuntimeError: null,
     device: null,
     pythonVersion: null,
+    ollamaAvailable: false,
+    ollamaModels: [],
   },
   localModels: [],
 
@@ -33,6 +36,9 @@ export const useRuntimeStore = create<RuntimeStore>((set) => ({
     try {
       const resp: SidecarStatusResponse = await invoke('run_airllm_status');
       
+      const ollamaAvailable = await checkOllamaStatus();
+      const ollamaModels = ollamaAvailable ? await getOllamaModels() : [];
+
       set(state => ({
         status: {
           ...state.status,
@@ -42,6 +48,8 @@ export const useRuntimeStore = create<RuntimeStore>((set) => ({
           lastRuntimeError: resp.ok ? null : resp.message,
           device: resp.device || null,
           pythonVersion: resp.python || null,
+          ollamaAvailable,
+          ollamaModels,
         }
       }));
     } catch (e: unknown) {

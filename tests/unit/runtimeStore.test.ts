@@ -17,6 +17,8 @@ describe('runtimeStore', () => {
         lastRuntimeError: null,
         device: null,
         pythonVersion: null,
+        ollamaAvailable: false,
+        ollamaModels: [],
       },
       localModels: []
     });

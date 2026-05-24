@@ -58,6 +58,7 @@ export function OperatorView() {
 
       const { canGenerate } = await import('../../core/runtime/runtimeClient');
       const { useRuntimeStore } = await import('../../stores/runtimeStore');
+      const { generateOllamaText } = await import('../../core/runtime/ollamaClient');
       const store = useRuntimeStore.getState();
       
       if (canGenerate()) {
@@ -80,14 +81,30 @@ export function OperatorView() {
          return;
       }
 
+      // Ollama Fallback
+      if (store.status.ollamaAvailable && store.status.ollamaModels.length > 0 && (intent.type === 'unknown' || intent.type === 'explanation' || intent.type === 'conversation' || isTestRequest)) {
+         const ollamaModel = store.status.ollamaModels[0]; // fallback to first model
+         addMessage({ sender: 'ai', content: `*(via Ollama: ${ollamaModel})* Gerando resposta...` });
+         addLog('runtime', 'info', `Fallback Ollama ativado. Modelo: ${ollamaModel}`);
+         try {
+            const ollamaRes = await generateOllamaText(ollamaModel, text);
+            addMessage({ sender: 'ai', content: `*(via Ollama: ${ollamaModel})*\n\n${ollamaRes}` });
+            addLog('runtime', 'success', `Geração via Ollama concluída.`);
+         } catch (e) {
+            addMessage({ sender: 'ai', content: `*(via Ollama)* Erro: ${String(e)}` });
+            addLog('runtime', 'error', `Erro Ollama: ${String(e)}`);
+         }
+         return;
+      }
+
       if (isTestRequest) {
-        addMessage({ sender: 'ai', content: "AirLLM ainda não está pronto. Posso criar um plano de instalação do ambiente se você pedir ou usar o painel Runtime." });
-        addLog('chat', 'warn', 'Tentativa de uso de modelo com runtime indisponível.');
+        addMessage({ sender: 'ai', content: "AirLLM e Ollama não estão disponíveis. Posso criar um plano de instalação do ambiente se você pedir ou usar o painel Runtime." });
+        addLog('chat', 'warn', 'Tentativa de uso de modelo com runtimes indisponíveis.');
         return;
       }
 
       // Default fallback local
-      addLog('chat', 'info', 'Runtime local indisponível. Usando fallback local.');
+      addLog('chat', 'info', 'Runtimes indisponíveis. Usando fallback local estático.');
       const response = composeResponse(intent, context);
       addMessage({ sender: 'ai', content: response });
 

@@ -7,6 +7,8 @@ export interface RuntimeStatus {
   lastRuntimeError: string | null;
   device: string | null;
   pythonVersion: string | null;
+  ollamaAvailable: boolean;
+  ollamaModels: string[];
 }
 
 export interface SidecarStatusResponse {
