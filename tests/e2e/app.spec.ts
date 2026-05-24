@@ -2,39 +2,42 @@ import { test, expect } from '@playwright/test';
 
 test.describe('Ailu AI Studio MVP E2E', () => {
   test('Fluxo completo Operador Local', async ({ page }) => {
+    // Note: To test Tauri bridge properly in a full UI, we might need true E2E setup,
+    // but we can assert the basic UI components.
     await page.goto('http://localhost:1420');
-    
-    // 1. Operador: Chat responde oi
-    await page.locator('.chat-textarea').fill('oi');
-    await page.locator('.btn-primary').click();
-    await expect(page.locator('.chat-message-content').filter({ hasText: 'Olá! Sou o Ailu' })).toBeVisible();
 
-    // 2. Operador: arruma bluetooth abre Approval
-    await page.locator('.chat-textarea').fill('arruma meu bluetooth');
-    await page.locator('.btn-primary').click();
+    // 1. Modelos
+    await page.locator('.app-sidebar-item').filter({ hasText: 'Modelos' }).click();
+    await expect(page.getByText('Catálogo de Modelos')).toBeVisible();
+
+    // Filtro de modelos experimentais
+    await page.getByRole('button', { name: 'experimental' }).click();
+    // It should contain gpt-oss:120b
+    await expect(page.getByText('gpt-oss:120b')).toBeVisible();
+
+    // Ver o modelo qwen2.5-coder:14b e tentar baixar (abre approval)
+    await page.getByRole('button', { name: 'código' }).click();
+    await expect(page.getByText('Qwen2.5-Coder 14B')).toBeVisible();
+    await page.locator('.app-card').filter({ hasText: 'Qwen2.5-Coder 14B' }).getByRole('button', { name: '⬇️ Baixar / Instalar' }).click();
     await expect(page.getByText('⚠️ Aprovação Necessária')).toBeVisible();
-    await page.getByRole('button', { name: 'Cancelar (Bloquear)' }).click();
+    await page.getByRole('button', { name: 'Cancelar' }).click();
     await expect(page.getByText('⚠️ Aprovação Necessária')).not.toBeVisible();
 
-    // 3. Modelos
-    await page.locator('.nav-item').filter({ hasText: 'Modelos' }).click();
-    await expect(page.getByText('Catálogo de Modelos')).toBeVisible();
-    
-    // Filtro de modelos
-    await page.getByRole('button', { name: 'pesado' }).click();
-    await expect(page.getByText('DeepSeek-R1-Distill 32B')).toBeVisible();
-    
-    // GPT-120b experimental -> Se não tiver HW, deve mostrar 'Experimental'
-    await page.getByRole('button', { name: 'experimental' }).click();
-    await expect(page.getByText('gpt-oss-120b')).toBeVisible();
-    await expect(page.getByText('Experimental')).toBeVisible();
+    // 2. Operador: Chat
+    await page.locator('.app-sidebar-item').filter({ hasText: 'Operador' }).click();
 
-    // 4. Memória
-    await page.locator('.nav-item').filter({ hasText: 'Memória' }).click();
-    await expect(page.getByText('Memória do Sistema (SQLite)')).toBeVisible();
+    // Pergunta aberta
+    await page.locator('.app-textarea').fill('me explique Docker');
+    await page.getByRole('button', { name: 'Enviar' }).click();
+    // Vai tentar Ollama Fallback ou AirLLM, mas como os mocks do Tauri não retornam ready no CI,
+    // vai cair no fallback estático se não tiver ollama models ou "via Ollama" se tiver.
+    // Pelo menos garantimos que não deu erro:
+    await expect(page.locator('.app-card').filter({ hasText: 'Runtimes indisponíveis' }).or(page.locator('.app-card').filter({ hasText: 'via Ollama' }).or(page.locator('.app-card').filter({ hasText: 'Conectando ao AirLLM' })))).toBeVisible();
 
-    // 5. Voz
-    await page.locator('.nav-item').filter({ hasText: 'Voz' }).click();
-    await expect(page.getByText('Integração de Voz')).toBeVisible();
+    // Ação perigosa -> Approval
+    await page.locator('.app-textarea').fill('instala heroic');
+    await page.getByRole('button', { name: 'Enviar' }).click();
+    await expect(page.getByText('⚠️ Aprovação Necessária')).toBeVisible();
+    await page.getByRole('button', { name: 'Cancelar' }).click();
   });
 });

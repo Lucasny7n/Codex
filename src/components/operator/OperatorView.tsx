@@ -21,11 +21,11 @@ export function OperatorView() {
     addMessage({ sender: 'user', content: text });
     addLog('chat', 'info', `Usuário enviou: ${text}`);
     setInput('');
-    
+
     setTimeout(async () => {
       const context = { primaryModelId };
       const intent = routeIntent(text);
-      
+
       addLog('chat', 'success', `Intent detectado: ${intent.type}`);
 
       if (intent.type === 'action_plan') {
@@ -60,11 +60,11 @@ export function OperatorView() {
       const { useRuntimeStore } = await import('../../stores/runtimeStore');
       const { generateOllamaText } = await import('../../core/runtime/ollamaClient');
       const store = useRuntimeStore.getState();
-      
+
       if (canGenerate()) {
          addMessage({ sender: 'ai', content: `Conectando ao AirLLM...` });
          addLog('runtime', 'info', `Sidecar chamado para geração. Modelo: ${store.status.selectedModelId}`);
-         
+
          try {
            const res = await store.generateText(store.status.selectedModelId || '', text);
            if (res.ok && res.response) {
@@ -83,7 +83,12 @@ export function OperatorView() {
 
       // Ollama Fallback
       if (store.status.ollamaAvailable && store.status.ollamaModels.length > 0 && (intent.type === 'unknown' || intent.type === 'explanation' || intent.type === 'conversation' || isTestRequest)) {
-         const ollamaModel = store.status.ollamaModels[0]; // fallback to first model
+         // Determine which model to use. If primaryModelId is in the ollamaModels list, use it. Otherwise fallback to the first available.
+         const { useModelStore } = await import('../../stores/modelStore');
+         const modelStore = useModelStore.getState();
+         const isPrimaryAvailable = modelStore.primaryModelId && store.status.ollamaModels.includes(modelStore.primaryModelId);
+         const ollamaModel = isPrimaryAvailable ? modelStore.primaryModelId! : store.status.ollamaModels[0];
+
          addMessage({ sender: 'ai', content: `*(via Ollama: ${ollamaModel})* Gerando resposta...` });
          addLog('runtime', 'info', `Fallback Ollama ativado. Modelo: ${ollamaModel}`);
          try {
@@ -123,11 +128,11 @@ export function OperatorView() {
           </div>
         ))}
       </div>
-      
+
       <div style={{ padding: 'var(--space-4)', borderTop: '1px solid var(--border-color)', backgroundColor: 'var(--bg-panel)' }}>
         <div style={{ maxWidth: '896px', margin: '0 auto', display: 'flex', gap: 'var(--space-3)' }}>
           <button className="app-button app-button-secondary" style={{ padding: 'var(--space-3)' }}>🎙️</button>
-          <textarea 
+          <textarea
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={(e) => {

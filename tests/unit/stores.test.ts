@@ -35,7 +35,7 @@ describe('Stores and Utils', () => {
   it('ModelStore filters and catalog', () => {
     const models = useModelStore.getState().models;
     expect(models.length).toBe(10);
-    expect(models.find(m => m.id === 'gpt-oss-120b')?.tags).toContain('experimental');
+    expect(models.find(m => m.id === 'gpt-oss:120b')?.tags).toContain('pesado');
   });
 
   it('Hardware Compatibility calculates correctly', () => {

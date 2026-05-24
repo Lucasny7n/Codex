@@ -95,6 +95,8 @@ pub fn run() {
             runtime::airllm::run_airllm_benchmark,
             runtime::airllm::list_local_models,
             runtime::airllm::create_airllm_setup_plan,
+            runtime::airllm::create_ollama_pull_plan,
+            runtime::airllm::create_ollama_rm_plan,
             executor::execute_approved_plan,
             executor::backup_file_for_rollback,
             plugins::pacman::check_package,

@@ -244,3 +244,71 @@ pub fn create_airllm_setup_plan() -> Result<ApprovedExecutionPlan, String> {
 
     Ok(plan)
 }
+
+#[tauri::command]
+pub fn create_ollama_pull_plan(model: String) -> Result<ApprovedExecutionPlan, String> {
+    let steps = vec![
+        SkillStep {
+            order: 1,
+            description: format!("Baixar modelo {} via Ollama", model),
+            command: "ollama".into(),
+            args: vec!["pull".into(), model.clone()],
+            risk_level: "Médio".into(),
+            requires_sudo: false,
+        },
+    ];
+
+    let plan = ApprovedExecutionPlan {
+        id: format!("pull-ollama-{}-{}", model.replace(":", "-"), chrono::Utc::now().timestamp()),
+        skill_id: "manage-ollama".into(),
+        summary: format!("Baixar Modelo: {}", model),
+        reason: "Baixa modelo grande da internet e ocupa espaço em disco.".into(),
+        total_risk: "Médio".into(),
+        requires_sudo: false,
+        requires_internet: Some(true),
+        modifies_files: Some(true),
+        modifies_services: Some(false),
+        backup_required: Some(false),
+        status: "pending".into(),
+        steps,
+        rollback_plan: Some(format!("ollama rm {}", model)),
+        created_at: chrono::Utc::now().to_rfc3339(),
+        approved_at: None,
+    };
+
+    Ok(plan)
+}
+
+#[tauri::command]
+pub fn create_ollama_rm_plan(model: String) -> Result<ApprovedExecutionPlan, String> {
+    let steps = vec![
+        SkillStep {
+            order: 1,
+            description: format!("Remover modelo {} do Ollama", model),
+            command: "ollama".into(),
+            args: vec!["rm".into(), model.clone()],
+            risk_level: "Alto".into(),
+            requires_sudo: false,
+        },
+    ];
+
+    let plan = ApprovedExecutionPlan {
+        id: format!("rm-ollama-{}-{}", model.replace(":", "-"), chrono::Utc::now().timestamp()),
+        skill_id: "manage-ollama".into(),
+        summary: format!("Remover Modelo: {}", model),
+        reason: "Ação destrutiva: o modelo será apagado do disco e precisará ser baixado novamente caso precise usar.".into(),
+        total_risk: "Alto".into(),
+        requires_sudo: false,
+        requires_internet: Some(false),
+        modifies_files: Some(true),
+        modifies_services: Some(false),
+        backup_required: Some(false),
+        status: "pending".into(),
+        steps,
+        rollback_plan: None,
+        created_at: chrono::Utc::now().to_rfc3339(),
+        approved_at: None,
+    };
+
+    Ok(plan)
+}

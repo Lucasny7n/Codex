@@ -5,9 +5,11 @@ import { HardwareProfile, calculateCompatibility, CompatibilityLevel } from '../
 import { useApprovalStore } from '../../stores/approvalStore';
 import { useRuntimeStore } from '../../stores/runtimeStore';
 import { LocalModel } from '../../core/runtime/runtimeTypes';
+import { useChatStore } from '../../stores/chatStore';
+import { ExecutionPlan } from '../../core/skills/skillTypes';
 
 export function ModelCatalog() {
-  const { models, primaryModelId, fallbackModelId, setPrimaryModel, setFallbackModel } = useModelStore();
+  const { models, primaryModelId, fallbackModelId, setPrimaryModel } = useModelStore();
   const [search, setSearch] = useState('');
   const [activeFilter, setActiveFilter] = useState<string>('todos');
   const [hwProfile, setHwProfile] = useState<HardwareProfile | null>(null);
@@ -17,7 +19,7 @@ export function ModelCatalog() {
     invoke<HardwareProfile>('get_system_hardware')
       .then(setHwProfile)
       .catch(console.error);
-      
+
     fetchLocalModels();
   }, [fetchLocalModels]);
 
@@ -48,17 +50,17 @@ export function ModelCatalog() {
           </div>
         )}
       </div>
-      
+
       <div className="app-toolbar">
-        <input 
-          type="text" 
-          placeholder="Buscar modelos..." 
+        <input
+          type="text"
+          placeholder="Buscar modelos..."
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           className="app-input"
           style={{ maxWidth: '400px' }}
         />
-        
+
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--space-2)' }}>
           {filterOptions.map((filter) => (
             <button
@@ -77,14 +79,13 @@ export function ModelCatalog() {
           {filteredModels.map((model) => {
             const compLevel = calculateCompatibility(model.ramRequired, hwProfile, model.tags.includes('experimental'));
             return (
-              <ModelCard 
-                key={model.id} 
-                model={model} 
+              <ModelCard
+                key={model.id}
+                model={model}
                 isPrimary={primaryModelId === model.id}
                 isFallback={fallbackModelId === model.id}
                 compatibility={compLevel}
                 onSetPrimary={() => setPrimaryModel(model.id)}
-                onSetFallback={() => setFallbackModel(model.id)}
               />
             );
           })}
@@ -100,23 +101,46 @@ export function ModelCatalog() {
   );
 }
 
-function ModelCard({ model, isPrimary, isFallback, compatibility, onSetPrimary, onSetFallback }: { model: ModelItem, isPrimary: boolean, isFallback: boolean, compatibility: CompatibilityLevel, onSetPrimary: () => void, onSetFallback: () => void }) {
+function ModelCard({ model, isPrimary, isFallback, compatibility, onSetPrimary }: { model: ModelItem, isPrimary: boolean, isFallback: boolean, compatibility: CompatibilityLevel, onSetPrimary: () => void }) {
   const { requestApproval } = useApprovalStore();
+  const { addMessage } = useChatStore();
 
-  const handleDownloadPlan = () => {
-    requestApproval({
-      id: `download-${model.id}-${Date.now()}`,
-      summary: `Baixar Modelo: ${model.name}`,
-      reason: `O usuário solicitou o download do modelo ${model.name} (${model.weight}). Será necessário conexão com a internet e espaço em disco.`,
-      totalRisk: 'Médio',
-      requiresSudo: false,
-      requiresInternet: true,
-      backupRequired: false,
-      skillId: 'download-model',
-      steps: [
-        { order: 1, description: `Baixar ${model.id} via backend selecionado`, command: 'python', args: ['-m', 'airllm', 'download', model.id], riskLevel: 'Seguro', requiresSudo: false }
-      ]
-    });
+  const handleDownloadPlan = async () => {
+    try {
+      const plan = await invoke('create_ollama_pull_plan', { model: model.id });
+      requestApproval(plan as ExecutionPlan);
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  const handleRemovePlan = async () => {
+    try {
+      const plan = await invoke('create_ollama_rm_plan', { model: model.id });
+      requestApproval(plan as ExecutionPlan);
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  const handleTestModel = async () => {
+    addMessage({ sender: 'system', content: `Iniciando teste do modelo ${model.id}...` });
+    // Switch to Chat Panel ideally or just send a message
+    // Since we are in Catalog, we can just trigger a mock chat action
+    // Real implementation would invoke runtimeClient.generate or Ollama depending on backend.
+    try {
+      const { generateOllamaText, checkOllamaStatus } = await import('../../core/runtime/ollamaClient');
+      const start = Date.now();
+      if (await checkOllamaStatus()) {
+         const res = await generateOllamaText(model.id, "Responda apenas: modelo funcionando.");
+         const elapsed = Date.now() - start;
+         addMessage({ sender: 'ai', content: `✅ Modelo respondeu com sucesso.\nRuntime: Ollama\nModelo: ${model.id}\nTempo: ${elapsed}ms\nResposta: ${res}` });
+      } else {
+         addMessage({ sender: 'system', content: `❌ Falha no teste: Ollama não está ativo.` });
+      }
+    } catch(e) {
+       addMessage({ sender: 'system', content: `❌ Falha no teste: ${String(e)}` });
+    }
   };
 
   const compBadgeClass = compatibility === 'Excelente' ? 'app-badge-success' : compatibility === 'Sofrido' ? 'app-badge-danger' : 'app-badge-warning';
@@ -134,7 +158,7 @@ function ModelCard({ model, isPrimary, isFallback, compatibility, onSetPrimary, 
           <p className="app-subtitle">{model.description}</p>
         </div>
       </div>
-      
+
       <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-1)', marginBottom: 'var(--space-4)', fontSize: '0.75rem', color: 'var(--text-muted)' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between' }}>
           <span>Status:</span>
@@ -148,14 +172,14 @@ function ModelCard({ model, isPrimary, isFallback, compatibility, onSetPrimary, 
         </div>
         <div style={{ display: 'flex', justifyContent: 'space-between' }}>
           <span>Tamanho:</span>
-          <strong style={{ color: 'var(--text-main)', fontFamily: 'var(--font-mono)' }}>{model.weight}</strong>
+          <strong style={{ color: 'var(--text-main)', fontFamily: 'var(--font-mono)' }}>{model.weight} (Estimado)</strong>
         </div>
         <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-          <span>RAM estimada:</span>
-          <strong style={{ color: 'var(--text-main)', fontFamily: 'var(--font-mono)' }}>{model.ramRequired} GB</strong>
+          <span>RAM necessária:</span>
+          <strong style={{ color: 'var(--text-main)', fontFamily: 'var(--font-mono)' }}>~{model.ramRequired} GB</strong>
         </div>
       </div>
-      
+
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--space-3)', padding: 'var(--space-3)', backgroundColor: 'var(--bg-input)', borderRadius: 'var(--radius-md)', marginBottom: 'var(--space-4)', fontSize: '0.75rem', color: 'var(--text-muted)' }}>
         <div>
           <span style={{ fontWeight: 600, display: 'block', marginBottom: 'var(--space-1)', textTransform: 'uppercase', fontSize: '0.625rem' }}>Recomendado</span>
@@ -174,17 +198,24 @@ function ModelCard({ model, isPrimary, isFallback, compatibility, onSetPrimary, 
       </div>
 
       <div style={{ marginTop: 'auto', paddingTop: 'var(--space-4)', borderTop: '1px solid var(--border-color)', display: 'flex', flexWrap: 'wrap', gap: 'var(--space-2)' }}>
-        {model.status !== 'installed' && (
+        {model.status !== 'installed' ? (
           <button onClick={handleDownloadPlan} className="app-button app-button-primary" style={{ width: '100%', marginBottom: 'var(--space-2)' }}>
-            ⬇️ Criar Plano de Download
+            ⬇️ Baixar / Instalar
+          </button>
+        ) : (
+          <button onClick={handleRemovePlan} className="app-button app-button-danger" style={{ width: '100%', marginBottom: 'var(--space-2)', backgroundColor: 'var(--color-danger)', color: 'white' }}>
+            🗑️ Remover Modelo
           </button>
         )}
-        <button onClick={onSetPrimary} disabled={isPrimary} className="app-button app-button-secondary" style={{ flex: 1 }}>
-          Principal
-        </button>
-        <button onClick={onSetFallback} disabled={isFallback} className="app-button app-button-secondary" style={{ flex: 1 }}>
-          Fallback
-        </button>
+
+        <div style={{ display: 'flex', width: '100%', gap: 'var(--space-2)' }}>
+          <button onClick={onSetPrimary} disabled={isPrimary || model.status !== 'installed'} className="app-button app-button-secondary" style={{ flex: 1 }}>
+            Principal
+          </button>
+          <button onClick={handleTestModel} disabled={model.status !== 'installed'} className="app-button app-button-secondary" style={{ flex: 1 }}>
+            Testar
+          </button>
+        </div>
       </div>
     </div>
   );
