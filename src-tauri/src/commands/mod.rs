@@ -24,14 +24,15 @@ use crate::models::{
     PermissionDecision, PermissionOutcome, PermissionOutcomeStatus, PermissionRequest,
     PrivilegedActionRequestInput, PrivilegedActionSpec, ProviderAccountProfile,
     ProviderCredentialStatus, ProviderGenerateRequest, ProviderRuntimeStatus, ProviderStatusState,
-    QuantOption, SessionExportFormat, SessionExportResult, SessionStatus, StatusKind,
-    SystemHealthItem, TaskStatus, WorkspaceMeta,
+    QuantOption, SessionExportFormat, SessionExportResult, SessionStatus, SkillExecutionPlan,
+    SkillManifest, SkillVmReport, StatusKind, SystemHealthItem, TaskStatus, WorkspaceMeta,
 };
 use crate::services::ai_router::{AiRouteRequest, AiRouter};
 use crate::services::privileged_actions;
 use crate::services::privileged_helper_client::HelperRequest;
 use crate::services::provider_registry::ProviderRegistry;
 use crate::services::session_manager::SessionManager;
+use crate::services::skills::{self, SkillStore, VirshVmRunner};
 use crate::state::AppState;
 
 fn map_err(error: AppError) -> ErrorPayload {
@@ -2088,6 +2089,73 @@ pub async fn estimate_model_fits(
 ) -> Result<Vec<ModelFitEstimate>, ErrorPayload> {
     let profile = state.hardware_service.detect().await;
     Ok(state.hardware_service.estimate_fits(&profile, &requests))
+}
+
+fn skill_store(state: &State<AppState>) -> SkillStore {
+    let root = PathBuf::from(state.settings().workspace_root).join("skills");
+    SkillStore::new(root)
+}
+
+#[tauri::command]
+pub fn list_skills(state: State<AppState>) -> Result<Vec<SkillManifest>, ErrorPayload> {
+    Ok(skill_store(&state).list())
+}
+
+#[tauri::command]
+pub fn plan_skill(
+    state: State<AppState>,
+    skill_id: String,
+    args: Vec<String>,
+) -> Result<SkillExecutionPlan, ErrorPayload> {
+    skill_store(&state)
+        .plan(&skill_id, &args)
+        .map_err(AppError::Message)
+        .map_err(map_err)
+}
+
+#[tauri::command]
+pub fn mark_skill_trusted(
+    state: State<AppState>,
+    skill_id: String,
+) -> Result<SkillManifest, ErrorPayload> {
+    skill_store(&state)
+        .mark_trusted(&skill_id)
+        .map_err(AppError::Message)
+        .map_err(map_err)
+}
+
+#[tauri::command]
+pub async fn test_skill_in_vm(
+    state: State<'_, AppState>,
+    skill_id: String,
+    args: Vec<String>,
+    domain: String,
+    ssh_target: String,
+) -> Result<SkillVmReport, ErrorPayload> {
+    let store = skill_store(&state);
+    let manifest = store
+        .load(&skill_id)
+        .map_err(AppError::Message)
+        .map_err(map_err)?;
+    let kind = skills::derive_kind(manifest.category);
+    if !skills::is_vm_testable(kind) {
+        return Err(map_err(AppError::Message(
+            "Skill de hardware não roda em VM. Use dry-run e aprovação manual no host.".to_owned(),
+        )));
+    }
+    let (script_path, contents) = store
+        .read_script(&manifest)
+        .map_err(AppError::Message)
+        .map_err(map_err)?;
+    // Reject anything that cannot be previewed in dry-run before touching the VM.
+    skills::build_plan(&manifest, &contents, &args)
+        .map_err(AppError::Message)
+        .map_err(map_err)?;
+
+    let runner = VirshVmRunner::new(ssh_target);
+    let snapshot = format!("ailu-skill-{skill_id}-{}", Uuid::new_v4());
+    let script = script_path.to_string_lossy().to_string();
+    Ok(skills::run_skill_in_vm(&runner, &domain, &manifest, &script, &args, &snapshot, None).await)
 }
 
 #[tauri::command]

@@ -1,0 +1,9 @@
+{
+  "id": "install-package",
+  "name": "Instalar pacote",
+  "description": "Instala pacotes via pacman de forma idempotente. Skill de software: testada em VM com snapshot e rollback antes de aplicar no host.",
+  "category": "package",
+  "riskLevel": "high",
+  "scriptPath": "install-package.sh",
+  "trusted": false
+}

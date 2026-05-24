@@ -12,4 +12,5 @@ pub mod privileged_helper_client;
 pub mod provider_adapters;
 pub mod provider_registry;
 pub mod session_manager;
+pub mod skills;
 pub mod vscode_bridge;
