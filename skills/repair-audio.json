@@ -1,0 +1,9 @@
+{
+  "id": "repair-audio",
+  "name": "Reparar áudio",
+  "description": "Reinicia o stack de áudio PipeWire do usuário. Skill de hardware: nunca roda em VM, exige dry-run e aprovação manual no host.",
+  "category": "audio",
+  "riskLevel": "medium",
+  "scriptPath": "repair-audio.sh",
+  "trusted": false
+}
