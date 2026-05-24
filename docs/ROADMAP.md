@@ -1,26 +1,25 @@
 # Roadmap
 
-This roadmap is intentionally honest. Items here are not implemented until the app, tests and docs prove them.
+This roadmap is intentionally honest. Nothing is considered done until it is validated in runtime and tests.
 
-## Near term
+## P0 (current foundation)
+- Honest local/cloud split with real readiness validation.
+- Hardware detection (RAM, swap, VRAM when available, disk, AVX2, filesystem hints).
+- Model memory estimator with explicit fit labels.
+- Basic model manager behavior around real installed local models.
 
-- Keep hard Cloud/Local model separation covered by tests.
-- Improve guided recovery for Ollama offline, missing model and API unreachable states.
-- Keep STT backend status separate from microphone capture status.
-- Add more visual smoke coverage for home, chat, model selector, settings, health and STT modal.
-- Reduce `src/app/App.tsx` into smaller hooks and domain modules without changing behavior.
+## P1
+- Heavy mode UX with explicit confirmation and measured speed history.
+- Deterministic skill foundation with approval model.
+- File/config rollback records where reliable backups are possible.
 
-## Mid term
+## P2
+- Voice approval UX.
+- More curated safe skills.
+- Advanced runtime sidecars (llama.cpp server path).
 
-- Native keyring integration for provider profile secrets.
-- Stronger provider adapter matrix with real auth checks.
-- Better model comparison workflow with explicit user action and clear cost boundaries.
-- Release packaging for common Linux formats.
-
-## Out of scope until explicitly implemented
-
-- Silent model downloads.
-- Local runtimes other than Ollama as active model sources.
-- Fake providers or fake chat responses in production flow.
-- Root command execution without a reviewed privileged helper path.
-- Public claims that cloud/STT features work without validation evidence.
+## Deferred / No
+- AirLLM integration (unsupported by product direction).
+- Automatic arbitrary shell operator from LLM output.
+- Two simultaneous local models on 16GB RAM class hardware.
+- Any claim that 70B+ is interactive on target hardware.

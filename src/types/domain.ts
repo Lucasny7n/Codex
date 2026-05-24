@@ -639,3 +639,41 @@ export interface GlobalEnvironmentConfig {
   defaultProfileId: string;
   defaultMode: ExecutionMode;
 }
+
+export type QuantPreset = 'q2_k' | 'q3_k_m' | 'q4_k_m' | 'q5_k_m' | 'q6_k' | 'q8_0';
+export type ModelFitLabel = 'fits_in_gpu' | 'tight_partial_offload' | 'slow_heavy_mode' | 'wont_run';
+
+export interface HardwareSnapshot {
+  totalRamBytes: number;
+  availableRamBytes: number;
+  totalSwapBytes: number;
+  freeSwapBytes: number;
+  gpuName?: string;
+  gpuVendor?: string;
+  amdVramTotalBytes?: number;
+  amdVramUsedBytes?: number;
+  diskFreeBytes: number;
+  modelStorePath: string;
+  filesystem?: string;
+  btrfsDetected: boolean;
+  avx2Supported: boolean;
+  warnings: string[];
+}
+
+export interface ModelEstimateInput {
+  paramsBillions: number;
+  quant: QuantPreset;
+  contextLength?: number;
+  freeVramBytes: number;
+  availableRamBytes: number;
+  freeSwapBytes: number;
+}
+
+export interface ModelEstimateOutput {
+  requiredBytes: number;
+  weightBytes: number;
+  kvCacheBytes: number;
+  overheadBytes: number;
+  osReserveBytes: number;
+  fitLabel: ModelFitLabel;
+}

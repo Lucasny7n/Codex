@@ -957,3 +957,77 @@ pub struct PermissionOutcome {
 pub fn now_iso() -> String {
     Utc::now().to_rfc3339()
 }
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum QuantPreset {
+    Q2K,
+    Q3KM,
+    Q4KM,
+    Q5KM,
+    Q6K,
+    Q8_0,
+}
+
+impl QuantPreset {
+    pub fn bits_per_weight(self) -> f64 {
+        match self {
+            Self::Q2K => 2.6,
+            Self::Q3KM => 3.5,
+            Self::Q4KM => 4.5,
+            Self::Q5KM => 5.5,
+            Self::Q6K => 6.5,
+            Self::Q8_0 => 8.0,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ModelFitLabel {
+    FitsInGpu,
+    TightPartialOffload,
+    SlowHeavyMode,
+    WontRun,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ModelEstimateInput {
+    pub params_billions: f64,
+    pub quant: QuantPreset,
+    pub context_length: Option<u32>,
+    pub free_vram_bytes: u64,
+    pub available_ram_bytes: u64,
+    pub free_swap_bytes: u64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ModelEstimateOutput {
+    pub required_bytes: u64,
+    pub weight_bytes: u64,
+    pub kv_cache_bytes: u64,
+    pub overhead_bytes: u64,
+    pub os_reserve_bytes: u64,
+    pub fit_label: ModelFitLabel,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct HardwareSnapshot {
+    pub total_ram_bytes: u64,
+    pub available_ram_bytes: u64,
+    pub total_swap_bytes: u64,
+    pub free_swap_bytes: u64,
+    pub gpu_name: Option<String>,
+    pub gpu_vendor: Option<String>,
+    pub amd_vram_total_bytes: Option<u64>,
+    pub amd_vram_used_bytes: Option<u64>,
+    pub disk_free_bytes: u64,
+    pub model_store_path: String,
+    pub filesystem: Option<String>,
+    pub btrfs_detected: bool,
+    pub avx2_supported: bool,
+    pub warnings: Vec<String>,
+}
