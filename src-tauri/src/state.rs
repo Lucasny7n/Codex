@@ -11,6 +11,7 @@ use crate::services::command_executor::CommandExecutor;
 use crate::services::config_manager::ConfigManager;
 use crate::services::credential_store::CredentialStore;
 use crate::services::file_watcher::{FileWatcherService, RunningWatcher};
+use crate::services::hardware::HardwareService;
 use crate::services::local_runtime::LocalRuntimeService;
 use crate::services::memory_manager::MemoryManager;
 use crate::services::permission_manager::PermissionManager;
@@ -28,6 +29,7 @@ pub struct AppState {
     pub credential_store: Arc<CredentialStore>,
     pub provider_registry: Arc<ProviderRegistry>,
     pub local_runtime_service: Arc<LocalRuntimeService>,
+    pub hardware_service: Arc<HardwareService>,
     pub command_executor: Arc<CommandExecutor>,
     pub vscode_bridge: Arc<VscodeBridge>,
     pub file_watcher_service: Arc<FileWatcherService>,
@@ -60,6 +62,7 @@ impl AppState {
             credential_store: credential_store.clone(),
             provider_registry: Arc::new(ProviderRegistry::new(credential_store)),
             local_runtime_service: Arc::new(LocalRuntimeService::new()),
+            hardware_service: Arc::new(HardwareService::new()),
             command_executor: Arc::new(CommandExecutor),
             vscode_bridge: Arc::new(VscodeBridge),
             file_watcher_service: Arc::new(FileWatcherService),

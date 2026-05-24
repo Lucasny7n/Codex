@@ -954,6 +954,84 @@ pub struct PermissionOutcome {
     pub at: String,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum GpuDetectionSource {
+    RocmSmi,
+    SysfsDrm,
+    None,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct HardwareProfile {
+    pub ram_total_bytes: u64,
+    pub ram_available_bytes: Option<u64>,
+    pub swap_total_bytes: u64,
+    pub vram_total_bytes: Option<u64>,
+    pub gpu_name: Option<String>,
+    pub gpu_source: GpuDetectionSource,
+    pub cpu_threads: Option<usize>,
+    pub ram_headroom_bytes: u64,
+    pub notes: Vec<String>,
+    pub detected_at: String,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum QuantPreset {
+    Quality,
+    Balanced,
+    Speed,
+    Extreme,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct QuantOption {
+    pub preset: QuantPreset,
+    pub label: String,
+    pub ollama_quant: String,
+    pub bits_per_weight: f64,
+    pub description: String,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ModelFitTier {
+    Fits,
+    Tight,
+    Swap,
+    WontRun,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ModelFitRequest {
+    pub model_id: String,
+    pub parameter_label: String,
+    #[serde(default)]
+    pub preset: Option<QuantPreset>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ModelFitEstimate {
+    pub model_id: String,
+    pub preset: QuantPreset,
+    pub tier: ModelFitTier,
+    pub label: String,
+    pub parameter_count: Option<u64>,
+    pub estimated_weight_bytes: u64,
+    pub estimated_runtime_bytes: u64,
+    pub vram_offload_bytes: u64,
+    pub ram_spill_bytes: u64,
+    pub swap_spill_bytes: u64,
+    pub unplaceable_bytes: u64,
+    pub speed_hint: String,
+    pub warning: Option<String>,
+}
+
 pub fn now_iso() -> String {
     Utc::now().to_rfc3339()
 }

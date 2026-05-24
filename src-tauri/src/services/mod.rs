@@ -3,6 +3,7 @@ pub mod command_executor;
 pub mod config_manager;
 pub mod credential_store;
 pub mod file_watcher;
+pub mod hardware;
 pub mod local_runtime;
 pub mod memory_manager;
 pub mod permission_manager;

@@ -18,13 +18,14 @@ use crate::models::{
     ActionableError, ActionableErrorSeverity, AgentSession, AppHealthAction, AppHealthCheck,
     AppHealthOverallStatus, AppHealthProvider, AppSettings, BootstrapPayload, ChatMessage,
     ChatRole, CommandLogChunk, ConversationImportResult, ExecutionRequestInput, ExecutionResponse,
-    LocalModelInstallProgress, LocalRuntimeSnapshot, LogStream, ModelComparisonRequest,
-    ModelComparisonResponse, ModelComparisonResult, OllamaLibrarySearchResult, OllamaModelDetails,
-    PendingIntentKind, PermissionDecision, PermissionOutcome, PermissionOutcomeStatus,
-    PermissionRequest, PrivilegedActionRequestInput, PrivilegedActionSpec, ProviderAccountProfile,
+    HardwareProfile, LocalModelInstallProgress, LocalRuntimeSnapshot, LogStream,
+    ModelComparisonRequest, ModelComparisonResponse, ModelComparisonResult, ModelFitEstimate,
+    ModelFitRequest, OllamaLibrarySearchResult, OllamaModelDetails, PendingIntentKind,
+    PermissionDecision, PermissionOutcome, PermissionOutcomeStatus, PermissionRequest,
+    PrivilegedActionRequestInput, PrivilegedActionSpec, ProviderAccountProfile,
     ProviderCredentialStatus, ProviderGenerateRequest, ProviderRuntimeStatus, ProviderStatusState,
-    SessionExportFormat, SessionExportResult, SessionStatus, StatusKind, SystemHealthItem,
-    TaskStatus, WorkspaceMeta,
+    QuantOption, SessionExportFormat, SessionExportResult, SessionStatus, StatusKind,
+    SystemHealthItem, TaskStatus, WorkspaceMeta,
 };
 use crate::services::ai_router::{AiRouteRequest, AiRouter};
 use crate::services::privileged_actions;
@@ -2068,6 +2069,25 @@ pub async fn get_local_runtime_state(
 ) -> Result<LocalRuntimeSnapshot, ErrorPayload> {
     let settings = state.settings();
     Ok(state.local_runtime_service.snapshot(&settings).await)
+}
+
+#[tauri::command]
+pub async fn detect_hardware(state: State<'_, AppState>) -> Result<HardwareProfile, ErrorPayload> {
+    Ok(state.hardware_service.detect().await)
+}
+
+#[tauri::command]
+pub fn list_quant_presets(state: State<AppState>) -> Result<Vec<QuantOption>, ErrorPayload> {
+    Ok(state.hardware_service.quant_presets())
+}
+
+#[tauri::command]
+pub async fn estimate_model_fits(
+    state: State<'_, AppState>,
+    requests: Vec<ModelFitRequest>,
+) -> Result<Vec<ModelFitEstimate>, ErrorPayload> {
+    let profile = state.hardware_service.detect().await;
+    Ok(state.hardware_service.estimate_fits(&profile, &requests))
 }
 
 #[tauri::command]
