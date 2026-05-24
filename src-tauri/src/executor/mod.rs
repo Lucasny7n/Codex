@@ -45,6 +45,7 @@ const GLOBAL_WHITELIST: &[&str] = &[
     "pacman",
     "yay",
     "flatpak",
+    "ollama",
     "systemctl",
     "wpctl",
     "journalctl",
