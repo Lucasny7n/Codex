@@ -1,25 +1,6 @@
-use serde::{Deserialize, Serialize};
+use crate::models::HardwareSnapshot;
 use std::fs;
 use std::path::Path;
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct HardwareSnapshot {
-    pub total_ram_bytes: u64,
-    pub available_ram_bytes: u64,
-    pub total_swap_bytes: u64,
-    pub free_swap_bytes: u64,
-    pub gpu_name: Option<String>,
-    pub gpu_vendor: Option<String>,
-    pub amd_vram_total_bytes: Option<u64>,
-    pub amd_vram_used_bytes: Option<u64>,
-    pub disk_free_bytes: u64,
-    pub model_store_path: String,
-    pub filesystem: Option<String>,
-    pub btrfs_detected: bool,
-    pub avx2_supported: bool,
-    pub warnings: Vec<String>,
-}
 
 pub fn detect(model_store_path: &str) -> HardwareSnapshot {
     let (total_ram_bytes, available_ram_bytes, total_swap_bytes, free_swap_bytes) = meminfo();
