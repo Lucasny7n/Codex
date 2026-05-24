@@ -22,6 +22,9 @@ import type {
   ProviderRuntimeStatus,
   ProviderCredentialStatus,
   LocalRuntimeSnapshot,
+  HardwareSnapshot,
+  ModelEstimateInput,
+  ModelEstimateOutput,
   OllamaModelDetails,
   OllamaLibrarySearchResult,
   LocalModelInstallProgress,
@@ -215,6 +218,14 @@ export async function getAppHealthCheck(): Promise<AppHealthCheck> {
 
 export async function getLocalRuntimeState(): Promise<LocalRuntimeSnapshot> {
   return invoke('get_local_runtime_state');
+}
+
+export async function getHardwareSnapshot(): Promise<HardwareSnapshot> {
+  return invoke('get_hardware_snapshot');
+}
+
+export async function estimateModelFit(input: ModelEstimateInput): Promise<ModelEstimateOutput> {
+  return invoke('estimate_model_fit', { input });
 }
 
 export async function startLocalRuntime(): Promise<LocalRuntimeSnapshot> {

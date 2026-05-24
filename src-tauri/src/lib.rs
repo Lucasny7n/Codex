@@ -64,6 +64,8 @@ pub fn run() {
             commands::rename_provider_profile,
             commands::get_app_health_check,
             commands::get_local_runtime_state,
+            commands::estimate_model_fit,
+            commands::get_hardware_snapshot,
             commands::start_local_runtime,
             commands::install_local_runtime,
             commands::install_local_model,

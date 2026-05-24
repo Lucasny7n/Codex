@@ -7,7 +7,7 @@
 ![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178c6)
 ![License](https://img.shields.io/badge/license-MIT-blue)
 
-Ailu AI Studio is a premium open-source desktop AI studio for local Ollama models and authenticated cloud providers. It is built with Tauri, Rust, React and TypeScript, with a strong bias toward real runtime status, clean diagnostics and no fake readiness.
+Ailu AI Studio is a desktop AI studio for local Ollama models and authenticated cloud providers. It is built with Tauri, Rust, React and TypeScript, with a strong bias toward real runtime status, clean diagnostics and no fake readiness.
 
 ## What It Does
 
@@ -26,6 +26,14 @@ The product keeps local and cloud AI separate:
 - Linux desktop users who care about Wayland, PipeWire, portals, local files and safe diagnostics.
 - Contributors who want a typed React/Rust codebase with tests and clear operational rules.
 
+## Product Truth (Current Scope)
+
+- Local runtime is **Ollama today** and only considered ready after real probe checks.
+- Cloud models are available only after authenticated provider connection tests.
+- Heavy models can run but may be **very slow** and may use swap.
+- **AirLLM is intentionally unsupported**.
+- Ailu favors safe deterministic skills over raw arbitrary shell generation.
+
 ## Main Features
 
 - Persistent chat sessions with rename, duplicate, archive, import and export.
@@ -36,7 +44,7 @@ The product keeps local and cloud AI separate:
 - Composer with file chips, hidden document context and immediate optimistic send behavior.
 - STT/microphone flow with backend status separated from capture permission status.
 - Health panel for Ollama, providers, STT, microphone capture, icons, desktop entry and developer tools.
-- Premium dark and light themes using shared design tokens.
+- Dark and light themes using shared design tokens.
 
 ## Screenshots
 
@@ -135,14 +143,16 @@ npm run tauri:build
 
 ## Local AI With Ollama
 
-Local models are discovered from the real Ollama runtime:
+Local models are discovered from the real Ollama runtime (no fake readiness):
 
 ```bash
 ollama list
 curl -s http://127.0.0.1:11434/api/tags
 ```
 
-The Local tab without a query shows installed Ollama models only. Search can show installed models, Ollama discovery results and curated download candidates. Candidates show **Download**, not **Installed**, until a refreshed Ollama snapshot confirms the model exists.
+The Local tab without a query shows installed Ollama models only.
+
+For target hardware (RX 7600 8GB + 16GB RAM), 70B+ models are heavy/brute-force only and should be treated as very slow runs, not interactive chat. Search can show installed models, Ollama discovery results and curated download candidates. Candidates show **Download**, not **Installed**, until a refreshed Ollama snapshot confirms the model exists.
 
 See [docs/OLLAMA.md](docs/OLLAMA.md).
 

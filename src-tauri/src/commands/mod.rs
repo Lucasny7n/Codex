@@ -19,18 +19,19 @@ use crate::models::{
     AppHealthOverallStatus, AppHealthProvider, AppSettings, BootstrapPayload, ChatMessage,
     ChatRole, CommandLogChunk, ConversationImportResult, ExecutionRequestInput, ExecutionResponse,
     LocalModelInstallProgress, LocalRuntimeSnapshot, LogStream, ModelComparisonRequest,
-    ModelComparisonResponse, ModelComparisonResult, OllamaLibrarySearchResult, OllamaModelDetails,
-    PendingIntentKind, PermissionDecision, PermissionOutcome, PermissionOutcomeStatus,
-    PermissionRequest, PrivilegedActionRequestInput, PrivilegedActionSpec, ProviderAccountProfile,
-    ProviderCredentialStatus, ProviderGenerateRequest, ProviderRuntimeStatus, ProviderStatusState,
-    SessionExportFormat, SessionExportResult, SessionStatus, StatusKind, SystemHealthItem,
-    TaskStatus, WorkspaceMeta,
+    ModelComparisonResponse, ModelComparisonResult, ModelEstimateInput, ModelEstimateOutput,
+    OllamaLibrarySearchResult, OllamaModelDetails, PendingIntentKind, PermissionDecision,
+    PermissionOutcome, PermissionOutcomeStatus, PermissionRequest, PrivilegedActionRequestInput,
+    PrivilegedActionSpec, ProviderAccountProfile, ProviderCredentialStatus,
+    ProviderGenerateRequest, ProviderRuntimeStatus, ProviderStatusState, SessionExportFormat,
+    SessionExportResult, SessionStatus, StatusKind, SystemHealthItem, TaskStatus, WorkspaceMeta,
 };
 use crate::services::ai_router::{AiRouteRequest, AiRouter};
 use crate::services::privileged_actions;
 use crate::services::privileged_helper_client::HelperRequest;
 use crate::services::provider_registry::ProviderRegistry;
 use crate::services::session_manager::SessionManager;
+use crate::services::{hardware_detection, model_estimator};
 use crate::state::AppState;
 
 fn map_err(error: AppError) -> ErrorPayload {
@@ -2060,6 +2061,17 @@ pub async fn test_provider_connection(
         .mark_provider_test_result(&provider_id, &status)
         .map_err(map_err)?;
     Ok(status)
+}
+
+#[tauri::command]
+pub fn get_hardware_snapshot(state: State<'_, AppState>) -> Result<HardwareSnapshot, ErrorPayload> {
+    let settings = state.settings();
+    Ok(hardware_detection::detect(&settings.local_models_root))
+}
+
+#[tauri::command]
+pub fn estimate_model_fit(input: ModelEstimateInput) -> Result<ModelEstimateOutput, ErrorPayload> {
+    Ok(model_estimator::estimate(&input))
 }
 
 #[tauri::command]

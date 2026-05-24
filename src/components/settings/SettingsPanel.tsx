@@ -2,6 +2,8 @@ import { useEffect, useMemo, useState } from 'react';
 import {
   compareModels,
   getAppHealthCheck,
+  getHardwareSnapshot,
+  estimateModelFit,
   getLocalRuntimeState,
   installLocalModel,
   onLocalModelProgress,
@@ -32,8 +34,11 @@ import type {
   AppPersonalizationSettings,
   AppSettings,
   AppHealthCheck,
+  HardwareSnapshot,
   LocalModelInstallProgress,
   LocalRuntimeSnapshot,
+  ModelEstimateOutput,
+  QuantPreset,
   ModelComparisonResponse,
   OllamaModelDetails,
   ProviderDescriptor,
@@ -316,6 +321,10 @@ export function SettingsPanel({
   const [health, setHealth] = useState<AppHealthCheck>();
   const [healthLoading, setHealthLoading] = useState(false);
   const [healthError, setHealthError] = useState<string>();
+  const [hardware, setHardware] = useState<HardwareSnapshot>();
+  const [modelEstimate, setModelEstimate] = useState<ModelEstimateOutput>();
+  const [estimateParamsB, setEstimateParamsB] = useState('7');
+  const [estimateQuant, setEstimateQuant] = useState<QuantPreset>('q4_k_m');
 
   const modelItems = useMemo(() => {
     const featured = new Set(FEATURED_MODEL_IDS);
@@ -541,6 +550,26 @@ export function SettingsPanel({
       setManagerError(cleanSettingsErrorMessage(cause instanceof Error ? cause.message : undefined, 'Comparação entre modelos falhou.'));
     } finally {
       setComparisonBusy(false);
+    }
+  }
+
+
+  async function refreshHardware(): Promise<void> {
+    try {
+      const snap = await getHardwareSnapshot();
+      setHardware(snap);
+      const freeVram = Math.max(0, (snap.amdVramTotalBytes ?? 0) - (snap.amdVramUsedBytes ?? 0));
+      const estimate = await estimateModelFit({
+        paramsBillions: Number(estimateParamsB) || 7,
+        quant: estimateQuant,
+        contextLength: 4096,
+        freeVramBytes: freeVram,
+        availableRamBytes: snap.availableRamBytes,
+        freeSwapBytes: snap.freeSwapBytes,
+      });
+      setModelEstimate(estimate);
+    } catch {
+      setHardware(undefined);
     }
   }
 
@@ -1117,7 +1146,7 @@ export function SettingsPanel({
                   </button>
                 </div>
                 {healthError ? <div className="input-error-tip" role="alert">{healthError}</div> : null}
-                <div className="health-item-grid">
+                <div className="ollama-manager-header"><div><strong>Hardware (Linux-first)</strong><small>RAM/swap/VRAM/disco detectados localmente</small></div><button type="button" className="settings-pill-button" onClick={() => void refreshHardware()}>Atualizar hardware</button></div>{hardware ? <article className="health-item-card health-ok"><strong>{hardware.gpuName ?? "GPU não detectada"}</strong><small>{hardware.gpuVendor ?? "Vendor desconhecido"}</small><p>RAM disponível: {Math.round(hardware.availableRamBytes / 1024 / 1024 / 1024)} GB · Swap livre: {Math.round(hardware.freeSwapBytes / 1024 / 1024 / 1024)} GB · Disco livre: {Math.round(hardware.diskFreeBytes / 1024 / 1024 / 1024)} GB</p><p>AVX2: {hardware.avx2Supported ? "sim" : "não"} · FS: {hardware.filesystem ?? "desconhecido"}</p>{hardware.warnings.map((w) => <span key={w}>{w}</span>)}</article> : null}{modelEstimate ? <article className="health-item-card health-warning"><strong>Estimativa de ajuste de modelo</strong><small>rótulo: {modelEstimate.fitLabel}</small><p>Memória requerida: {Math.round(modelEstimate.requiredBytes / 1024 / 1024 / 1024)} GB (inclui reserva do SO de 1.5 GB)</p></article> : null}<div className="settings-inline-fields"><label>Parâmetros (B)<input value={estimateParamsB} onChange={(e) => setEstimateParamsB(e.target.value)} /></label><label>Quantização<select value={estimateQuant} onChange={(e) => setEstimateQuant(e.target.value as QuantPreset)}><option value="q2_k">Q2_K</option><option value="q3_k_m">Q3_K_M</option><option value="q4_k_m">Q4_K_M</option><option value="q5_k_m">Q5_K_M</option><option value="q6_k">Q6_K</option><option value="q8_0">Q8_0</option></select></label><button type="button" className="settings-pill-button" onClick={() => void refreshHardware()}>Recalcular</button></div><div className="health-item-grid">
                   {(health?.items ?? []).map((item) => (
                     <article key={item.id} className={`health-item-card health-${item.status}`}>
                       <strong>{item.label}</strong>
