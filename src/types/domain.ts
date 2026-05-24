@@ -639,3 +639,50 @@ export interface GlobalEnvironmentConfig {
   defaultProfileId: string;
   defaultMode: ExecutionMode;
 }
+
+export type SkillKind = 'software' | 'hardware';
+
+export type SkillCategory = 'file' | 'package' | 'git' | 'audio' | 'bluetooth' | 'gpu' | 'network' | 'other';
+
+export interface SkillManifest {
+  id: string;
+  name: string;
+  description: string;
+  category: SkillCategory;
+  riskLevel: RiskLevel;
+  scriptPath: string;
+  checksum?: string;
+  trusted: boolean;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export type SkillExecutionMode = 'vm_tested' | 'manual_dry_run';
+
+export interface SkillExecutionPlan {
+  skillId: string;
+  kind: SkillKind;
+  mode: SkillExecutionMode;
+  requiresManualApproval: boolean;
+  supportsDryRun: boolean;
+  dryRunCommand: string;
+  runCommand: string;
+  rationale: string;
+  spokenSummary: string;
+}
+
+export type SkillVmOutcome = 'passed' | 'rolled_back' | 'blocked';
+
+export interface SkillVmReport {
+  skillId: string;
+  snapshotName: string;
+  outcome: SkillVmOutcome;
+  exitCode?: number;
+  stdoutTail: string;
+  stderrTail: string;
+  functionalTestPassed?: boolean;
+  rolledBack: boolean;
+  steps: string[];
+  alternatives: string[];
+  at: string;
+}

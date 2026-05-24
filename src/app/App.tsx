@@ -91,6 +91,7 @@ import { CommandInputPanel, type InputModeId } from '../components/chat/CommandI
 import { ArchivedConversationsModal } from '../components/chat/ArchivedConversationsModal';
 import { TerminalDrawer } from '../components/panels/TerminalDrawer';
 import { HelpDrawer } from '../components/panels/HelpDrawer';
+import { SkillStudioModal } from '../components/panels/SkillStudioModal';
 import type { EnvironmentTab } from '../components/models/ModelSelector';
 import { FileManagerModal } from '../components/file/FileManagerModal';
 import { UiIcon, type UiIconName } from '../components/common/AppIcons';
@@ -388,6 +389,7 @@ export default function App(): JSX.Element {
   const [privilegedActions, setPrivilegedActions] = useState<PrivilegedActionSpec[]>([]);
   const [terminalOpen, setTerminalOpen] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false);
+  const [skillStudioOpen, setSkillStudioOpen] = useState(false);
   const [localRuntime, setLocalRuntime] = useState<LocalRuntimeSnapshot>();
   const [localRuntimeLoading, setLocalRuntimeLoading] = useState(false);
   const [modelActionBusyId, setModelActionBusyId] = useState<string>();
@@ -1662,6 +1664,7 @@ export default function App(): JSX.Element {
       runtimeState={executionMode === 'local' ? localRuntime?.state : undefined}
       onOpenModelSelector={() => openEnvironmentTab('ready')}
       onOpenTerminal={() => setTerminalOpen(true)}
+      onOpenSkills={() => setSkillStudioOpen(true)}
     />
   );
 
@@ -1870,6 +1873,13 @@ export default function App(): JSX.Element {
         onRefresh={refreshArchivedSessions}
         onRestore={handleRestoreArchivedSession}
         onDelete={handleDeleteArchivedSession}
+      />
+
+      <SkillStudioModal
+        open={skillStudioOpen}
+        sessionId={activeChatSession?.id}
+        onClose={() => setSkillStudioOpen(false)}
+        onToast={pushToast}
       />
 
       <HelpDrawer

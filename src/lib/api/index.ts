@@ -34,6 +34,9 @@ import type {
   ChatAttachment,
   ModelComparisonRequest,
   ModelComparisonResponse,
+  SkillManifest,
+  SkillExecutionPlan,
+  SkillVmReport,
 } from '../../types/domain';
 
 export async function bootstrapState(): Promise<BootstrapPayload> {
@@ -243,6 +246,27 @@ export async function searchOllamaLibrary(query: string): Promise<OllamaLibraryS
 
 export async function testLocalModel(modelId: string): Promise<ProviderRuntimeStatus> {
   return invoke('test_local_model', { modelId });
+}
+
+export async function listSkills(): Promise<SkillManifest[]> {
+  return invoke('list_skills');
+}
+
+export async function planSkill(skillId: string, args: string[] = []): Promise<SkillExecutionPlan> {
+  return invoke('plan_skill', { skillId, args });
+}
+
+export async function markSkillTrusted(skillId: string): Promise<SkillManifest> {
+  return invoke('mark_skill_trusted', { skillId });
+}
+
+export async function testSkillInVm(
+  skillId: string,
+  args: string[],
+  domain: string,
+  sshTarget: string,
+): Promise<SkillVmReport> {
+  return invoke('test_skill_in_vm', { skillId, args, domain, sshTarget });
 }
 
 export async function listPrivilegedActions(): Promise<PrivilegedActionSpec[]> {
