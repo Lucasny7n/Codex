@@ -1,7 +1,7 @@
 name: Bug report
 description: Report a reproducible problem in Ailu AI Studio.
 title: "fix: "
-labels: ["bug"]
+labels: ["type: bug", "status: needs-info"]
 body:
   - type: markdown
     attributes:
@@ -37,32 +37,64 @@ body:
       label: Actual behavior
     validations:
       required: true
+  - type: textarea
+    id: screenshots
+    attributes:
+      label: Screenshots or recording
+      description: Add UI evidence if this is visual. Redact secrets.
   - type: dropdown
     id: area
     attributes:
       label: Area
       options:
+        - AI Workspace
+        - LLM Library
         - Chat
         - Temporary chat
-        - Cloud provider
-        - Ollama/local model
+        - Cloud providers
+        - Ollama/local models
         - STT/microphone
         - Attachments/files
         - Settings/Health Check
         - Desktop/Tauri
+        - Documentation
+        - CI/repository
         - Other
     validations:
       required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: Include only what is relevant.
+      placeholder: |
+        OS:
+        Desktop/session:
+        Commit or version:
+        Node/npm:
+        Rust/Cargo:
+        Ollama version if relevant:
   - type: input
     id: version
     attributes:
       label: Commit or version
       placeholder: "git rev-parse --short HEAD"
   - type: textarea
+    id: logs
+    attributes:
+      label: Logs
+      description: Paste short redacted logs only. Do not include API keys, tokens or private paths unless necessary.
+  - type: textarea
     id: validation
     attributes:
       label: Validation already run
       description: Commands, screenshots or logs. Redact secrets.
       placeholder: |
+        npm run doctor
         npm run test -- --run
         cd src-tauri && cargo test
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional context
+      description: Anything else maintainers need to know.

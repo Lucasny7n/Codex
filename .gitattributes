@@ -1,0 +1,26 @@
+* text=auto eol=lf
+
+*.md text diff=markdown
+*.ts text eol=lf
+*.tsx text eol=lf
+*.js text eol=lf
+*.mjs text eol=lf
+*.json text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
+*.rs text eol=lf
+*.css text eol=lf
+*.html text eol=lf
+*.sh text eol=lf
+
+package-lock.json text eol=lf
+src-tauri/Cargo.lock text eol=lf
+
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.webp binary
+*.ico binary
+*.icns binary
+
+src-tauri/gen/schemas/*.json linguist-generated=true

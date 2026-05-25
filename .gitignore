@@ -1,30 +1,42 @@
+# Dependencies
 node_modules/
+
+# Frontend and desktop build output
 dist/
+build/
 target/
 src-tauri/target/
+
+# Test, coverage and cache output
 coverage/
 .vite/
 .turbo/
 .cache/
 .pytest_cache/
+playwright-report/
+test-results/
+/screenshots/
+
+# Environment and secrets
 .env
 .env.*
 !.env.example
-*.log
-logs/
-*.bak
-*.backup
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-.DS_Store
 *.key
 *.pem
 *.token
 *.secret
+storage-state*.json
+
+# Logs and diagnostics
+*.log
+logs/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
 *.profraw
 *.har
-storage-state*.json
+
+# Local databases and model artifacts
 *.sqlite
 *.sqlite3
 *.db
@@ -37,10 +49,26 @@ storage-state*.json
 *.bin
 /.codex/models/
 /models/
-playwright-report/
-test-results/
-screenshots/
+
+# OS, editor and temporary files
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+*.tmp
+*.temp
+*.bak
+*.backup
+.idea/
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+
+# Local Codex/operator scratchpads
+CODEX_CONTEXT_BOOTSTRAP.md
+.codex/
+
+# Legacy screenshot scratch folder. Intentional README assets live in docs/assets/.
 docs/screenshots/*.png
 docs/screenshots/*.jpg
 docs/screenshots/*.webp
-CODEX_CONTEXT_BOOTSTRAP.md

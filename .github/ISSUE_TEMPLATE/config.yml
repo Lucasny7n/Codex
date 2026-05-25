@@ -1,0 +1,11 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Support guide
+    url: https://github.com/Lucasny7n/ailu-ai-studio/blob/main/SUPPORT.md
+    about: Read what to include before opening an issue.
+  - name: Security policy
+    url: https://github.com/Lucasny7n/ailu-ai-studio/blob/main/SECURITY.md
+    about: Report vulnerabilities and leaked secrets privately.
+  - name: Roadmap
+    url: https://github.com/Lucasny7n/ailu-ai-studio/blob/main/ROADMAP.md
+    about: Check current priorities before proposing broad work.

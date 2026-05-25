@@ -2,10 +2,15 @@ import { describe, expect, it } from 'vitest';
 
 import readme from '../README.md?raw';
 import gitignore from '../.gitignore?raw';
-import bugReport from '../.github/ISSUE_TEMPLATE/bug_report.md?raw';
-import featureRequest from '../.github/ISSUE_TEMPLATE/feature_request.md?raw';
+import gitattributes from '../.gitattributes?raw';
+import bugReport from '../.github/ISSUE_TEMPLATE/bug_report.yml?raw';
+import featureRequest from '../.github/ISSUE_TEMPLATE/feature_request.yml?raw';
 import pullRequestTemplate from '../.github/PULL_REQUEST_TEMPLATE.md?raw';
 import codeOfConduct from '../CODE_OF_CONDUCT.md?raw';
+import rootContributing from '../CONTRIBUTING.md?raw';
+import rootSecurity from '../SECURITY.md?raw';
+import support from '../SUPPORT.md?raw';
+import changelog from '../CHANGELOG.md?raw';
 import quickstart from '../docs/QUICKSTART.md?raw';
 import installation from '../docs/INSTALLATION.md?raw';
 import userGuide from '../docs/USER_GUIDE.md?raw';
@@ -27,10 +32,11 @@ import commandInputPanel from '../src/components/chat/CommandInputPanel.tsx?raw'
 describe('repository public polish', () => {
   it('README and required docs exist with practical commands', () => {
     for (const phrase of [
-      '# Ailu AI Studio',
+      '<h1 align="center">Ailu AI Studio</h1>',
       'Ollama only',
       'Cloud',
       'STT',
+      'docs/assets/screenshots/ailu-ai-workspace.png',
       'npm run doctor',
       'npm run tauri:dev',
       'npm run icons:validate',
@@ -57,10 +63,18 @@ describe('repository public polish', () => {
   });
 
   it('GitHub templates and code of conduct are useful', () => {
-    expect(bugReport).toContain('Steps to Reproduce');
-    expect(featureRequest).toContain('Validation');
+    expect(bugReport).toContain('Steps to reproduce');
+    expect(featureRequest).toContain('Suggested validation');
     expect(pullRequestTemplate).toContain('No API keys');
+    expect(pullRequestTemplate).toContain('Rollback');
     expect(codeOfConduct).toContain('Our Standard');
+  });
+
+  it('root open-source docs exist for GitHub discoverability', () => {
+    expect(rootContributing).toContain('Conventional Commits');
+    expect(rootSecurity).toContain('Reporting a Vulnerability');
+    expect(support).toContain('Good Bug Reports Include');
+    expect(changelog).toContain('## Unreleased');
   });
 
   it('setup and doctor scripts do not run sudo silently', () => {
@@ -75,6 +89,9 @@ describe('repository public polish', () => {
 
   it('local scratchpad stays local and icon validation is wired', () => {
     expect(gitignore).toContain('CODEX_CONTEXT_BOOTSTRAP.md');
+    expect(gitignore).toContain('test-results/');
+    expect(gitattributes).toContain('text=auto eol=lf');
+    expect(gitattributes).toContain('src-tauri/gen/schemas/*.json linguist-generated=true');
     expect(packageJson).toContain('"icons:validate"');
     expect(validateIcons).toContain('validate-icon-alpha.mjs');
     expect(validateIconAlpha).toContain('alpha');

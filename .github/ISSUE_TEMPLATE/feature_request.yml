@@ -1,7 +1,7 @@
 name: Feature request
 description: Propose a focused improvement.
 title: "feat: "
-labels: ["enhancement"]
+labels: ["type: feature", "status: needs-info"]
 body:
   - type: textarea
     id: problem
@@ -17,11 +17,18 @@ body:
       description: Describe the smallest useful version.
     validations:
       required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: What else could solve this?
   - type: dropdown
     id: area
     attributes:
       label: Area
       options:
+        - AI Workspace
+        - LLM Library
         - Chat
         - Temporary chat
         - Cloud providers
@@ -29,11 +36,29 @@ body:
         - STT/microphone
         - Attachments/files
         - Settings/Health Check
+        - Desktop/Tauri
+        - UI
         - Security
         - Documentation
+        - CI/repository
         - Other
     validations:
       required: true
+  - type: dropdown
+    id: priority
+    attributes:
+      label: Priority
+      options:
+        - Low
+        - Medium
+        - High
+    validations:
+      required: true
+  - type: textarea
+    id: screenshots
+    attributes:
+      label: Screenshots or mockups
+      description: Add visual references if relevant. Do not copy third-party branding/assets.
   - type: textarea
     id: constraints
     attributes:
@@ -44,3 +69,7 @@ body:
     attributes:
       label: Suggested validation
       description: How should maintainers prove this works?
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional context
