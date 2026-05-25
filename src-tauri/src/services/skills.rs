@@ -152,7 +152,7 @@ pub fn build_plan(
         supports_dry_run: true,
         dry_run_command: join_command(&manifest.script_path, args, true),
         run_command: join_command(&manifest.script_path, args, false),
-        rationale: rationale(kind, manifest.risk_level),
+        rationale: rationale(kind, manifest.risk_level.clone()),
         spoken_summary: spoken_summary(&manifest.name, kind),
     })
 }
