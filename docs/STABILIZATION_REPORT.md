@@ -81,17 +81,74 @@ Only 4 props are now in the interface: `busy`, `onSendOrder`, `orderDisabledReas
 
 ---
 
-## Rust Backend
+## Rust Backend — Wave 1
 
-No changes — the backend audit found zero dead code. All 71 commands are registered, all public service functions are called, no duplicate logic.
+No dead code: all 71 commands are registered, all public service functions are called.
+
+---
+
+## Rust Backend — Wave 2: honesty fixes
+
+### Fake cloud-fallback readiness (fixed)
+`backends/mod.rs::cloud_fallback()` hard-coded `BackendAvailability::Ready`,
+so the runtime backend list advertised cloud as "ready" even when no provider
+was configured or tested — directly violating the product rule "cloud fallback
+never appears ready without a tested provider".
+
+Fixed: cloud fallback now reports `BackendAvailability::Unknown` with an honest
+detail ("Disponível apenas com um provedor cloud configurado e testado"). It
+remains a viable last-resort candidate for the selector (Unknown still scores
+as a candidate, and the `force_cloud` path still selects it on `WontRun`), but
+it is no longer presented as confirmed-ready. Added a unit test
+(`cloud_fallback_is_never_ready_without_provider`).
+
+Verified via the standalone `engcheck` harness (full Tauri crate cannot
+`cargo check` here — missing GTK/webkit system libs): **26/26** Local Engine
+tests pass, including `wont_run_model_prefers_cloud` (fallback still works) and
+the new cloud-honesty test.
+
+### Other backend descriptors — audited, already honest
+- `llama_cpp.rs`: CPU/server → `Ready` only when the binary is in PATH; all GPU
+  variants (Vulkan/ROCm/HIP/CUDA/SYCL) → `Installed` (capability unconfirmed),
+  never `Ready`, never auto-compiled. ROCm/HIP gated on `Healthy` accelerator.
+- `openai_compatible.rs`: `NotInstalled` with a config plan. No fake readiness.
+
+### hardware / local_runtime / local_engine overlap — audited, deferred
+The three layers are complementary, not duplicated:
+- `services/hardware.rs` — generic `HardwareProfile` + model-fit math + quant
+  presets. Owns the pure parsers (`parse_meminfo`, `parse_rocm_smi_vram`,
+  `parse_parameter_count`, `estimate_*`).
+- `services/local_runtime.rs` — Ollama lifecycle (install/start/pull/test).
+- `services/local_engine/*` — scored backend selection + `HardwareSnapshot`.
+  `hardware_profiler.rs` **reuses** the pure parsers from `hardware.rs` rather
+  than reimplementing them; only GPU enumeration differs (different output
+  shapes). A full consolidation into one detection layer is desirable but was
+  **deferred**: it changes public signatures across the command layer and
+  cannot be `cargo check`-verified in this environment, so shipping it blind
+  would risk a broken build. Tracked as a next step.
 
 ---
 
 ## Validation
 
+Frontend (full):
 ```
 npm run typecheck   ✓  (0 errors)
 npm run lint        ✓  (0 warnings)
 npm test -- --run   ✓  102/102 tests pass (21 test files)
 npm run build       ✓  378 kB JS · 154 kB CSS
 ```
+
+Rust:
+```
+cargo fmt --check                 ✓  (clean)
+cargo check / cargo test          ✗  full crate needs GTK/webkit (not installable here)
+engcheck harness (Local Engine)   ✓  26/26 tests (mirrors real module files)
+```
+
+## Remaining recommended work
+- Thread real provider-readiness into `list_backends`/`recommend` so cloud can
+  be `Ready` when (and only when) a tested provider exists.
+- Consolidate hardware detection into a single layer behind one snapshot type.
+- Lazy-load heavy modals (Settings, Skill Studio, File Manager) to shrink the
+  initial JS chunk — modest win for a locally-bundled desktop app.

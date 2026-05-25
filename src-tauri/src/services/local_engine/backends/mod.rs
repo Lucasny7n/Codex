@@ -27,12 +27,15 @@ pub async fn detect_backends(snapshot: &HardwareSnapshot) -> Vec<BackendStatus> 
 }
 
 fn cloud_fallback() -> BackendStatus {
+    // Never advertised as "ready": cloud only works when a provider has been
+    // configured and tested, which this layer cannot confirm. It stays a
+    // viable last-resort candidate for the selector without faking readiness.
     BackendStatus {
         id: RuntimeBackendId::CloudFallback,
         label: "Cloud (fallback)".to_owned(),
-        availability: BackendAvailability::Ready,
+        availability: BackendAvailability::Unknown,
         version: None,
-        detail: "Usa provedores cloud configurados quando o local não compensa.".to_owned(),
+        detail: "Disponível apenas com um provedor cloud configurado e testado.".to_owned(),
         experimental: false,
         install_plan: None,
     }
@@ -48,4 +51,16 @@ pub fn binary_in_path(name: &str) -> Option<PathBuf> {
         }
     }
     None
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn cloud_fallback_is_never_ready_without_provider() {
+        let cf = cloud_fallback();
+        assert_eq!(cf.id, RuntimeBackendId::CloudFallback);
+        assert!(matches!(cf.availability, BackendAvailability::Unknown));
+    }
 }
