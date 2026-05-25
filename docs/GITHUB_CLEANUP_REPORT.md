@@ -4,7 +4,8 @@ Data: 2026-05-25
 
 Repositorio: `Lucasny7n/ailu-ai-studio`
 
-Branch alvo: `claude/ailu-refactor-skills-quant-p49AR` (PR #9)
+Branch canonica promovida: `claude/ailu-refactor-skills-quant-p49AR` -> `main`
+(PR #9, merge `2d97607`)
 
 ## Objetivo E Protecoes
 
@@ -44,7 +45,7 @@ validacao completa. Durante a auditoria:
 | Branch remota | Papel identificado | Decisao |
 | --- | --- | --- |
 | `main` | versao estavel antes desta limpeza | base obrigatoria |
-| `claude/ailu-refactor-skills-quant-p49AR` | candidato funcional atual / PR #9 | branch canonica desta entrega |
+| `claude/ailu-refactor-skills-quant-p49AR` | candidato funcional atual / PR #9 | promovida a `main` |
 | `feature/terax-awesome-llm-upgrade` | AI Workspace + GitHub polish / PR #4 | preservar para extracao seletiva |
 | `antigravity/v1-operador-local-real` | rebuild experimental / PR #5 | preservar em draft |
 | `codex/audit-repository-for-inconsistencies` | alternativa hardware / PR #6 | PR fechado, branch preservada |
@@ -84,10 +85,22 @@ A candidata foi atualizada com `main` sem conflito pelo merge local `8484c04`.
 | #5 | convertido para draft com comentario | rebuild experimental com bloqueio funcional registrado; exige decisao seletiva |
 | #6 | fechado com comentario | funcionalidade principal substituida por #7 e evolucao em #9 |
 | #8 | fechado com comentario | integracao experimental conflitante e sem validacao marcada |
-| #9 | escolhido como PR principal | caminho incremental com as features atuais e correcao de readiness |
+| #9 | mergeado em `main` (`2d97607`) | CI verde e caminho incremental com as features atuais e correcao de readiness |
 
 Nenhuma branch remota foi deletada. Os PRs fechados continuam disponiveis como
 referencia de historico e para eventual port seletivo.
+
+## Fechamento Em Main
+
+- O PR #9 foi mergeado em `main` no commit
+  `2d976075a97c8e808951cdcb421b0674c0c20176` em 2026-05-25, somente apos
+  o workflow CI `26417745428` concluir com sucesso.
+- Nesse workflow, os jobs `Frontend` e `Rust` passaram. O job `Visual smoke`
+  ficou skipped por configuracao do workflow; a cobertura visual passou
+  localmente com `npm run screenshots` e `npm run test:visual`.
+- Depois do merge, os unicos PRs ainda abertos sao #4 e #5, ambos em draft e
+  conflitantes com o `main` atual; eles foram preservados para decisao
+  seletiva, sem merge automatico.
 
 ## Validacao
 
@@ -150,8 +163,6 @@ sem falha de teste.
 
 ## Pendencias Controladas
 
-- Executar a matriz final e aguardar CI verde do PR #9 antes do merge em
-  `main`.
 - Avaliar extracao seletiva do GitHub polish/AI Workspace do draft #4 depois
   que a linha funcional atual estiver estavel.
 - Decidir se algum conceito do rebuild experimental #5 merece port isolado;
@@ -162,7 +173,7 @@ sem falha de teste.
 ## Rollback
 
 - A correcao de readiness pode ser revertida por `git revert 4e46cd4`.
-- Se o PR #9 for mergeado e precisar ser desfeito, usar revert do merge pelo
-  fluxo normal de PR, preservando historico.
+- O merge do PR #9 em `main` (`2d97607`) pode ser desfeito por um PR dedicado
+  de revert, preservando historico.
 - PRs fechados podem ser reabertos; drafts #4 e #5 podem voltar a revisao
   somente apos decisao e validacao explicitas.
