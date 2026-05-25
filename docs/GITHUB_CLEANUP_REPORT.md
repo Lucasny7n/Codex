@@ -98,9 +98,10 @@ referencia de historico e para eventual port seletivo.
 - Nesse workflow, os jobs `Frontend` e `Rust` passaram. O job `Visual smoke`
   ficou skipped por configuracao do workflow; a cobertura visual passou
   localmente com `npm run screenshots` e `npm run test:visual`.
-- Depois do merge, os unicos PRs anteriores ainda abertos sao #4 e #5, ambos
-  em draft; #4 esta mergeavel e #5 esta conflitante com o `main` atual. Eles
-  foram preservados para decisao seletiva, sem merge automatico.
+- Na leitura final apos as integracoes, os unicos PRs anteriores ainda abertos
+  sao #4 e #5, ambos em draft. Como a mergeabilidade pode ser recalculada
+  quando `main` muda, qualquer reaproveitamento exige atualizacao contra o
+  head atual, revisao e validacao antes de novo merge.
 
 ## Validacao
 
