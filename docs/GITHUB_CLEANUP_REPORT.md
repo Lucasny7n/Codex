@@ -99,8 +99,9 @@ referencia de historico e para eventual port seletivo.
   ficou skipped por configuracao do workflow; a cobertura visual passou
   localmente com `npm run screenshots` e `npm run test:visual`.
 - Na leitura final apos as integracoes, os unicos PRs anteriores ainda abertos
-  sao #4 e #5, ambos em draft e conflitantes com o `main` atual. Eles foram
-  preservados para decisao seletiva, sem merge automatico.
+  sao #4 e #5, ambos em draft. Como a mergeabilidade pode ser recalculada
+  quando `main` muda, qualquer reaproveitamento exige atualizacao contra o
+  head atual, revisao e validacao antes de novo merge.
 
 ## Validacao
 
