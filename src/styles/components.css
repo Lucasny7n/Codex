@@ -1749,16 +1749,6 @@
   color: var(--text-dim);
 }
 
-.workspace-dirty {
-  border: 1px solid rgba(255, 127, 143, 0.42);
-  border-radius: 999px;
-  padding: 1px 7px;
-  color: var(--color-danger);
-  text-transform: uppercase;
-  font-size: 0.63rem;
-  letter-spacing: 0;
-}
-
 .model-switcher-button {
   border: 1px solid var(--border-subtle);
   background: rgba(255, 255, 255, 0.025);
@@ -5978,6 +5968,16 @@
   color: var(--text-primary);
   border-color: var(--border-medium);
   outline: none;
+}
+
+.message-action-active {
+  color: var(--accent-primary) !important;
+  border-color: var(--accent-primary) !important;
+}
+
+.message-action-dislike.message-action-active {
+  color: var(--error-text, #e05b5b) !important;
+  border-color: var(--error-border, #e05b5b) !important;
 }
 
 .message-action-chip {

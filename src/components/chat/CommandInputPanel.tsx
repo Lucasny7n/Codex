@@ -8,7 +8,6 @@ import {
   sttFailureMessage,
   type SttCaptureStatus,
 } from '../../lib/stt/status';
-import type { PrivilegedActionSpec } from '../../types/domain';
 import type { ChatAttachment, LocalSttConfigSnapshot, SelectedFileAttachment, VoiceTranscriptionResult } from '../../types/domain';
 import { UiIcon } from '../common/AppIcons';
 import { FileManagerModal } from '../file/FileManagerModal';
@@ -17,18 +16,8 @@ import { PopupMenu, PremiumModal, StatusDot } from '../common/PremiumUI';
 
 interface CommandInputPanelProps {
   busy: boolean;
-  privilegedActions: PrivilegedActionSpec[];
   onSendOrder: (order: string, mode: InputModeId, attachments: ChatAttachment[]) => Promise<void>;
-  onExecuteCommand: (command: string) => Promise<void>;
-  onRequestPrivilegedAction: (actionId: string, args: Record<string, unknown>, dryRun: boolean) => Promise<void>;
-  actionJsonExamples: Record<string, string>;
   orderDisabledReason?: string;
-  executionMode?: 'cloud' | 'local';
-  activeModelLabel?: string;
-  providerLabel?: string;
-  runtimeState?: string;
-  onOpenModelSelector?: () => void;
-  onOpenTerminal?: () => void;
   onOpenSkills?: () => void;
 }
 

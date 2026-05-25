@@ -160,11 +160,7 @@ describe('CommandInputPanel', () => {
     render(
       <CommandInputPanel
         busy={false}
-        privilegedActions={[]}
-        actionJsonExamples={{}}
         onSendOrder={vi.fn()}
-        onExecuteCommand={vi.fn()}
-        onRequestPrivilegedAction={vi.fn()}
         orderDisabledReason="Provider indisponível"
       />,
     );
@@ -179,24 +175,17 @@ describe('CommandInputPanel', () => {
   });
 
   it('mantem terminal como conversa sem abrir logs automaticamente', async () => {
-    const onOpenTerminal = vi.fn();
     const onSendOrder = vi.fn().mockResolvedValue(undefined);
 
     render(
       <CommandInputPanel
         busy={false}
-        privilegedActions={[]}
-        actionJsonExamples={{}}
         onSendOrder={onSendOrder}
-        onExecuteCommand={vi.fn()}
-        onRequestPrivilegedAction={vi.fn()}
-        onOpenTerminal={onOpenTerminal}
       />,
     );
 
     fireEvent.click(screen.getByLabelText('Selecionar modo de resposta'));
     fireEvent.click(screen.getByText('Terminal'));
-    expect(onOpenTerminal).not.toHaveBeenCalled();
     fireEvent.change(screen.getByPlaceholderText('Descreva a ação de terminal para a IA planejar com segurança.'), {
       target: { value: 'liste arquivos com risco baixo' },
     });
@@ -211,11 +200,7 @@ describe('CommandInputPanel', () => {
     render(
       <CommandInputPanel
         busy={false}
-        privilegedActions={[]}
-        actionJsonExamples={{}}
         onSendOrder={vi.fn()}
-        onExecuteCommand={vi.fn()}
-        onRequestPrivilegedAction={vi.fn()}
       />,
     );
 
@@ -234,11 +219,7 @@ describe('CommandInputPanel', () => {
     render(
       <CommandInputPanel
         busy={false}
-        privilegedActions={[]}
-        actionJsonExamples={{}}
         onSendOrder={onSendOrder}
-        onExecuteCommand={vi.fn()}
-        onRequestPrivilegedAction={vi.fn()}
       />,
     );
 
@@ -267,11 +248,7 @@ describe('CommandInputPanel', () => {
     render(
       <CommandInputPanel
         busy={false}
-        privilegedActions={[]}
-        actionJsonExamples={{}}
         onSendOrder={onSendOrder}
-        onExecuteCommand={vi.fn()}
-        onRequestPrivilegedAction={vi.fn()}
       />,
     );
 
@@ -304,11 +281,7 @@ describe('CommandInputPanel', () => {
     render(
       <CommandInputPanel
         busy={false}
-        privilegedActions={[]}
-        actionJsonExamples={{}}
         onSendOrder={onSendOrder}
-        onExecuteCommand={vi.fn()}
-        onRequestPrivilegedAction={vi.fn()}
       />,
     );
 
@@ -342,11 +315,7 @@ describe('CommandInputPanel', () => {
     render(
       <CommandInputPanel
         busy={false}
-        privilegedActions={[]}
-        actionJsonExamples={{}}
         onSendOrder={vi.fn()}
-        onExecuteCommand={vi.fn()}
-        onRequestPrivilegedAction={vi.fn()}
       />,
     );
 
@@ -382,11 +351,7 @@ describe('CommandInputPanel', () => {
     render(
       <CommandInputPanel
         busy={false}
-        privilegedActions={[]}
-        actionJsonExamples={{}}
         onSendOrder={vi.fn()}
-        onExecuteCommand={vi.fn()}
-        onRequestPrivilegedAction={vi.fn()}
       />,
     );
 
@@ -420,11 +385,7 @@ describe('CommandInputPanel', () => {
     render(
       <CommandInputPanel
         busy={false}
-        privilegedActions={[]}
-        actionJsonExamples={{}}
         onSendOrder={vi.fn()}
-        onExecuteCommand={vi.fn()}
-        onRequestPrivilegedAction={vi.fn()}
       />,
     );
 
@@ -465,11 +426,7 @@ describe('CommandInputPanel', () => {
     render(
       <CommandInputPanel
         busy={false}
-        privilegedActions={[]}
-        actionJsonExamples={{}}
         onSendOrder={vi.fn()}
-        onExecuteCommand={vi.fn()}
-        onRequestPrivilegedAction={vi.fn()}
       />,
     );
 
@@ -497,11 +454,7 @@ describe('CommandInputPanel', () => {
     render(
       <CommandInputPanel
         busy={false}
-        privilegedActions={[]}
-        actionJsonExamples={{}}
         onSendOrder={vi.fn()}
-        onExecuteCommand={vi.fn()}
-        onRequestPrivilegedAction={vi.fn()}
       />,
     );
 
@@ -525,11 +478,7 @@ describe('CommandInputPanel', () => {
     render(
       <CommandInputPanel
         busy={false}
-        privilegedActions={[]}
-        actionJsonExamples={{}}
         onSendOrder={vi.fn()}
-        onExecuteCommand={vi.fn()}
-        onRequestPrivilegedAction={vi.fn()}
       />,
     );
 
@@ -562,11 +511,7 @@ describe('CommandInputPanel', () => {
     render(
       <CommandInputPanel
         busy={false}
-        privilegedActions={[]}
-        actionJsonExamples={{}}
         onSendOrder={vi.fn()}
-        onExecuteCommand={vi.fn()}
-        onRequestPrivilegedAction={vi.fn()}
       />,
     );
 
@@ -590,11 +535,7 @@ describe('CommandInputPanel', () => {
     render(
       <CommandInputPanel
         busy={false}
-        privilegedActions={[]}
-        actionJsonExamples={{}}
         onSendOrder={vi.fn()}
-        onExecuteCommand={vi.fn()}
-        onRequestPrivilegedAction={vi.fn()}
       />,
     );
 
@@ -628,11 +569,7 @@ describe('CommandInputPanel', () => {
     render(
       <CommandInputPanel
         busy={false}
-        privilegedActions={[]}
-        actionJsonExamples={{}}
         onSendOrder={vi.fn()}
-        onExecuteCommand={vi.fn()}
-        onRequestPrivilegedAction={vi.fn()}
       />,
     );
 
@@ -648,11 +585,7 @@ describe('CommandInputPanel', () => {
     render(
       <CommandInputPanel
         busy={false}
-        privilegedActions={[]}
-        actionJsonExamples={{}}
         onSendOrder={vi.fn()}
-        onExecuteCommand={vi.fn()}
-        onRequestPrivilegedAction={vi.fn()}
       />,
     );
 
@@ -681,11 +614,7 @@ describe('CommandInputPanel', () => {
     render(
       <CommandInputPanel
         busy={false}
-        privilegedActions={[]}
-        actionJsonExamples={{}}
         onSendOrder={onSendOrder}
-        onExecuteCommand={vi.fn()}
-        onRequestPrivilegedAction={vi.fn()}
       />,
     );
 
@@ -753,11 +682,7 @@ describe('CommandInputPanel', () => {
     render(
       <CommandInputPanel
         busy={false}
-        privilegedActions={[]}
-        actionJsonExamples={{}}
         onSendOrder={onSendOrder}
-        onExecuteCommand={vi.fn()}
-        onRequestPrivilegedAction={vi.fn()}
       />,
     );
 
@@ -789,11 +714,7 @@ describe('CommandInputPanel', () => {
     render(
       <CommandInputPanel
         busy={false}
-        privilegedActions={[]}
-        actionJsonExamples={{}}
         onSendOrder={vi.fn()}
-        onExecuteCommand={vi.fn()}
-        onRequestPrivilegedAction={vi.fn()}
       />,
     );
 

@@ -15,7 +15,6 @@ import {
   listArchivedSessions,
   listProviderCredentials,
   listProviderProfiles,
-  listPrivilegedActions,
   onCommandLog,
   onFileChanged,
   onLocalModelProgress,
@@ -28,7 +27,6 @@ import {
   openFileInVscode,
   openProjectInVscode,
   requestExecution,
-  requestPrivilegedAction,
   renameSession,
   restoreSession,
   removeLocalModel,
@@ -71,7 +69,6 @@ import type {
   ChatMessage,
   LocalModelInstallProgress,
   LocalRuntimeSnapshot,
-  PrivilegedActionSpec,
   ProviderCredentialStatus,
   ProviderAccountProfile,
   ProviderRuntimeStatus,
@@ -103,34 +100,6 @@ import {
   ToastViewport,
   type ToastMessage,
 } from '../components/common/PremiumUI';
-
-function homeFromDataRoot(settings?: AppSettings): string | undefined {
-  if (!settings?.codexRoot) return undefined;
-  return settings.codexRoot.endsWith('/.codex') ? settings.codexRoot.slice(0, -'/.codex'.length) : undefined;
-}
-
-function buildActionJsonExamples(settings?: AppSettings): Record<string, string> {
-  const dataRoot = settings?.codexRoot ?? '~/.codex';
-  const home = homeFromDataRoot(settings) ?? '~';
-
-  return {
-    systemctl_enable_service: '{\n  "service": "fstrim.timer"\n}',
-    systemctl_disable_service: '{\n  "service": "waydroid-container.service"\n}',
-    systemctl_restart_service: '{\n  "service": "waydroid-container.service"\n}',
-    systemctl_status_service: '{\n  "service": "waydroid-container.service"\n}',
-    bootctl_set_default_kernel: '{\n  "entry": "arch-linux-cachyos-bore.conf"\n}',
-    chmod_random_seed: '{}',
-    backup_file: '{\n  "path": "/boot/loader/loader.conf"\n}',
-    restore_file: `{\n  "backupPath": "${dataRoot}/ailu-ai-studio/backups/exemplo.bak",\n  "targetPath": "/boot/loader/loader.conf"\n}`,
-    pacman_install_packages: '{\n  "packages": ["ripgrep"]\n}',
-    paccache_keep_versions: '{\n  "keep": 2\n}',
-    waydroid_start: '{}',
-    waydroid_stop: '{}',
-    waydroid_status: '{}',
-    hyprland_verify_config: `{\n  "configPath": "${home}/.config/hypr/hyprland.conf"\n}`,
-    hyprland_reload_user: '{}',
-  };
-}
 
 function pushHistory(settings: AppSettings, mode: ExecutionMode, providerId: string, modelId: string): AppSettings {
   const entry = {
@@ -386,7 +355,6 @@ function createOptimisticUserMessage(content: string, attachments: ChatAttachmen
 
 export default function App(): JSX.Element {
   const [busy, setBusy] = useState(false);
-  const [privilegedActions, setPrivilegedActions] = useState<PrivilegedActionSpec[]>([]);
   const [terminalOpen, setTerminalOpen] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false);
   const [skillStudioOpen, setSkillStudioOpen] = useState(false);
@@ -526,8 +494,6 @@ export default function App(): JSX.Element {
   }, [projectSessionIds, sessions, sidebarProjects]);
 
   const activeProjectConversations = activeProject ? projectSessionsByName[activeProject] ?? [] : [];
-
-  const actionJsonExamples = useMemo(() => buildActionJsonExamples(settings), [settings]);
 
   const effectiveProviderProfiles = useMemo(() => {
     const source = providerAccountProfiles.length > 0 ? providerAccountProfiles : providerProfiles;
@@ -828,10 +794,6 @@ export default function App(): JSX.Element {
         if (!mounted) return;
         bootstrap(payload);
         applyAppTheme(payload.theme, payload.settings.themePreference ?? 'dark');
-        const actionCatalog = await listPrivilegedActions();
-        if (mounted) {
-          setPrivilegedActions(actionCatalog);
-        }
         const credentials = await listProviderCredentials();
         const accountProfiles = await listProviderProfiles();
         if (mounted) {
@@ -1060,41 +1022,14 @@ export default function App(): JSX.Element {
     }
   }
 
-  async function handleExecuteCommand(command: string): Promise<void> {
-    const cleaned = trimMultiline(command);
-    if (!cleaned) return;
-    setBusy(true);
-    try {
-      const sessionId = await ensureSession(cleaned);
-      const response = await requestExecution({
-        sessionId,
-        command: cleaned,
-        cwd: settings?.workspaceRoot,
-        reason: 'Comando solicitado pelo usuário na central.',
-      });
-      if (response.permissionRequest) {
-        addPermission(response.permissionRequest);
-      }
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function handleRequestPrivilegedAction(actionId: string, args: Record<string, unknown>, dryRun: boolean): Promise<void> {
-    setBusy(true);
-    try {
-      const sessionId = await ensureSession(actionId);
-      const request = await requestPrivilegedAction({
-        sessionId,
-        actionId,
-        args,
-        reason: 'Ação privilegiada solicitada pelo usuário no painel de permissões.',
-        dryRun,
-      });
-      addPermission(request);
-    } finally {
-      setBusy(false);
-    }
+  async function handleRedoMessage(messageId: string): Promise<void> {
+    const session = selectedSession ?? temporarySession;
+    if (!session) return;
+    const idx = session.messages.findIndex((m) => m.id === messageId);
+    if (idx < 0) return;
+    const prevUser = [...session.messages].slice(0, idx).reverse().find((m) => m.role === 'user');
+    if (!prevUser) return;
+    await handleSendPrompt(prevUser.content, 'auto', prevUser.attachments ?? []);
   }
 
   async function applySettings(next: AppSettings): Promise<void> {
@@ -1652,18 +1587,8 @@ export default function App(): JSX.Element {
     <CommandInputPanel
       key={temporaryChatActive ? 'temporary-composer' : activeProject ? `project-${activeProject}` : 'regular-composer'}
       busy={busy}
-      privilegedActions={privilegedActions}
       onSendOrder={handleSendPrompt}
-      onExecuteCommand={handleExecuteCommand}
-      onRequestPrivilegedAction={handleRequestPrivilegedAction}
-      actionJsonExamples={actionJsonExamples}
       orderDisabledReason={orderDisabledReason}
-      executionMode={executionMode}
-      activeModelLabel={activeModelLabel}
-      providerLabel={selectedProviderStatus?.state === 'ready' ? selectedProvider?.label : 'Configurar'}
-      runtimeState={executionMode === 'local' ? localRuntime?.state : undefined}
-      onOpenModelSelector={() => openEnvironmentTab('ready')}
-      onOpenTerminal={() => setTerminalOpen(true)}
       onOpenSkills={() => setSkillStudioOpen(true)}
     />
   );
@@ -1745,7 +1670,7 @@ export default function App(): JSX.Element {
                     <p>Esta conversa não aparecerá no histórico e as suas mensagens não serão guardadas.</p>
                   </section>
                 ) : (
-                  <ChatPanel session={temporarySession} emptyTitle="Bate-papo Temporário" onOpenEnvironment={() => openEnvironmentTab('ready')} isResponding={activeChatResponding} />
+                  <ChatPanel session={temporarySession} emptyTitle="Bate-papo Temporário" onOpenEnvironment={() => openEnvironmentTab('ready')} onRedoMessage={handleRedoMessage} isResponding={activeChatResponding} />
                 )}
                 {commandInput}
               </>
@@ -1829,7 +1754,7 @@ export default function App(): JSX.Element {
               </section>
             ) : (
               <>
-                <ChatPanel session={selectedSession} emptyTitle="O que gostaria de explorar?" onOpenEnvironment={() => openEnvironmentTab('accounts')} isResponding={activeChatResponding} />
+                <ChatPanel session={selectedSession} emptyTitle="O que gostaria de explorar?" onOpenEnvironment={() => openEnvironmentTab('accounts')} onRedoMessage={handleRedoMessage} isResponding={activeChatResponding} />
                 {commandInput}
               </>
             )}

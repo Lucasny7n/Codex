@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from 'react';
+import { useCallback, useState, type ReactNode } from 'react';
 import type { AgentSession, ChatMessage } from '../../types/domain';
 import { UiIcon } from '../common/AppIcons';
 import { PopupMenu } from '../common/PremiumUI';
@@ -8,6 +8,7 @@ interface ChatPanelProps {
   session?: AgentSession;
   emptyTitle?: string;
   onOpenEnvironment?: () => void;
+  onRedoMessage?: (messageId: string) => Promise<void>;
   isResponding?: boolean;
 }
 
@@ -228,9 +229,24 @@ function AssistantTypingIndicator(): JSX.Element {
   );
 }
 
-export function ChatPanel({ session, emptyTitle = 'O que gostaria de explorar?', onOpenEnvironment, isResponding = false }: ChatPanelProps): JSX.Element {
+function stripMarkdownForSpeech(text: string): string {
+  return text
+    .replace(/```[\s\S]*?```/gu, '')
+    .replace(/`[^`]*`/gu, '')
+    .replace(/^#{1,6}\s+/gmu, '')
+    .replace(/[*_~]+/gu, '')
+    .replace(/\[([^\]]*)\]\([^)]*\)/gu, '$1')
+    .replace(/\n{2,}/gu, '. ')
+    .replace(/\n/gu, ' ')
+    .trim();
+}
+
+export function ChatPanel({ session, emptyTitle = 'O que gostaria de explorar?', onOpenEnvironment, onRedoMessage, isResponding = false }: ChatPanelProps): JSX.Element {
   const [menuMessageId, setMenuMessageId] = useState<string>();
   const [copiedMessageId, setCopiedMessageId] = useState<string>();
+  const [likedIds, setLikedIds] = useState<Set<string>>(new Set());
+  const [dislikedIds, setDislikedIds] = useState<Set<string>>(new Set());
+  const [speakingId, setSpeakingId] = useState<string>();
 
   async function copyMessage(message: ChatMessage): Promise<void> {
     const content = cleanVisibleContent(message.content);
@@ -242,6 +258,41 @@ export function ChatPanel({ session, emptyTitle = 'O que gostaria de explorar?',
       setCopiedMessageId(undefined);
     }
   }
+
+  const toggleLike = useCallback((id: string) => {
+    setLikedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) { next.delete(id); } else { next.add(id); }
+      return next;
+    });
+    setDislikedIds((prev) => { const next = new Set(prev); next.delete(id); return next; });
+  }, []);
+
+  const toggleDislike = useCallback((id: string) => {
+    setDislikedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) { next.delete(id); } else { next.add(id); }
+      return next;
+    });
+    setLikedIds((prev) => { const next = new Set(prev); next.delete(id); return next; });
+  }, []);
+
+  const speakMessage = useCallback((message: ChatMessage) => {
+    if (!('speechSynthesis' in window)) return;
+    if (speakingId === message.id) {
+      window.speechSynthesis.cancel();
+      setSpeakingId(undefined);
+      return;
+    }
+    window.speechSynthesis.cancel();
+    const utterance = new SpeechSynthesisUtterance(stripMarkdownForSpeech(cleanVisibleContent(message.content)));
+    utterance.lang = 'pt-BR';
+    utterance.rate = 1.0;
+    utterance.onend = () => setSpeakingId(undefined);
+    utterance.onerror = () => setSpeakingId(undefined);
+    setSpeakingId(message.id);
+    window.speechSynthesis.speak(utterance);
+  }, [speakingId]);
 
   if (!session) {
     return (
@@ -289,18 +340,44 @@ export function ChatPanel({ session, emptyTitle = 'O que gostaria de explorar?',
                     <button type="button" className="message-action-button" aria-label="Copiar resposta" onClick={() => void copyMessage(message)}>
                       <UiIcon name="copy" />
                     </button>
-                    <button type="button" className="message-action-button" aria-label="Curtir resposta">
+                    <button
+                      type="button"
+                      className={`message-action-button${likedIds.has(message.id) ? ' message-action-active' : ''}`}
+                      aria-label={likedIds.has(message.id) ? 'Remover curtida' : 'Curtir resposta'}
+                      aria-pressed={likedIds.has(message.id)}
+                      onClick={() => toggleLike(message.id)}
+                    >
                       <UiIcon name="heart" />
                     </button>
-                    <button type="button" className="message-action-button" aria-label="Não gostei da resposta">
+                    <button
+                      type="button"
+                      className={`message-action-button${dislikedIds.has(message.id) ? ' message-action-active message-action-dislike' : ''}`}
+                      aria-label={dislikedIds.has(message.id) ? 'Remover avaliação negativa' : 'Não gostei da resposta'}
+                      aria-pressed={dislikedIds.has(message.id)}
+                      onClick={() => toggleDislike(message.id)}
+                    >
                       <UiIcon name="x" />
                     </button>
-                    <button type="button" className="message-action-button" aria-label="Compartilhar resposta">
-                      <UiIcon name="send" />
+                    <button
+                      type="button"
+                      className={`message-action-button${speakingId === message.id ? ' message-action-active' : ''}`}
+                      aria-label={speakingId === message.id ? 'Parar leitura' : 'Ouvir resposta'}
+                      aria-pressed={speakingId === message.id}
+                      onClick={() => speakMessage(message)}
+                    >
+                      <UiIcon name="music" />
                     </button>
-                    <button type="button" className="message-action-button" aria-label="Refazer resposta">
-                      <UiIcon name="refresh" />
-                    </button>
+                    {onRedoMessage ? (
+                      <button
+                        type="button"
+                        className="message-action-button"
+                        aria-label="Refazer resposta"
+                        disabled={isResponding}
+                        onClick={() => void onRedoMessage(message.id)}
+                      >
+                        <UiIcon name="refresh" />
+                      </button>
+                    ) : null}
                     <div className="popup-anchor">
                       <button
                         type="button"
@@ -314,15 +391,14 @@ export function ChatPanel({ session, emptyTitle = 'O que gostaria de explorar?',
                         <button type="button" onClick={() => { setMenuMessageId(undefined); void copyMessage(message); }}>
                           Copiar
                         </button>
-                        <button type="button" disabled>
-                          Compartilhar
+                        <button type="button" onClick={() => { setMenuMessageId(undefined); speakMessage(message); }}>
+                          {speakingId === message.id ? 'Parar leitura' : 'Ouvir'}
                         </button>
-                        <button type="button" disabled>
-                          Refazer resposta
-                        </button>
-                        <button type="button" disabled>
-                          Mais opções
-                        </button>
+                        {onRedoMessage ? (
+                          <button type="button" disabled={isResponding} onClick={() => { setMenuMessageId(undefined); void onRedoMessage(message.id); }}>
+                            Refazer resposta
+                          </button>
+                        ) : null}
                       </PopupMenu>
                     </div>
                   </div>
