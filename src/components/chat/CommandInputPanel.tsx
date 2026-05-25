@@ -29,6 +29,7 @@ interface CommandInputPanelProps {
   runtimeState?: string;
   onOpenModelSelector?: () => void;
   onOpenTerminal?: () => void;
+  onOpenSkills?: () => void;
 }
 
 export type InputModeId = 'auto' | 'thinking' | 'fast' | 'code' | 'terminal';
@@ -183,6 +184,7 @@ export function CommandInputPanel({
   busy,
   onSendOrder,
   orderDisabledReason,
+  onOpenSkills,
 }: CommandInputPanelProps): JSX.Element {
   const [mode, setMode] = useState<InputModeId>('auto');
   const [prompt, setPrompt] = useState('');
@@ -592,6 +594,19 @@ export function CommandInputPanel({
               <UiIcon name="paperclip" className="menu-icon menu-item-icon" />
               Selecionar arquivo
             </button>
+            {onOpenSkills ? (
+              <button
+                type="button"
+                className="menu-item"
+                onClick={() => {
+                  setPlusOpen(false);
+                  onOpenSkills();
+                }}
+              >
+                <UiIcon name="desktop" className="menu-icon menu-item-icon" />
+                Skill Studio
+              </button>
+            ) : null}
           </PopupMenu>
         </div>
 

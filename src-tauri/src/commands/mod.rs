@@ -14,6 +14,10 @@ use tauri::{AppHandle, Emitter, State};
 use uuid::Uuid;
 
 use crate::error::{AppError, AppResult, ErrorPayload};
+use crate::models::local_engine::{
+    BackendStatus, BenchmarkKind, BenchmarkResult, HardwareSnapshot, ModelRuntimeRequest,
+    RuntimeBackendId, RuntimeEstimate, RuntimePreset, RuntimeRecommendation,
+};
 use crate::models::{
     ActionableError, ActionableErrorSeverity, AgentSession, AppHealthAction, AppHealthCheck,
     AppHealthOverallStatus, AppHealthProvider, AppSettings, BootstrapPayload, ChatMessage,
@@ -2089,6 +2093,90 @@ pub async fn estimate_model_fits(
 ) -> Result<Vec<ModelFitEstimate>, ErrorPayload> {
     let profile = state.hardware_service.detect().await;
     Ok(state.hardware_service.estimate_fits(&profile, &requests))
+}
+
+#[tauri::command]
+pub async fn detect_local_hardware(
+    state: State<'_, AppState>,
+) -> Result<HardwareSnapshot, ErrorPayload> {
+    Ok(state.local_engine.detect_hardware().await)
+}
+
+#[tauri::command]
+pub async fn list_runtime_backends(
+    state: State<'_, AppState>,
+) -> Result<Vec<BackendStatus>, ErrorPayload> {
+    Ok(state.local_engine.list_backends().await)
+}
+
+#[tauri::command]
+pub async fn estimate_model_runtime(
+    state: State<'_, AppState>,
+    request: ModelRuntimeRequest,
+) -> Result<RuntimeEstimate, ErrorPayload> {
+    Ok(state.local_engine.estimate_runtime(&request).await)
+}
+
+#[tauri::command]
+pub async fn recommend_model_runtime(
+    state: State<'_, AppState>,
+    request: ModelRuntimeRequest,
+) -> Result<RuntimeRecommendation, ErrorPayload> {
+    Ok(state.local_engine.recommend(&request).await)
+}
+
+#[tauri::command]
+pub fn list_runtime_presets(state: State<AppState>) -> Result<Vec<RuntimePreset>, ErrorPayload> {
+    Ok(state.local_engine.list_presets())
+}
+
+#[tauri::command]
+pub fn save_runtime_preset(
+    state: State<AppState>,
+    preset: RuntimePreset,
+) -> Result<Vec<RuntimePreset>, ErrorPayload> {
+    state
+        .local_engine
+        .save_preset(preset)
+        .map_err(AppError::Message)
+        .map_err(map_err)
+}
+
+#[tauri::command]
+pub fn delete_runtime_preset(
+    state: State<AppState>,
+    model_id: String,
+    backend_id: RuntimeBackendId,
+) -> Result<Vec<RuntimePreset>, ErrorPayload> {
+    state
+        .local_engine
+        .delete_preset(&model_id, backend_id)
+        .map_err(AppError::Message)
+        .map_err(map_err)
+}
+
+#[tauri::command]
+pub async fn test_model_runtime(
+    state: State<'_, AppState>,
+    model_id: String,
+    backend_id: RuntimeBackendId,
+) -> Result<BenchmarkResult, ErrorPayload> {
+    Ok(state
+        .local_engine
+        .benchmark(&model_id, backend_id, BenchmarkKind::Smoke)
+        .await)
+}
+
+#[tauri::command]
+pub async fn benchmark_model_runtime(
+    state: State<'_, AppState>,
+    model_id: String,
+    backend_id: RuntimeBackendId,
+) -> Result<BenchmarkResult, ErrorPayload> {
+    Ok(state
+        .local_engine
+        .benchmark(&model_id, backend_id, BenchmarkKind::Quick)
+        .await)
 }
 
 fn skill_store(state: &State<AppState>) -> SkillStore {

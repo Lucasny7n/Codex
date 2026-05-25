@@ -12,16 +12,22 @@ import type {
 } from '../src/types/domain';
 
 vi.mock('../src/lib/api', () => ({
+  benchmarkModelRuntime: vi.fn(),
   compareModels: vi.fn(),
+  detectLocalHardware: vi.fn(),
+  estimateModelRuntime: vi.fn(),
   getAppHealthCheck: vi.fn(),
   getFileAttachment: vi.fn(),
   getLocalRuntimeState: vi.fn(),
   installLocalModel: vi.fn(),
   listFileDirectory: vi.fn(),
+  listRuntimeBackends: vi.fn(),
   onLocalModelProgress: vi.fn(),
+  recommendModelRuntime: vi.fn(),
   removeLocalModel: vi.fn(),
   showLocalModel: vi.fn(),
   testLocalModel: vi.fn(),
+  testModelRuntime: vi.fn(),
 }));
 
 const readyStatus: ProviderRuntimeStatus = {
@@ -170,7 +176,7 @@ describe('SettingsPanel', () => {
   it('renderiza somente as abas principais e remove telas antigas', () => {
     renderSettings();
 
-    for (const label of ['Geral', 'Interface', 'Modelos', 'Conversas', 'Personalização', 'Saúde']) {
+    for (const label of ['Geral', 'Interface', 'Modelos', 'Conversas', 'Personalização', 'Saúde', 'Meu PC']) {
       expect(screen.getByRole('button', { name: label })).toBeInTheDocument();
     }
 

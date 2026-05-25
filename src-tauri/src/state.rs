@@ -12,6 +12,7 @@ use crate::services::config_manager::ConfigManager;
 use crate::services::credential_store::CredentialStore;
 use crate::services::file_watcher::{FileWatcherService, RunningWatcher};
 use crate::services::hardware::HardwareService;
+use crate::services::local_engine::LocalEngineService;
 use crate::services::local_runtime::LocalRuntimeService;
 use crate::services::memory_manager::MemoryManager;
 use crate::services::permission_manager::PermissionManager;
@@ -30,6 +31,7 @@ pub struct AppState {
     pub provider_registry: Arc<ProviderRegistry>,
     pub local_runtime_service: Arc<LocalRuntimeService>,
     pub hardware_service: Arc<HardwareService>,
+    pub local_engine: Arc<LocalEngineService>,
     pub command_executor: Arc<CommandExecutor>,
     pub vscode_bridge: Arc<VscodeBridge>,
     pub file_watcher_service: Arc<FileWatcherService>,
@@ -43,6 +45,7 @@ impl AppState {
         let settings = config_manager.load_or_create_settings()?;
         let workspace_root = settings.workspace_root.clone();
         let data_root = config_manager.data_root().to_path_buf();
+        let engine_home = config_manager.home_dir();
         let session_manager = Arc::new(SessionManager::new(config_manager.sessions_dir())?);
         let memory_manager = Arc::new(MemoryManager::new(
             config_manager.codex_root(),
@@ -63,6 +66,7 @@ impl AppState {
             provider_registry: Arc::new(ProviderRegistry::new(credential_store)),
             local_runtime_service: Arc::new(LocalRuntimeService::new()),
             hardware_service: Arc::new(HardwareService::new()),
+            local_engine: Arc::new(LocalEngineService::new(engine_home.as_path())),
             command_executor: Arc::new(CommandExecutor),
             vscode_bridge: Arc::new(VscodeBridge),
             file_watcher_service: Arc::new(FileWatcherService),
