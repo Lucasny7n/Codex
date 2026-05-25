@@ -31,6 +31,19 @@ function backendLabel(id: RuntimeBackendId, backends: BackendStatus[]): string {
   return backends.find((b) => b.id === id)?.label ?? id;
 }
 
+function readiness(status: BackendStatus | undefined): { tone: BadgeTone; label: string; ok: boolean } {
+  switch (status?.availability) {
+    case 'ready':
+      return { tone: 'ok', label: 'Pronto verificado', ok: true };
+    case 'installed':
+      return { tone: 'warn', label: 'Teste antes de usar', ok: false };
+    case 'unknown':
+      return { tone: 'warn', label: 'Configuração não validada', ok: false };
+    default:
+      return { tone: 'neutral', label: 'Indisponível', ok: false };
+  }
+}
+
 interface RuntimeRecommendationCardProps {
   recommendation: RuntimeRecommendation;
   backends: BackendStatus[];
@@ -39,12 +52,14 @@ interface RuntimeRecommendationCardProps {
 export function RuntimeRecommendationCard({ recommendation, backends }: RuntimeRecommendationCardProps): JSX.Element {
   const { backend, estimate, message, rationale, alternatives } = recommendation;
   const { fit, speedHint, warnings } = estimate;
+  const backendReadiness = readiness(backends.find((candidate) => candidate.id === backend));
 
   return (
-    <article className="health-item-card health-ok">
+    <article className={`health-item-card${backendReadiness.ok ? ' health-ok' : ' health-warning'}`}>
       <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
         <strong>{backendLabel(backend, backends)}</strong>
         <Badge tone={FIT_TONES[fit]}>{FIT_LABELS[fit]}</Badge>
+        <Badge tone={backendReadiness.tone}>{backendReadiness.label}</Badge>
       </div>
       <p>{message}</p>
       <small>{rationale}</small>

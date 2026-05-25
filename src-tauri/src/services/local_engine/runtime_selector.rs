@@ -209,8 +209,7 @@ fn message_for(
     let vulkan_ok = available(api_status(snapshot, AcceleratorApi::Vulkan));
 
     if backend == RuntimeBackendId::CloudFallback {
-        return "Esse modelo não compensa localmente neste PC. Sugiro usar um provedor cloud."
-            .to_owned();
+        return "Esse modelo não compensa localmente neste PC. Configure e teste um provider cloud em Settings antes de usar o fallback.".to_owned();
     }
     if is_amd && backend == RuntimeBackendId::LlamaCppVulkan {
         return "AMD RX 7600 detectada. Vulkan parece ser o backend mais seguro neste sistema."

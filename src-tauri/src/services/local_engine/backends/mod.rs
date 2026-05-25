@@ -30,9 +30,9 @@ fn cloud_fallback() -> BackendStatus {
     BackendStatus {
         id: RuntimeBackendId::CloudFallback,
         label: "Cloud (fallback)".to_owned(),
-        availability: BackendAvailability::Ready,
+        availability: BackendAvailability::Unknown,
         version: None,
-        detail: "Usa provedores cloud configurados quando o local não compensa.".to_owned(),
+        detail: "Use somente após configurar e testar um provider cloud em Settings.".to_owned(),
         experimental: false,
         install_plan: None,
     }
@@ -48,4 +48,17 @@ pub fn binary_in_path(name: &str) -> Option<PathBuf> {
         }
     }
     None
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn cloud_fallback_is_not_ready_without_provider_validation() {
+        let status = cloud_fallback();
+
+        assert_eq!(status.availability, BackendAvailability::Unknown);
+        assert!(status.detail.contains("testar um provider cloud"));
+    }
 }

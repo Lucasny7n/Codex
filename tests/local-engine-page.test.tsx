@@ -97,6 +97,16 @@ function mockRecommendation(): RuntimeRecommendation {
   };
 }
 
+function cloudFallbackRecommendation(): RuntimeRecommendation {
+  return {
+    ...mockRecommendation(),
+    backend: 'cloud_fallback',
+    rationale: 'Modelo grande demais para execução local.',
+    message: 'Configure e teste um provider cloud em Settings antes de usar o fallback.',
+    alternatives: [],
+  };
+}
+
 function mockBenchmarkResult(ok = true): BenchmarkResult {
   return {
     modelId: 'qwen2.5-coder:1.5b',
@@ -203,6 +213,38 @@ describe('LocalEnginePage', () => {
     });
 
     expect(screen.getByText('Ollama pode rodar este modelo, mas com swap.')).toBeInTheDocument();
+    expect(screen.getByText('Pronto verificado')).toBeInTheDocument();
+  });
+
+  it('não apresenta fallback cloud sem teste real como pronto', async () => {
+    vi.mocked(api.detectLocalHardware).mockResolvedValue(hardwareSnapshot());
+    vi.mocked(api.listRuntimeBackends).mockResolvedValue([
+      {
+        id: 'cloud_fallback',
+        label: 'Cloud (fallback)',
+        availability: 'unknown',
+        detail: 'Use somente após configurar e testar um provider cloud em Settings.',
+        experimental: false,
+      },
+    ]);
+    vi.mocked(api.recommendModelRuntime).mockResolvedValue(cloudFallbackRecommendation());
+
+    render(<LocalEnginePage />);
+
+    await waitFor(() => {
+      expect(screen.getByText('AMD Ryzen 5 5500')).toBeInTheDocument();
+    });
+
+    fireEvent.change(screen.getByRole('textbox', { name: /ID do modelo para recomendar/i }), {
+      target: { value: 'modelo-grande:70b' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Recomendar' }));
+
+    await waitFor(() => {
+      expect(screen.getByText('Configuração não validada')).toBeInTheDocument();
+    });
+
+    expect(screen.queryByText('Pronto verificado')).not.toBeInTheDocument();
   });
 
   it('benchmark indisponível não quebra quando nenhum backend está pronto', async () => {
