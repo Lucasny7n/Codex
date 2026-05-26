@@ -719,4 +719,25 @@ mod tests {
         assert_eq!(report.outcome, SkillVmOutcome::RolledBack);
         assert!(report.rolled_back);
     }
+
+    /// The repository ships two example hardware skills. They must load from
+    /// the versioned `skills/` folder and classify as hardware: dry-run +
+    /// manual host approval, never VM-tested.
+    #[test]
+    fn repo_hardware_skills_require_manual_approval() {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../skills");
+        let store = SkillStore::new(root);
+        for id in ["repair-audio", "repair-bluetooth"] {
+            let loaded = store.load(id).expect("manifest deve carregar");
+            assert_eq!(derive_kind(loaded.category), SkillKind::Hardware);
+
+            let plan = store.plan(id, &[]).expect("plano deve ser construído");
+            assert_eq!(plan.kind, SkillKind::Hardware);
+            assert_eq!(plan.mode, SkillExecutionMode::ManualDryRun);
+            assert!(plan.requires_manual_approval);
+            assert!(plan.supports_dry_run);
+            assert!(plan.dry_run_command.contains("--dry-run"));
+            assert!(!plan.run_command.contains("--dry-run"));
+        }
+    }
 }

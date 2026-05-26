@@ -129,6 +129,47 @@ The three layers are complementary, not duplicated:
 
 ---
 
+## Rust Backend — Wave 3: example hardware skills + latent compile fix
+
+### Two proof-of-concept hardware skills (plain-text, versioned)
+Added under `skills/` (git-tracked, never opaque memory):
+- `repair-audio.{sh,json}` — restarts the user PipeWire stack (improved: clearer
+  human report + explicit VM/rollback honesty notes).
+- `repair-bluetooth.{sh,json}` — unblocks rfkill, restarts `bluetooth.service`,
+  powers the controller on.
+
+Both are `category: audio|bluetooth` → derived as **Hardware** → **ManualDryRun**:
+never VM-tested, require dry-run + manual host approval (click + fala), and
+state honestly that the real device cannot be validated in a VM and that there
+is no full snapshot rollback for hardware. Both mandate `--dry-run`, reject
+unknown args (exit 64), and are deterministic/auditable (fixed service lists,
+no installs). Verified in-container: `bash -n` syntax, `--dry-run` runs (exit
+0, gracefully handles absent `systemctl`/`rfkill`/`bluetoothctl`), valid JSON.
+
+Added Rust test `repo_hardware_skills_require_manual_approval` that loads both
+real skill files through `SkillStore` and asserts Hardware + ManualDryRun +
+manual approval + dry-run support.
+
+### Latent compile error fixed: `RiskLevel` missing `Copy`/`Eq`
+`SkillManifest` derives `Eq`, and `skills::build_plan` moves `manifest.risk_level`
+by value out of a `&SkillManifest`. But `RiskLevel` only derived
+`Debug, Clone, Serialize, Deserialize` — so `SkillManifest`'s `Eq` derive and
+the by-value move **could not compile**. This was masked because the full crate
+cannot `cargo check` here (no GTK/webkit). `RiskLevel` is a fieldless enum, so
+adding `Copy, PartialEq, Eq` is the correct, purely-additive fix. Confirmed via
+the `skillcheck` harness (12/12 skills tests compile and pass).
+
+**What you must validate on your real machine (cannot be tested here):**
+- The actual audio repair on the host: run `repair-audio` dry-run, approve, and
+  confirm PipeWire comes back (no audio devices exist in this container/VM).
+- The actual Bluetooth repair on the host: `rfkill`/`bluetooth.service`/
+  `bluetoothctl` and a real controller (no BT radio exists here).
+- A full `cargo build`/`cargo test` on a machine with GTK/webkit to confirm the
+  `RiskLevel` fix compiles in the complete crate (the harness compiles the
+  skills module in isolation, which is strong but not identical to a full build).
+
+---
+
 ## Validation
 
 Frontend (full):
@@ -144,6 +185,8 @@ Rust:
 cargo fmt --check                 ✓  (clean)
 cargo check / cargo test          ✗  full crate needs GTK/webkit (not installable here)
 engcheck harness (Local Engine)   ✓  26/26 tests (mirrors real module files)
+skillcheck harness (skills)       ✓  12/12 tests (mirrors real skills.rs + models)
+skill scripts                     ✓  bash -n + --dry-run (exit 0) + valid JSON
 ```
 
 ## Remaining recommended work
