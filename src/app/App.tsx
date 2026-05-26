@@ -926,6 +926,30 @@ export default function App(): JSX.Element {
     return created.id;
   }
 
+  // Non-blocking AI title generation: fires after the first exchange, sends a
+  // minimal title-gen prompt to the model and renames the session if the result
+  // is a short, clean title. Falls back silently to the deterministic title.
+  async function generateAiTitle(sessionId: string, userText: string): Promise<void> {
+    try {
+      const snippet = userText.replace(/```[\s\S]*?```/g, '').trim().slice(0, 300);
+      if (!snippet) return;
+      const result = await sendTemporaryOrderToAgent(
+        [],
+        `Gere um título curto (3 a 7 palavras) para uma conversa que começa com:\n"${snippet}"\n\nResponda SOMENTE o título, sem pontuação final, sem aspas, sem explicações.`,
+      );
+      const lastMsg = [...result.messages].reverse().find((m) => m.role === 'assistant');
+      if (!lastMsg?.content) return;
+      const raw = lastMsg.content.trim().replace(/^["'«»]+|["'«»]+$/g, '').replace(/[.!?,:;-]+$/g, '').trim();
+      const words = raw.split(/\s+/);
+      if (words.length < 2 || words.length > 10 || raw.length > 80) return;
+      const title = raw.charAt(0).toUpperCase() + raw.slice(1);
+      const renamed = await renameSession(sessionId, title);
+      upsertSession(renamed);
+    } catch {
+      // Provider not configured or call failed; deterministic title stands.
+    }
+  }
+
   function handleCreateSession(): void {
     setTemporaryChatActive(false);
     setTemporaryMessages([]);
@@ -1215,6 +1239,11 @@ export default function App(): JSX.Element {
         if (assistantText.trim()) updateProjectMemoryFromExchange(activeProject, visibleContent, assistantText);
       }
       upsertSession(updated);
+      // Fire non-blocking AI title generation on the first real exchange.
+      // Message count === 2 means exactly 1 user + 1 assistant message.
+      if (updated.messages.length === 2) {
+        void generateAiTitle(sessionId, visibleContent);
+      }
     } catch (cause) {
       const message = cause instanceof Error ? cause.message : 'Falha ao enviar mensagem ao provider.';
       if (sessionId) {

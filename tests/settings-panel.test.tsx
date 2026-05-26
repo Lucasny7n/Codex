@@ -423,15 +423,18 @@ describe('SettingsPanel', () => {
   it('Saúde mostra estados reais e ações sugeridas sem log cru', async () => {
     renderSettings({ initialTab: 'health' });
 
-    fireEvent.click(screen.getByRole('button', { name: 'Atualizar' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Verificar agora' }));
     await waitFor(() => {
       expect(api.getAppHealthCheck).toHaveBeenCalled();
+      // Itens do health.items[] aparecem na seção "Outros"
       expect(screen.getByText('Ollama API ativa')).toBeInTheDocument();
       expect(screen.getByText('Backend STT')).toBeInTheDocument();
       expect(screen.getByText('Captura WebView')).toBeInTheDocument();
       expect(screen.getByText('Captura nativa')).toBeInTheDocument();
-      expect(screen.getAllByText('OK').length).toBeGreaterThanOrEqual(1);
+      // URL do Ollama aparece no detalhe do item ollama-api
       expect(screen.getByText('http://127.0.0.1:11434')).toBeInTheDocument();
+      // Status ✓ aparece para itens OK
+      expect(screen.getAllByText('✓').length).toBeGreaterThanOrEqual(1);
       expect(screen.queryByText(/CODEX_CONTEXT_BOOTSTRAP/)).not.toBeInTheDocument();
     });
   });

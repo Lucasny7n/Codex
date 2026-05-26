@@ -182,10 +182,37 @@ function cleanSettingsErrorMessage(message: string | undefined, fallback: string
   return firstUsefulLine.length > 180 ? `${firstUsefulLine.slice(0, 177)}...` : firstUsefulLine;
 }
 
-function healthStatusLabel(status: 'ok' | 'warning' | 'error'): string {
-  if (status === 'ok') return 'OK';
-  if (status === 'warning') return 'Atenção';
-  return 'Erro';
+function HealthRow({ status, label, detail, command, action }: {
+  status: 'ok' | 'warning' | 'error';
+  label: string;
+  detail: string;
+  command?: string;
+  action?: string;
+}): JSX.Element {
+  const icon = status === 'ok' ? '✓' : status === 'warning' ? '⚠' : '✗';
+  return (
+    <div className={`health-row health-row-${status}`}>
+      <span className="health-row-icon" aria-hidden="true">{icon}</span>
+      <div className="health-row-body">
+        <strong className="health-row-label">{label}</strong>
+        <span className="health-row-detail">{detail}</span>
+        {action ? <span className="health-row-action">{action}</span> : null}
+        {command ? (
+          <div className="health-row-command">
+            <code>{command}</code>
+            <button
+              type="button"
+              className="health-row-copy"
+              onClick={() => void navigator.clipboard.writeText(command)}
+              title="Copiar comando"
+            >
+              Copiar
+            </button>
+          </div>
+        ) : null}
+      </div>
+    </div>
+  );
 }
 
 function preference(settings: AppSettings): AppPersonalizationSettings {
@@ -1117,36 +1144,112 @@ export function SettingsPanel({
             <div className="settings-page">
               <header className="settings-page-heading">
                 <span>Saúde</span>
-                <h3>Diagnóstico real do sistema</h3>
+                <h3>Estado real do sistema</h3>
               </header>
               <section className="settings-block health-panel">
                 <div className="ollama-manager-header">
                   <div>
-                    <strong>Status geral: {health ? healthStatusLabel(health.overallStatus) : 'não carregado'}</strong>
-                    <small>{health ? `${health.baseDir} · branch ${health.branch ?? 'desconhecida'}` : 'Carregue o diagnóstico para ver ações sugeridas.'}</small>
+                    <strong className={`health-overall health-overall-${health?.overallStatus ?? 'unknown'}`}>
+                      {!health ? 'Aguardando diagnóstico' : health.overallStatus === 'ok' ? 'Tudo funcionando' : health.overallStatus === 'warning' ? 'Atenção necessária' : 'Problemas encontrados'}
+                    </strong>
+                    <small>{health ? `${health.baseDir} · branch ${health.branch ?? 'desconhecida'}` : 'Clique em Verificar para carregar o diagnóstico.'}</small>
                   </div>
                   <button type="button" className="settings-pill-button" disabled={healthLoading} onClick={() => void refreshHealth()}>
-                    {healthLoading ? 'Verificando...' : 'Atualizar'}
+                    {healthLoading ? 'Verificando…' : 'Verificar agora'}
                   </button>
                 </div>
                 {healthError ? <div className="input-error-tip" role="alert">{healthError}</div> : null}
-                <div className="health-item-grid">
-                  {(health?.items ?? []).map((item) => (
-                    <article key={item.id} className={`health-item-card health-${item.status}`}>
-                      <strong>{item.label}</strong>
-                      <small>{healthStatusLabel(item.status)}</small>
-                      <p>{item.detail}</p>
-                      {item.action ? <span>{item.action}</span> : null}
-                      {item.command ? <code>{item.command}</code> : null}
-                    </article>
-                  ))}
-                  {!health ? (
-                    <div className="model-picker-empty" role="status">
-                      <strong>Diagnóstico não carregado</strong>
-                      <span>Use Atualizar para verificar Ollama, STT, portal, ícone, CI e Git.</span>
+
+                {health ? (
+                  <div className="health-groups">
+                    {/* IA Local */}
+                    <div className="health-group">
+                      <h4 className="health-group-title">IA Local</h4>
+                      <HealthRow
+                        status={health.ollama.apiReachable ? 'ok' : 'error'}
+                        label="Ollama"
+                        detail={health.ollama.apiReachable
+                          ? `Acessível · ${health.ollama.installedModels.length} modelo(s) instalado(s)`
+                          : 'Serviço Ollama inacessível. Inicie com: ollama serve'}
+                        command={health.ollama.apiReachable ? undefined : 'ollama serve'}
+                      />
+                      {health.ollama.problems.slice(0, 3).map((problem, index) => (
+                        <HealthRow key={index} status="warning" label="Aviso Ollama" detail={problem} />
+                      ))}
                     </div>
-                  ) : null}
-                </div>
+
+                    {/* Sistema */}
+                    <div className="health-group">
+                      <h4 className="health-group-title">Ferramentas do sistema</h4>
+                      <HealthRow status={health.nodeOk ? 'ok' : 'error'} label="Node.js" detail={health.nodeOk ? 'Disponível no PATH' : 'node não encontrado. Instale via nvm ou pacote do sistema.'} command={health.nodeOk ? undefined : 'nvm install --lts'} />
+                      <HealthRow status={health.npmOk ? 'ok' : 'error'} label="npm" detail={health.npmOk ? 'Disponível no PATH' : 'npm não encontrado. Geralmente vem junto com Node.js.'} />
+                      <HealthRow status={health.cargoOk ? 'ok' : 'error'} label="Rust / cargo" detail={health.cargoOk ? 'Disponível no PATH' : 'cargo não encontrado. Instale via rustup.rs.'} command={health.cargoOk ? undefined : 'curl --proto =https --tlsv1.2 -sSf https://sh.rustup.rs | sh'} />
+                      <HealthRow status={health.tauriOk ? 'ok' : 'warning'} label="Tauri CLI" detail={health.tauriOk ? 'Disponível' : 'tauri-cli não encontrado. Pode ser necessário para desenvolvimento.'} command={health.tauriOk ? undefined : 'cargo install tauri-cli'} />
+                    </div>
+
+                    {/* Providers */}
+                    {health.providers.length > 0 ? (
+                      <div className="health-group">
+                        <h4 className="health-group-title">Providers de nuvem</h4>
+                        {health.providers.map((p) => (
+                          <HealthRow
+                            key={p.id}
+                            status={p.status.state === 'ready' ? 'ok' : p.hasKey ? 'warning' : 'error'}
+                            label={p.id}
+                            detail={
+                              p.status.state === 'ready'
+                                ? `Conectado · ${p.profileCount ?? 0} perfil(is)`
+                                : p.hasKey
+                                  ? `Chave configurada mas não testada: ${p.status.message ?? ''}`
+                                  : 'Sem chave de API. Configure em Configurações → Modelos.'
+                            }
+                          />
+                        ))}
+                      </div>
+                    ) : null}
+
+                    {/* Git/App */}
+                    <div className="health-group">
+                      <h4 className="health-group-title">App e armazenamento</h4>
+                      <HealthRow
+                        status={health.correctBaseDir ? 'ok' : 'warning'}
+                        label="Diretório base"
+                        detail={health.correctBaseDir ? `Correto: ${health.baseDir}` : `Esperado: ${health.expectedBaseDir} · Atual: ${health.baseDir}`}
+                      />
+                      {health.storageRoot ? (
+                        <HealthRow status="ok" label="Armazenamento" detail={`Raiz: ${health.storageRoot}`} />
+                      ) : null}
+                      {health.sessionsCount !== undefined ? (
+                        <HealthRow status="ok" label="Conversas salvas" detail={`${health.sessionsCount} conversa(s) armazenada(s)`} />
+                      ) : null}
+                    </div>
+
+                    {/* Outros itens do diagnóstico */}
+                    {(health.items ?? []).length > 0 ? (
+                      <div className="health-group">
+                        <h4 className="health-group-title">Outros</h4>
+                        {(health.items ?? []).map((item) => (
+                          <HealthRow key={item.id} status={item.status} label={item.label} detail={item.detail} command={item.command} action={item.action} />
+                        ))}
+                      </div>
+                    ) : null}
+
+                    {/* Erros recentes */}
+                    {health.recentErrors.length > 0 ? (
+                      <div className="health-group">
+                        <h4 className="health-group-title">Erros recentes</h4>
+                        {health.recentErrors.slice(0, 5).map((err, index) => (
+                          <HealthRow key={index} status={err.severity === 'error' ? 'error' : 'warning'} label={err.code} detail={err.message} />
+                        ))}
+                      </div>
+                    ) : null}
+                  </div>
+                ) : (
+                  <div className="model-picker-empty" role="status">
+                    <strong>Diagnóstico não executado</strong>
+                    <span>Clique em "Verificar agora" para checar Ollama, ferramentas do sistema, providers e armazenamento.</span>
+                  </div>
+                )}
               </section>
             </div>
           ) : null}
