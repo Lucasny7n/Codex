@@ -247,6 +247,7 @@ export function ChatPanel({ session, emptyTitle = 'O que gostaria de explorar?',
   const [likedIds, setLikedIds] = useState<Set<string>>(new Set());
   const [dislikedIds, setDislikedIds] = useState<Set<string>>(new Set());
   const [speakingId, setSpeakingId] = useState<string>();
+  const [speakError, setSpeakError] = useState<string>();
 
   async function copyMessage(message: ChatMessage): Promise<void> {
     const content = cleanVisibleContent(message.content);
@@ -278,18 +279,29 @@ export function ChatPanel({ session, emptyTitle = 'O que gostaria de explorar?',
   }, []);
 
   const speakMessage = useCallback((message: ChatMessage) => {
-    if (!('speechSynthesis' in window)) return;
+    setSpeakError(undefined);
+    if (!('speechSynthesis' in window)) {
+      setSpeakError('Síntese de voz não disponível neste ambiente. No Tauri/Linux, o Web Speech API pode não estar habilitado. Tente em um browser ou habilite o suporte a TTS no WebView.');
+      return;
+    }
     if (speakingId === message.id) {
       window.speechSynthesis.cancel();
       setSpeakingId(undefined);
       return;
     }
     window.speechSynthesis.cancel();
-    const utterance = new SpeechSynthesisUtterance(stripMarkdownForSpeech(cleanVisibleContent(message.content)));
+    const text = stripMarkdownForSpeech(cleanVisibleContent(message.content));
+    if (!text.trim()) return;
+    const utterance = new SpeechSynthesisUtterance(text);
     utterance.lang = 'pt-BR';
     utterance.rate = 1.0;
     utterance.onend = () => setSpeakingId(undefined);
-    utterance.onerror = () => setSpeakingId(undefined);
+    utterance.onerror = (event) => {
+      setSpeakingId(undefined);
+      if (event.error !== 'interrupted') {
+        setSpeakError(`Falha na leitura: ${event.error}. Web Speech API pode não estar disponível no Tauri.`);
+      }
+    };
     setSpeakingId(message.id);
     window.speechSynthesis.speak(utterance);
   }, [speakingId]);
@@ -306,6 +318,12 @@ export function ChatPanel({ session, emptyTitle = 'O que gostaria de explorar?',
 
   return (
     <section className="panel-chat">
+      {speakError ? (
+        <div className="chat-speak-error" role="alert">
+          <span>{speakError}</span>
+          <button type="button" className="icon-button" onClick={() => setSpeakError(undefined)} aria-label="Fechar">×</button>
+        </div>
+      ) : null}
       <div className="chat-messages scroll-y">
         {session.messages.length === 0 ? (
           <div className="empty-state empty-state-inline">
