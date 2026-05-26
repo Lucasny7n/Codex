@@ -427,6 +427,7 @@ export default function App(): JSX.Element {
   const [projectMemoryScope, setProjectMemoryScope] = useState<ProjectMemoryScope>('default');
   const [projectPreset, setProjectPreset] = useState<ProjectPresetId>();
   const [projectFiles, setProjectFiles] = useState<string[]>([]);
+  const [sessionMemoryDisabled, setSessionMemoryDisabled] = useState(false);
   const [projectSessionIds, setProjectSessionIds] = useState<Record<string, string[]>>(() => {
     try {
       const raw = readAiluStorage('project-sessions');
@@ -953,6 +954,7 @@ export default function App(): JSX.Element {
   function handleCreateSession(): void {
     setTemporaryChatActive(false);
     setTemporaryMessages([]);
+    setSessionMemoryDisabled(false);
     if (!activeProject) {
       writeAiluStorage('active-project', '');
     }
@@ -971,6 +973,7 @@ export default function App(): JSX.Element {
     setTemporaryChatActive(false);
     setTemporaryMessages([]);
     setActiveProject(undefined);
+    setSessionMemoryDisabled(false);
     writeAiluStorage('active-project', '');
     selectSession(sessionId);
   }
@@ -993,6 +996,7 @@ export default function App(): JSX.Element {
   }
 
   function memoryEnabled(): boolean {
+    if (sessionMemoryDisabled) return false;
     return settings?.personalization?.memoriesStored !== false;
   }
 
@@ -1995,7 +1999,7 @@ export default function App(): JSX.Element {
               </section>
             ) : (
               <>
-                <ChatPanel session={selectedSession} emptyTitle="O que gostaria de explorar?" onOpenEnvironment={() => openEnvironmentTab('accounts')} onRedoMessage={handleRedoMessage} isResponding={activeChatResponding} />
+                <ChatPanel session={selectedSession} emptyTitle="O que gostaria de explorar?" onOpenEnvironment={() => openEnvironmentTab('accounts')} onRedoMessage={handleRedoMessage} isResponding={activeChatResponding} memoryDisabled={sessionMemoryDisabled} onToggleMemory={() => setSessionMemoryDisabled((v) => !v)} />
                 {commandInput}
               </>
             )}

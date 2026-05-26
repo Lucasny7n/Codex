@@ -11,6 +11,8 @@ interface ChatPanelProps {
   onOpenEnvironment?: () => void;
   onRedoMessage?: (messageId: string) => Promise<void>;
   isResponding?: boolean;
+  memoryDisabled?: boolean;
+  onToggleMemory?: () => void;
 }
 
 interface ParsedProviderError {
@@ -272,7 +274,7 @@ function stripMarkdownForSpeech(text: string): string {
     .trim();
 }
 
-export function ChatPanel({ session, emptyTitle = 'O que gostaria de explorar?', onOpenEnvironment, onRedoMessage, isResponding = false }: ChatPanelProps): JSX.Element {
+export function ChatPanel({ session, emptyTitle = 'O que gostaria de explorar?', onOpenEnvironment, onRedoMessage, isResponding = false, memoryDisabled = false, onToggleMemory }: ChatPanelProps): JSX.Element {
   const [menuMessageId, setMenuMessageId] = useState<string>();
   const [copiedMessageId, setCopiedMessageId] = useState<string>();
   const [likedIds, setLikedIds] = useState<Set<string>>(new Set());
@@ -353,6 +355,20 @@ export function ChatPanel({ session, emptyTitle = 'O que gostaria de explorar?',
         <div className="chat-speak-error" role="alert">
           <span>{speakError}</span>
           <button type="button" className="icon-button" onClick={() => setSpeakError(undefined)} aria-label="Fechar">×</button>
+        </div>
+      ) : null}
+      {onToggleMemory ? (
+        <div className="chat-memory-bar">
+          <button
+            type="button"
+            className={`chat-memory-toggle${memoryDisabled ? ' memory-off' : ''}`}
+            onClick={onToggleMemory}
+            aria-pressed={memoryDisabled}
+            title={memoryDisabled ? 'Memórias desativadas nesta conversa — clique para reativar' : 'Memórias ativas nesta conversa — clique para desativar'}
+          >
+            <UiIcon name="spark" />
+            {memoryDisabled ? 'Memórias desativadas' : 'Memórias ativas'}
+          </button>
         </div>
       ) : null}
       <div className="chat-messages scroll-y">
