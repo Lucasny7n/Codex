@@ -340,6 +340,7 @@ export function SettingsPanel({
   const [customPresetId, setCustomPresetId] = useState<string>();
   const [customPresetLabel, setCustomPresetLabel] = useState('');
   const [customPresetPrompt, setCustomPresetPrompt] = useState('');
+  const [modelsSubTab, setModelsSubTab] = useState<'local' | 'cloud'>('local');
   const [comparisonTargets, setComparisonTargets] = useState('local-ollama/qwen2.5-coder:1.5b\nopenai-api/gpt-5.4-mini');
   const [comparisonPrompt, setComparisonPrompt] = useState('');
   const [comparisonBusy, setComparisonBusy] = useState(false);
@@ -408,18 +409,24 @@ export function SettingsPanel({
     : managerInstalled;
   const managerPullCandidate = buildPullCandidateFromQuery(managerQuery, managerRuntime);
   const normalizedCatalogQuery = catalogQuery.trim().toLowerCase();
+  // Word-splitting fuzzy search: all query words must appear somewhere in the
+  // combined model fields. Tolerates partial names and aliases.
+  const catalogQueryWords = normalizedCatalogQuery.split(/\s+/u).filter(Boolean);
   const visibleModelItems = modelItems.filter((model) => {
-    if (!normalizedCatalogQuery) return FEATURED_MODEL_IDS.includes(model.id);
-    return [
+    const modeMatch = modelsSubTab === 'local' ? model.mode === 'local' : model.mode === 'cloud';
+    if (!modeMatch) return false;
+    if (catalogQueryWords.length === 0) return FEATURED_MODEL_IDS.includes(model.id);
+    const haystack = [
       model.id,
       model.modelId,
       model.displayName,
       model.providerLabel,
-      model.mode === 'local' ? model.family : undefined,
-      model.recommendedUse,
+      model.mode === 'local' ? (model.family ?? '') : '',
+      model.recommendedUse ?? '',
       ...model.tags,
       ...model.bestFor,
-    ].filter(Boolean).join(' ').toLowerCase().includes(normalizedCatalogQuery);
+    ].join(' ').toLowerCase();
+    return catalogQueryWords.every((word) => haystack.includes(word));
   });
 
   async function commit(patch: Partial<AppSettings>): Promise<void> {
@@ -757,9 +764,31 @@ export function SettingsPanel({
             <div className="settings-page">
               <header className="settings-page-heading">
                 <span>Modelos</span>
-                <h3>Gerenciador Ollama e catálogo cloud</h3>
+                <h3>{modelsSubTab === 'local' ? 'Modelos Locais — Ollama e llama.cpp' : 'Modelos Nuvem — Providers e API'}</h3>
               </header>
 
+              <div className="models-sub-tabs" role="tablist" aria-label="Tipo de modelos">
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={modelsSubTab === 'local'}
+                  className={`models-sub-tab${modelsSubTab === 'local' ? ' active' : ''}`}
+                  onClick={() => { setModelsSubTab('local'); setCatalogQuery(''); }}
+                >
+                  Locais
+                </button>
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={modelsSubTab === 'cloud'}
+                  className={`models-sub-tab${modelsSubTab === 'cloud' ? ' active' : ''}`}
+                  onClick={() => { setModelsSubTab('cloud'); setCatalogQuery(''); }}
+                >
+                  Nuvem
+                </button>
+              </div>
+
+              {modelsSubTab === 'local' ? (
               <section className="ollama-manager" aria-label="Model Manager Ollama">
                 <div className="ollama-manager-header">
                   <div>
@@ -858,7 +887,101 @@ export function SettingsPanel({
                   </details>
                 ) : null}
               </section>
+              ) : null}
 
+              {modelsSubTab === 'cloud' ? (
+              <section className="settings-block" aria-label="Modelos de nuvem">
+                <div className="ollama-manager-header">
+                  <div>
+                    <strong>Providers configurados</strong>
+                    <small>Configure chaves de API em Contas e depois selecione o modelo desejado.</small>
+                  </div>
+                  <button type="button" className="settings-pill-button" onClick={() => {
+                    // Scroll to providers section or show info
+                  }}>
+                    Gerenciar contas
+                  </button>
+                </div>
+                {providers.map((provider) => (
+                  <div key={provider.id} className="health-row health-row-provider">
+                    <span className={`health-row-icon`} aria-hidden="true">
+                      {provider.status.state === 'ready' ? '✓' : provider.status.state === 'error' ? '✗' : '⊙'}
+                    </span>
+                    <div className="health-row-body">
+                      <strong className="health-row-label">{provider.label}</strong>
+                      <span className="health-row-detail">
+                        {provider.status.state === 'ready' ? `Pronto · ${provider.models.length} modelo(s)` : provider.status.message ?? 'Não testado'}
+                      </span>
+                    </div>
+                  </div>
+                ))}
+              </section>
+              ) : null}
+
+              <section className="settings-model-list" aria-label={`Catálogo de modelos ${modelsSubTab === 'local' ? 'locais' : 'nuvem'}`}>
+                <div className="settings-model-catalog-toolbar">
+                  <span>
+                    <strong>Catálogo {modelsSubTab === 'local' ? 'local' : 'nuvem'}</strong>
+                    <small>{catalogQuery.trim() ? `${visibleModelItems.length} resultado(s)` : 'Modelos em destaque. Busque por nome, família, tamanho ou provider.'}</small>
+                  </span>
+                  <input
+                    className="input-modern"
+                    value={catalogQuery}
+                    placeholder={modelsSubTab === 'local' ? 'qwen coder 7, llama 3, mistral…' : 'gpt, claude, gemini, deepseek…'}
+                    aria-label="Buscar no catálogo de modelos"
+                    onChange={(event) => setCatalogQuery(event.target.value)}
+                  />
+                </div>
+                {visibleModelItems.map((model) => {
+                  const expanded = expandedModelId === model.id;
+                  const installed = model.mode === 'local' && (installedLocalModels.has(model.id) || installedLocalModels.has(model.modelId));
+                  const status = modelStatusLabel(model, providers, localRuntime);
+                  const isHeavy = model.mode === 'local' && model.caveats.some((c) => c.includes('pesado'));
+                  return (
+                    <article key={model.id} className={`settings-model-accordion ${expanded ? 'open' : ''}`}>
+                      <button
+                        type="button"
+                        className="settings-model-trigger"
+                        aria-expanded={expanded}
+                        onClick={() => setExpandedModelId(expanded ? '' : model.id)}
+                      >
+                        <span className="settings-model-chevron" aria-hidden="true">{expanded ? '⌄' : '›'}</span>
+                        <strong>{model.displayName}</strong>
+                        {isHeavy ? <span className="model-heavy-badge" title="Pode não caber na sua RAM">⚠ pesado</span> : null}
+                        <small>{modelStatusLabel(model, providers, localRuntime)}</small>
+                      </button>
+                      {expanded ? (
+                        <div className="settings-model-details">
+                          {isHeavy ? (
+                            <div className="model-heavy-warning">
+                              Modelo pesado: requer memória significativa. Pode usar swap ou travar em hardware com menos de 16 GB.
+                              Use apenas se souber o que está fazendo.
+                            </div>
+                          ) : null}
+                          <p>{model.recommendedUse ? `${model.displayName} é indicado para ${model.recommendedUse.toLowerCase()}.` : `${model.displayName} está no catálogo local do app.`}</p>
+                          <div className="settings-model-facts">
+                            <span><strong>Comprimento máximo do contexto</strong>{model.estimatedLimits.summary}</span>
+                            <span><strong>Comprimento máximo de geração</strong>{UNKNOWN_MODEL_VALUE}</span>
+                            <span><strong>Modalidade</strong>{modelModality(model)}</span>
+                            <span><strong>Fornecedor</strong>{modelProviderLabel(model)}</span>
+                            <span><strong>Tipo</strong>{modelTypeLabel(model)}</span>
+                            {model.mode === 'local' ? <span><strong>Status local</strong>{installed ? 'Instalado' : status}</span> : null}
+                            {model.mode === 'cloud' ? <span><strong>Status</strong>{status}</span> : null}
+                          </div>
+                        </div>
+                      ) : null}
+                    </article>
+                  );
+                })}
+                {visibleModelItems.length === 0 ? (
+                  <div className="model-picker-empty" role="status">
+                    <strong>Nenhum modelo encontrado</strong>
+                    <span>Tente termos diferentes. Ex.: "qwen coder 7" para modelos de código da família qwen 7B.</span>
+                  </div>
+                ) : null}
+              </section>
+
+              {modelsSubTab === 'cloud' ? (
               <section className="model-comparison-panel" aria-label="Comparação de modelos">
                 <header className="ollama-manager-header">
                   <div>
@@ -898,61 +1021,7 @@ export function SettingsPanel({
                   </div>
                 ) : null}
               </section>
-
-              <section className="settings-model-list" aria-label="Informações dos modelos">
-                <div className="settings-model-catalog-toolbar">
-                  <span>
-                    <strong>Catálogo de referência</strong>
-                    <small>{catalogQuery.trim() ? `${visibleModelItems.length} resultado(s)` : 'Mostrando apenas modelos em destaque. Use busca para ver mais.'}</small>
-                  </span>
-                  <input
-                    className="input-modern"
-                    value={catalogQuery}
-                    placeholder="Buscar no catálogo"
-                    aria-label="Buscar no catálogo de modelos"
-                    onChange={(event) => setCatalogQuery(event.target.value)}
-                  />
-                </div>
-                {visibleModelItems.map((model) => {
-                  const expanded = expandedModelId === model.id;
-                  const installed = model.mode === 'local' && (installedLocalModels.has(model.id) || installedLocalModels.has(model.modelId));
-                  const status = modelStatusLabel(model, providers, localRuntime);
-                  return (
-                    <article key={model.id} className={`settings-model-accordion ${expanded ? 'open' : ''}`}>
-                      <button
-                        type="button"
-                        className="settings-model-trigger"
-                        aria-expanded={expanded}
-                        onClick={() => setExpandedModelId(expanded ? '' : model.id)}
-                      >
-                        <span className="settings-model-chevron" aria-hidden="true">{expanded ? '⌄' : '›'}</span>
-                        <strong>{model.displayName}</strong>
-                        <small>{modelStatusLabel(model, providers, localRuntime)}</small>
-                      </button>
-                      {expanded ? (
-                        <div className="settings-model-details">
-                          <p>{model.recommendedUse ? `${model.displayName} é indicado para ${model.recommendedUse.toLowerCase()}.` : `${model.displayName} está no catálogo local do app.`}</p>
-                          <div className="settings-model-facts">
-                            <span><strong>Comprimento máximo do contexto</strong>{model.estimatedLimits.summary}</span>
-                            <span><strong>Comprimento máximo de geração</strong>{UNKNOWN_MODEL_VALUE}</span>
-                            <span><strong>Modalidade</strong>{modelModality(model)}</span>
-                            <span><strong>Fornecedor</strong>{modelProviderLabel(model)}</span>
-                            <span><strong>Tipo</strong>{modelTypeLabel(model)}</span>
-                            {model.mode === 'local' ? <span><strong>Status local</strong>{installed ? 'Instalado' : status}</span> : null}
-                            {model.mode === 'cloud' ? <span><strong>Status</strong>{status}</span> : null}
-                          </div>
-                        </div>
-                      ) : null}
-                    </article>
-                  );
-                })}
-                {visibleModelItems.length === 0 ? (
-                  <div className="model-picker-empty" role="status">
-                    <strong>Nenhum modelo encontrado</strong>
-                    <span>Ajuste a busca para consultar o catálogo de referência.</span>
-                  </div>
-                ) : null}
-              </section>
+              ) : null}
             </div>
           ) : null}
 

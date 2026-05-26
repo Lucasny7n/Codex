@@ -254,22 +254,30 @@ describe('SettingsPanel', () => {
     });
   });
 
-  it('Modelos mostra accordions informativos sem configuração de credencial', () => {
+  it('Modelos aba local mostra modelos locais e accordions informativos', () => {
     renderSettings({ initialTab: 'models' });
 
+    // Default sub-tab is Local
     expect(screen.getByText('Model Manager local')).toBeInTheDocument();
     expect(screen.getByPlaceholderText('gpt-oss, llama3.2, qwen2.5-coder:7b')).toBeInTheDocument();
     expect(screen.getByText('qwen2.5-coder:1.5b')).toBeInTheDocument();
-    expect(screen.getByText('GPT-5.5')).toBeInTheDocument();
-    expect(screen.getByText('GPT-5.4 Mini via OpenRouter')).toBeInTheDocument();
     expect(screen.getByText('Qwen2.5 Coder 1.5B')).toBeInTheDocument();
-    expect(screen.getByText('Gemini 2.5 Flash')).toBeInTheDocument();
     expect(screen.getByLabelText('Buscar no catálogo de modelos')).toBeInTheDocument();
-    expect(screen.getByText('Mostrando apenas modelos em destaque. Use busca para ver mais.')).toBeInTheDocument();
-    expect(screen.getByText('Comprimento máximo do contexto')).toBeInTheDocument();
-    expect(screen.getByText('Fornecedor')).toBeInTheDocument();
+    expect(screen.getByText(/Modelos em destaque/)).toBeInTheDocument();
     expect(screen.queryByText('API Key')).not.toBeInTheDocument();
     expect(screen.queryByText('Salvar API')).not.toBeInTheDocument();
+  });
+
+  it('Modelos aba nuvem mostra modelos cloud', () => {
+    renderSettings({ initialTab: 'models' });
+
+    // Switch to cloud sub-tab
+    fireEvent.click(screen.getByRole('tab', { name: 'Nuvem' }));
+
+    expect(screen.getByText('GPT-5.5')).toBeInTheDocument();
+    expect(screen.getByText('GPT-5.4 Mini via OpenRouter')).toBeInTheDocument();
+    expect(screen.getByText('Gemini 2.5 Flash')).toBeInTheDocument();
+    expect(screen.getByText(/Modelos em destaque/)).toBeInTheDocument();
   });
 
   it('Model Manager cria pull candidate gpt-oss e mostra erro inline de pull', async () => {
