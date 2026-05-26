@@ -62,6 +62,8 @@ import {
 } from '../lib/memory/projectMemoryService';
 import { buildMemoryAttachment } from '../lib/memory/memoryContextService';
 import { parseMemoryCommand, type MemoryCommand } from '../lib/memory/memoryCommands';
+import { detectToolIntent } from '../lib/tools/intent';
+import { runTool } from '../lib/tools/runner';
 import { applyAppTheme } from '../lib/theme';
 import {
   canSelectModel,
@@ -1058,6 +1060,27 @@ export default function App(): JSX.Element {
         await handleMemoryCommand(memoryCommand, visibleContent);
       } catch (cause) {
         setError(cause instanceof Error ? cause.message : 'Falha ao acessar a memória.');
+      } finally {
+        setBusy(false);
+      }
+      return;
+    }
+
+    // Internal tool-use fallback (no native tool calling yet): when the user
+    // asks something the app can do, run the real tool instead of replying with
+    // generic text. Elevated tools (update) only create an approval request.
+    const toolId = cleaned && !temporaryChatActive ? detectToolIntent(cleaned) : undefined;
+    if (toolId) {
+      setBusy(true);
+      try {
+        const result = await runTool(toolId, { ensureSession });
+        if (result.permissionRequest) addPermission(result.permissionRequest);
+        const text = result.ok
+          ? result.summary
+          : `Não consegui usar essa ferramenta agora: ${result.error ?? 'erro desconhecido.'}`;
+        await postLocalExchange(visibleContent, text);
+      } catch (cause) {
+        setError(cause instanceof Error ? cause.message : 'Falha ao executar a ferramenta.');
       } finally {
         setBusy(false);
       }

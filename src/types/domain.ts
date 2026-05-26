@@ -502,6 +502,28 @@ export interface LocalInstalledModel {
   digest?: string;
 }
 
+export type GpuVendor = 'amd' | 'nvidia' | 'intel' | 'other' | 'unknown';
+export type AcceleratorApi = 'cuda' | 'rocm' | 'hip' | 'vulkan' | 'sycl' | 'open_cl' | 'cpu';
+export type AcceleratorStatus = 'healthy' | 'present' | 'unavailable' | 'unknown';
+
+export interface HardwareAccelerator {
+  api: AcceleratorApi;
+  status: AcceleratorStatus;
+  detail: string;
+}
+
+export interface HardwareSnapshot {
+  os: { os: string; kernel?: string; distro?: string };
+  cpu: { model?: string; physicalCores?: number; logicalThreads?: number };
+  memory: { totalBytes: number; availableBytes?: number; swapTotalBytes: number; headroomBytes: number };
+  gpus: Array<{ vendor: GpuVendor; name?: string; vramTotalBytes?: number; vramUsedBytes?: number; source: string }>;
+  disks: Array<{ mount: string; totalBytes: number; availableBytes: number }>;
+  accelerators: HardwareAccelerator[];
+  profileTags: string[];
+  notes: string[];
+  detectedAt: string;
+}
+
 export interface LocalRuntimeSnapshot {
   state: LocalRuntimeState;
   message: string;

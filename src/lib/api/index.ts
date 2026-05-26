@@ -38,6 +38,7 @@ import type {
   SkillExecutionPlan,
   SkillVmReport,
   MemoryEntry,
+  HardwareSnapshot,
 } from '../../types/domain';
 
 export async function bootstrapState(): Promise<BootstrapPayload> {
@@ -219,6 +220,10 @@ export async function getAppHealthCheck(): Promise<AppHealthCheck> {
 
 export async function getLocalRuntimeState(): Promise<LocalRuntimeSnapshot> {
   return invoke('get_local_runtime_state');
+}
+
+export async function detectLocalHardware(): Promise<HardwareSnapshot> {
+  return invoke('detect_local_hardware');
 }
 
 export async function startLocalRuntime(): Promise<LocalRuntimeSnapshot> {
