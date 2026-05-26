@@ -35,7 +35,7 @@ fn cloud_fallback() -> BackendStatus {
         label: "Cloud (fallback)".to_owned(),
         availability: BackendAvailability::Unknown,
         version: None,
-        detail: "Disponível apenas com um provedor cloud configurado e testado.".to_owned(),
+        detail: "Use somente após configurar e testar um provider cloud em Settings.".to_owned(),
         experimental: false,
         install_plan: None,
     }
@@ -58,9 +58,10 @@ mod tests {
     use super::*;
 
     #[test]
-    fn cloud_fallback_is_never_ready_without_provider() {
-        let cf = cloud_fallback();
-        assert_eq!(cf.id, RuntimeBackendId::CloudFallback);
-        assert!(matches!(cf.availability, BackendAvailability::Unknown));
+    fn cloud_fallback_is_not_ready_without_provider_validation() {
+        let status = cloud_fallback();
+        assert_eq!(status.id, RuntimeBackendId::CloudFallback);
+        assert_eq!(status.availability, BackendAvailability::Unknown);
+        assert!(status.detail.contains("testar um provider cloud"));
     }
 }

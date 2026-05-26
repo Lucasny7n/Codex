@@ -39,6 +39,12 @@ import type {
   SkillVmReport,
   MemoryEntry,
   HardwareSnapshot,
+  BackendStatus,
+  RuntimeBackendId,
+  ModelRuntimeRequest,
+  RuntimeEstimate,
+  RuntimeRecommendation,
+  BenchmarkResult,
 } from '../../types/domain';
 
 export async function bootstrapState(): Promise<BootstrapPayload> {
@@ -222,10 +228,6 @@ export async function getLocalRuntimeState(): Promise<LocalRuntimeSnapshot> {
   return invoke('get_local_runtime_state');
 }
 
-export async function detectLocalHardware(): Promise<HardwareSnapshot> {
-  return invoke('detect_local_hardware');
-}
-
 export async function startLocalRuntime(): Promise<LocalRuntimeSnapshot> {
   return invoke('start_local_runtime');
 }
@@ -252,6 +254,30 @@ export async function searchOllamaLibrary(query: string): Promise<OllamaLibraryS
 
 export async function testLocalModel(modelId: string): Promise<ProviderRuntimeStatus> {
   return invoke('test_local_model', { modelId });
+}
+
+export async function detectLocalHardware(): Promise<HardwareSnapshot> {
+  return invoke('detect_local_hardware');
+}
+
+export async function listRuntimeBackends(): Promise<BackendStatus[]> {
+  return invoke('list_runtime_backends');
+}
+
+export async function estimateModelRuntime(request: ModelRuntimeRequest): Promise<RuntimeEstimate> {
+  return invoke('estimate_model_runtime', { request });
+}
+
+export async function recommendModelRuntime(request: ModelRuntimeRequest): Promise<RuntimeRecommendation> {
+  return invoke('recommend_model_runtime', { request });
+}
+
+export async function testModelRuntime(modelId: string, backendId: RuntimeBackendId): Promise<BenchmarkResult> {
+  return invoke('test_model_runtime', { modelId, backendId });
+}
+
+export async function benchmarkModelRuntime(modelId: string, backendId: RuntimeBackendId): Promise<BenchmarkResult> {
+  return invoke('benchmark_model_runtime', { modelId, backendId });
 }
 
 export async function listSkills(): Promise<SkillManifest[]> {

@@ -41,6 +41,7 @@ import type {
   ThemePreference,
 } from '../../types/domain';
 import { FileManagerModal } from '../file/FileManagerModal';
+import { LocalEnginePage } from '../../features/local-engine/LocalEnginePage';
 
 interface SettingsPanelProps {
   settings?: AppSettings;
@@ -57,7 +58,7 @@ interface SettingsPanelProps {
   initialTab?: SettingsTab;
 }
 
-export type SettingsTab = 'general' | 'interface' | 'models' | 'conversations' | 'personalization' | 'health';
+export type SettingsTab = 'general' | 'interface' | 'models' | 'conversations' | 'personalization' | 'health' | 'meu-pc';
 
 const SETTINGS_TABS: Array<{ id: SettingsTab; label: string }> = [
   { id: 'general', label: 'Geral' },
@@ -66,6 +67,7 @@ const SETTINGS_TABS: Array<{ id: SettingsTab; label: string }> = [
   { id: 'conversations', label: 'Conversas' },
   { id: 'personalization', label: 'Personalização' },
   { id: 'health', label: 'Saúde' },
+  { id: 'meu-pc', label: 'Meu PC' },
 ];
 
 const LANGUAGE_OPTIONS: Array<{ value: AiResponseLanguage; label: string }> = [
@@ -1105,6 +1107,10 @@ export function SettingsPanel({
                 ) : null}
               </section>
             </div>
+          ) : null}
+
+          {activeTab === 'meu-pc' ? (
+            <LocalEnginePage />
           ) : null}
 
           {activeTab === 'health' ? (

@@ -502,28 +502,6 @@ export interface LocalInstalledModel {
   digest?: string;
 }
 
-export type GpuVendor = 'amd' | 'nvidia' | 'intel' | 'other' | 'unknown';
-export type AcceleratorApi = 'cuda' | 'rocm' | 'hip' | 'vulkan' | 'sycl' | 'open_cl' | 'cpu';
-export type AcceleratorStatus = 'healthy' | 'present' | 'unavailable' | 'unknown';
-
-export interface HardwareAccelerator {
-  api: AcceleratorApi;
-  status: AcceleratorStatus;
-  detail: string;
-}
-
-export interface HardwareSnapshot {
-  os: { os: string; kernel?: string; distro?: string };
-  cpu: { model?: string; physicalCores?: number; logicalThreads?: number };
-  memory: { totalBytes: number; availableBytes?: number; swapTotalBytes: number; headroomBytes: number };
-  gpus: Array<{ vendor: GpuVendor; name?: string; vramTotalBytes?: number; vramUsedBytes?: number; source: string }>;
-  disks: Array<{ mount: string; totalBytes: number; availableBytes: number }>;
-  accelerators: HardwareAccelerator[];
-  profileTags: string[];
-  notes: string[];
-  detectedAt: string;
-}
-
 export interface LocalRuntimeSnapshot {
   state: LocalRuntimeState;
   message: string;
@@ -579,6 +557,195 @@ export interface OllamaLibrarySearchResult {
   label: string;
   family: string;
   sizeLabel?: string;
+}
+
+// ─── Local Engine: Hardware Detection ────────────────────────────────────────
+
+export type GpuVendor = 'amd' | 'nvidia' | 'intel' | 'other' | 'unknown';
+
+export type AcceleratorApi = 'cuda' | 'rocm' | 'hip' | 'vulkan' | 'sycl' | 'open_cl' | 'cpu';
+
+export type AcceleratorStatus = 'healthy' | 'present' | 'unavailable' | 'unknown';
+
+export interface AcceleratorInfo {
+  api: AcceleratorApi;
+  status: AcceleratorStatus;
+  detail: string;
+}
+
+export interface OsInfo {
+  os: string;
+  kernel?: string;
+  distro?: string;
+}
+
+export interface CpuInfo {
+  model?: string;
+  physicalCores?: number;
+  logicalThreads?: number;
+}
+
+export interface MemoryInfo {
+  totalBytes: number;
+  availableBytes?: number;
+  swapTotalBytes: number;
+  headroomBytes: number;
+}
+
+export interface GpuDevice {
+  vendor: GpuVendor;
+  name?: string;
+  vramTotalBytes?: number;
+  vramUsedBytes?: number;
+  source: string;
+}
+
+export interface DiskInfo {
+  mount: string;
+  totalBytes: number;
+  availableBytes: number;
+}
+
+export type HardwareProfileTag =
+  | 'weak_pc'
+  | 'medium_pc'
+  | 'low_ram_pc'
+  | 'high_ram_pc'
+  | 'amd_pc'
+  | 'amd_vulkan_pc'
+  | 'amd_rocm_pc'
+  | 'nvidia_pc'
+  | 'intel_arc_pc'
+  | 'server'
+  | 'experimental';
+
+export interface HardwareSnapshot {
+  os: OsInfo;
+  cpu: CpuInfo;
+  memory: MemoryInfo;
+  gpus: GpuDevice[];
+  disks: DiskInfo[];
+  accelerators: AcceleratorInfo[];
+  profileTags: HardwareProfileTag[];
+  notes: string[];
+  detectedAt: string;
+}
+
+// ─── Local Engine: Backends ───────────────────────────────────────────────────
+
+export type RuntimeBackendId =
+  | 'ollama'
+  | 'llama_cpp_cpu'
+  | 'llama_cpp_vulkan'
+  | 'llama_cpp_rocm'
+  | 'llama_cpp_hip'
+  | 'llama_cpp_cuda'
+  | 'llama_cpp_sycl'
+  | 'llama_cpp_server'
+  | 'open_ai_compatible'
+  | 'air_llm'
+  | 'vllm'
+  | 'ex_llama_v2'
+  | 'mlc_llm'
+  | 'tensor_rt_llm'
+  | 'sg_lang'
+  | 'flex_gen'
+  | 'transformers_accelerate'
+  | 'kobold_cpp'
+  | 'cloud_fallback';
+
+export type BackendAvailability =
+  | 'ready'
+  | 'installed'
+  | 'not_installed'
+  | 'experimental'
+  | 'future_available'
+  | 'unknown';
+
+export interface BackendStatus {
+  id: RuntimeBackendId;
+  label: string;
+  availability: BackendAvailability;
+  version?: string;
+  detail: string;
+  experimental: boolean;
+  installPlan?: string;
+}
+
+// ─── Local Engine: Estimation & Recommendation ───────────────────────────────
+
+export type ExecutionProfile =
+  | 'safe'
+  | 'fast'
+  | 'balanced'
+  | 'heavy'
+  | 'max'
+  | 'vram_saver'
+  | 'ram_saver'
+  | 'long_context'
+  | 'code'
+  | 'chat'
+  | 'agent'
+  | 'rag';
+
+export type FitClass = 'excellent' | 'fits' | 'tight' | 'slow_swap' | 'wont_run' | 'unknown';
+
+export type WarningSeverity = 'info' | 'warning' | 'strong';
+
+export interface RuntimeWarning {
+  code: string;
+  severity: WarningSeverity;
+  message: string;
+}
+
+export interface RuntimeEstimate {
+  fit: FitClass;
+  recommended: boolean;
+  experimental: boolean;
+  vramRequiredBytes?: number;
+  ramRequiredBytes: number;
+  recommendedContext: number;
+  usesOffload: boolean;
+  expectedSlow: boolean;
+  speedHint: string;
+  warnings: RuntimeWarning[];
+}
+
+export interface RuntimeRecommendation {
+  backend: RuntimeBackendId;
+  profile: ExecutionProfile;
+  estimate: RuntimeEstimate;
+  score: number;
+  rationale: string;
+  message: string;
+  alternatives: RuntimeBackendId[];
+}
+
+export interface ModelRuntimeRequest {
+  modelId: string;
+  parameterLabel?: string;
+  quantization?: string;
+  fileBytes?: number;
+  contextSize?: number;
+  profile?: ExecutionProfile;
+}
+
+// ─── Local Engine: Benchmark ──────────────────────────────────────────────────
+
+export type BenchmarkKind = 'smoke' | 'quick';
+
+export interface BenchmarkResult {
+  modelId: string;
+  backendId: RuntimeBackendId;
+  kind: BenchmarkKind;
+  ok: boolean;
+  tokensPerSecond?: number;
+  timeToFirstTokenMs?: number;
+  ramPeakBytes?: number;
+  vramPeakBytes?: number;
+  bottleneck?: string;
+  detail: string;
+  at: string;
 }
 
 export interface ActionableError {
