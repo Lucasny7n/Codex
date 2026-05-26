@@ -58,7 +58,7 @@ interface SettingsPanelProps {
   initialTab?: SettingsTab;
 }
 
-export type SettingsTab = 'general' | 'interface' | 'models' | 'conversations' | 'personalization' | 'health' | 'meu-pc';
+export type SettingsTab = 'general' | 'interface' | 'models' | 'conversations' | 'personalization' | 'health' | 'maquina-local';
 
 const SETTINGS_TABS: Array<{ id: SettingsTab; label: string }> = [
   { id: 'general', label: 'Geral' },
@@ -67,7 +67,7 @@ const SETTINGS_TABS: Array<{ id: SettingsTab; label: string }> = [
   { id: 'conversations', label: 'Conversas' },
   { id: 'personalization', label: 'Personalização' },
   { id: 'health', label: 'Saúde' },
-  { id: 'meu-pc', label: 'Meu PC' },
+  { id: 'maquina-local', label: 'Máquina Local' },
 ];
 
 const LANGUAGE_OPTIONS: Array<{ value: AiResponseLanguage; label: string }> = [
@@ -1109,7 +1109,7 @@ export function SettingsPanel({
             </div>
           ) : null}
 
-          {activeTab === 'meu-pc' ? (
+          {activeTab === 'maquina-local' ? (
             <LocalEnginePage />
           ) : null}
 

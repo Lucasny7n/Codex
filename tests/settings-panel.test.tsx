@@ -176,7 +176,7 @@ describe('SettingsPanel', () => {
   it('renderiza somente as abas principais e remove telas antigas', () => {
     renderSettings();
 
-    for (const label of ['Geral', 'Interface', 'Modelos', 'Conversas', 'Personalização', 'Saúde', 'Meu PC']) {
+    for (const label of ['Geral', 'Interface', 'Modelos', 'Conversas', 'Personalização', 'Saúde', 'Máquina Local']) {
       expect(screen.getByRole('button', { name: label })).toBeInTheDocument();
     }
 

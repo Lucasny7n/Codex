@@ -131,7 +131,7 @@ export function LocalEnginePage(): JSX.Element {
   return (
     <div className="settings-page">
       <header className="settings-page-heading">
-        <span>Meu PC</span>
+        <span>Máquina Local</span>
         <h3>Hardware local e engines de IA</h3>
       </header>
 

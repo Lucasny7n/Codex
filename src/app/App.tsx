@@ -28,6 +28,7 @@ import {
   onStatusNote,
   openFileInVscode,
   openProjectInVscode,
+  decidePermission,
   requestExecution,
   renameSession,
   restoreSession,
@@ -76,6 +77,7 @@ import type {
   ChatMessage,
   LocalModelInstallProgress,
   LocalRuntimeSnapshot,
+  PermissionDecision,
   ProviderCredentialStatus,
   ProviderAccountProfile,
   ProviderRuntimeStatus,
@@ -98,6 +100,7 @@ import { TerminalDrawer } from '../components/panels/TerminalDrawer';
 import { HelpDrawer } from '../components/panels/HelpDrawer';
 import { SkillStudioModal } from '../components/panels/SkillStudioModal';
 import { MemoryManagerModal } from '../components/panels/MemoryManagerModal';
+import { PermissionApprovalModal } from '../components/panels/PermissionApprovalModal';
 import type { EnvironmentTab } from '../components/models/ModelSelector';
 import { FileManagerModal } from '../components/file/FileManagerModal';
 import { UiIcon, type UiIconName } from '../components/common/AppIcons';
@@ -273,7 +276,7 @@ function ProjectFolderIcon(): JSX.Element {
 }
 
 type ProjectMemoryScope = 'default' | 'project';
-type ProjectPresetId = 'investment' | 'homework' | 'writing' | 'health' | 'travel';
+type ProjectPresetId = 'investment' | 'homework' | 'writing' | 'health' | 'travel' | 'estudos' | 'codigo' | 'negocios';
 
 interface StoredProjectMeta {
   title: string;
@@ -314,6 +317,24 @@ const PROJECT_PRESETS: Array<{ id: ProjectPresetId; label: string; icon: UiIconN
     label: 'Viagem',
     icon: 'plane',
     instructions: 'Planeje viagem com foco em orçamento, datas, deslocamentos, reservas, documentos e alternativas práticas.',
+  },
+  {
+    id: 'estudos',
+    label: 'Estudos',
+    icon: 'book',
+    instructions: 'Ajude a aprender e revisar conteúdo. Explique conceitos, crie resumos, elabore perguntas de revisão e sugira próximos passos de estudo.',
+  },
+  {
+    id: 'codigo',
+    label: 'Código',
+    icon: 'fileCode',
+    instructions: 'Atue como par de programação. Revise código, sugira melhorias, explique decisões de arquitetura, debug de erros e boas práticas.',
+  },
+  {
+    id: 'negocios',
+    label: 'Negócios',
+    icon: 'chart',
+    instructions: 'Foco em decisões de negócios: análise de cenários, métricas, estratégia, comunicação profissional e execução de tarefas corporativas.',
   },
 ];
 
@@ -436,6 +457,7 @@ export default function App(): JSX.Element {
     logs,
     selectedModelId,
     executionMode,
+    pendingPermissions,
     setError,
     setLoading,
     bootstrap,
@@ -889,6 +911,11 @@ export default function App(): JSX.Element {
     return () => media.removeEventListener('change', apply);
   }, [settings?.themePreference, theme]);
 
+  async function handleDecidePermission(requestId: string, decision: PermissionDecision): Promise<void> {
+    await decidePermission(requestId, decision);
+    removePermission(requestId);
+  }
+
   async function ensureSession(seed: string): Promise<string> {
     if (selectedSessionId) {
       return selectedSessionId;
@@ -1066,25 +1093,47 @@ export default function App(): JSX.Element {
       return;
     }
 
-    // Internal tool-use fallback (no native tool calling yet): when the user
-    // asks something the app can do, run the real tool instead of replying with
-    // generic text. Elevated tools (update) only create an approval request.
+    // Internal tool-use: collect real data first, then either post locally
+    // (approval/error cases) or inject the data as hidden context so the model
+    // composes a natural, data-driven answer instead of preset text.
     const toolId = cleaned && !temporaryChatActive ? detectToolIntent(cleaned) : undefined;
     if (toolId) {
       setBusy(true);
+      let toolResult: Awaited<ReturnType<typeof runTool>> | undefined;
       try {
-        const result = await runTool(toolId, { ensureSession });
-        if (result.permissionRequest) addPermission(result.permissionRequest);
-        const text = result.ok
-          ? result.summary
-          : `Não consegui usar essa ferramenta agora: ${result.error ?? 'erro desconhecido.'}`;
-        await postLocalExchange(visibleContent, text);
+        toolResult = await runTool(toolId, { ensureSession });
       } catch (cause) {
         setError(cause instanceof Error ? cause.message : 'Falha ao executar a ferramenta.');
-      } finally {
         setBusy(false);
+        return;
       }
-      return;
+      setBusy(false);
+
+      if (toolResult.permissionRequest) addPermission(toolResult.permissionRequest);
+
+      if (!toolResult.ok || toolResult.approvalRequested) {
+        // Error or approval-pending: reply locally, do not call the model.
+        const text = toolResult.ok
+          ? toolResult.summary
+          : `Não consegui usar essa ferramenta agora: ${toolResult.error ?? 'erro desconhecido.'}`;
+        await postLocalExchange(visibleContent, text);
+        return;
+      }
+
+      // Safe tool succeeded: inject real data as hidden context attachment so
+      // the model responds naturally with the actual data, not preset text.
+      outgoingAttachments.push({
+        path: `tool://${toolId}`,
+        name: 'Dados do sistema',
+        kind: 'text',
+        mimeType: 'text/plain',
+        size: 0,
+        previewAvailable: false,
+        hidden: true,
+        contextText: `[resultado real da ferramenta '${toolId}' — use estes dados para responder de forma natural, precisa e completa. Não invente dados além do que está aqui]\n${toolResult.summary}`,
+        contextSource: 'system',
+      });
+      // Fall through to the normal model-send path below.
     }
 
     if (!temporaryChatActive && activeProject) {
@@ -2136,6 +2185,11 @@ export default function App(): JSX.Element {
           addProjectFile(attachment);
           setProjectFileManagerOpen(false);
         }}
+      />
+
+      <PermissionApprovalModal
+        permissions={pendingPermissions}
+        onDecide={handleDecidePermission}
       />
 
       <ToastViewport
