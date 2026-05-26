@@ -686,3 +686,24 @@ export interface SkillVmReport {
   alternatives: string[];
   at: string;
 }
+
+export type MemoryEntryKind = 'preference' | 'fact' | 'policy' | 'fix' | 'note';
+
+export type MemoryScope = 'global' | 'project';
+
+export type MemoryOrigin = 'user' | 'inferred' | 'imported';
+
+export type MemoryRecallMode = 'default' | 'project_only';
+
+export interface MemoryEntry {
+  id: string;
+  content: string;
+  kind: MemoryEntryKind;
+  scope: MemoryScope;
+  project?: string;
+  origin: MemoryOrigin;
+  confidence: number;
+  manual: boolean;
+  createdAt: string;
+  updatedAt?: string;
+}

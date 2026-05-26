@@ -572,6 +572,69 @@ pub struct MemorySnapshot {
     pub operational_policies: Vec<String>,
 }
 
+/// What a memory is about (used for grouping/filtering in the UI).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum MemoryEntryKind {
+    Preference,
+    Fact,
+    Policy,
+    Fix,
+    Note,
+}
+
+/// Where a memory applies: globally or only inside one project.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum MemoryScope {
+    Global,
+    Project,
+}
+
+/// How a memory came to exist — never opaque.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum MemoryOrigin {
+    /// Explicitly written/edited by the user.
+    User,
+    /// Inferred by the assistant from a conversation.
+    Inferred,
+    /// Brought in from an imported file/skill.
+    Imported,
+}
+
+/// How memories are recalled into context for a turn.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum MemoryRecallMode {
+    /// Global memories + the active project's memories.
+    Default,
+    /// Only the active project's memories (isolated).
+    ProjectOnly,
+}
+
+/// A single, structured, locally-stored memory. Reviewable and editable;
+/// nothing here is opaque.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MemoryEntry {
+    pub id: String,
+    pub content: String,
+    pub kind: MemoryEntryKind,
+    pub scope: MemoryScope,
+    #[serde(default)]
+    pub project: Option<String>,
+    pub origin: MemoryOrigin,
+    /// 0.0..=1.0 confidence; user-written memories are 1.0.
+    pub confidence: f32,
+    /// True once a human has reviewed/edited it.
+    #[serde(default)]
+    pub manual: bool,
+    pub created_at: String,
+    #[serde(default)]
+    pub updated_at: Option<String>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct BootstrapPayload {

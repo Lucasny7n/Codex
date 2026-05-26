@@ -22,7 +22,7 @@ use crate::models::{
     ActionableError, ActionableErrorSeverity, AgentSession, AppHealthAction, AppHealthCheck,
     AppHealthOverallStatus, AppHealthProvider, AppSettings, BootstrapPayload, ChatMessage,
     ChatRole, CommandLogChunk, ConversationImportResult, ExecutionRequestInput, ExecutionResponse,
-    HardwareProfile, LocalModelInstallProgress, LocalRuntimeSnapshot, LogStream,
+    HardwareProfile, LocalModelInstallProgress, LocalRuntimeSnapshot, LogStream, MemoryEntry,
     ModelComparisonRequest, ModelComparisonResponse, ModelComparisonResult, ModelFitEstimate,
     ModelFitRequest, OllamaLibrarySearchResult, OllamaModelDetails, PendingIntentKind,
     PermissionDecision, PermissionOutcome, PermissionOutcomeStatus, PermissionRequest,
@@ -32,6 +32,7 @@ use crate::models::{
     SkillManifest, SkillVmReport, StatusKind, SystemHealthItem, TaskStatus, WorkspaceMeta,
 };
 use crate::services::ai_router::{AiRouteRequest, AiRouter};
+use crate::services::memory_store::MemoryEntryStore;
 use crate::services::privileged_actions;
 use crate::services::privileged_helper_client::HelperRequest;
 use crate::services::provider_registry::ProviderRegistry;
@@ -2244,6 +2245,37 @@ pub async fn test_skill_in_vm(
     let snapshot = format!("ailu-skill-{skill_id}-{}", Uuid::new_v4());
     let script = script_path.to_string_lossy().to_string();
     Ok(skills::run_skill_in_vm(&runner, &domain, &manifest, &script, &args, &snapshot, None).await)
+}
+
+fn memory_entry_store(state: &State<AppState>) -> MemoryEntryStore {
+    MemoryEntryStore::default_for_dir(state.memory_manager.memory_dir())
+}
+
+#[tauri::command]
+pub fn list_memory_entries(state: State<AppState>) -> Result<Vec<MemoryEntry>, ErrorPayload> {
+    Ok(memory_entry_store(&state).list())
+}
+
+#[tauri::command]
+pub fn save_memory_entry(
+    state: State<AppState>,
+    entry: MemoryEntry,
+) -> Result<Vec<MemoryEntry>, ErrorPayload> {
+    memory_entry_store(&state)
+        .save(entry)
+        .map_err(AppError::Message)
+        .map_err(map_err)
+}
+
+#[tauri::command]
+pub fn delete_memory_entry(
+    state: State<AppState>,
+    id: String,
+) -> Result<Vec<MemoryEntry>, ErrorPayload> {
+    memory_entry_store(&state)
+        .delete(&id)
+        .map_err(AppError::Message)
+        .map_err(map_err)
 }
 
 #[tauri::command]

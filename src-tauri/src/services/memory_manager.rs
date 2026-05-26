@@ -19,6 +19,11 @@ impl MemoryManager {
         })
     }
 
+    /// Directory where memory files (including structured `entries.json`) live.
+    pub fn memory_dir(&self) -> &Path {
+        &self.memory_dir
+    }
+
     pub fn load_snapshot(&self) -> AppResult<MemorySnapshot> {
         let summary_source = self.codex_root.join("memories").join("memory_summary.md");
         let home_section = self

@@ -7,6 +7,7 @@ pub mod hardware;
 pub mod local_engine;
 pub mod local_runtime;
 pub mod memory_manager;
+pub mod memory_store;
 pub mod permission_manager;
 pub mod privileged_actions;
 pub mod privileged_helper_client;

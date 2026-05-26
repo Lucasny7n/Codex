@@ -37,6 +37,7 @@ import type {
   SkillManifest,
   SkillExecutionPlan,
   SkillVmReport,
+  MemoryEntry,
 } from '../../types/domain';
 
 export async function bootstrapState(): Promise<BootstrapPayload> {
@@ -267,6 +268,18 @@ export async function testSkillInVm(
   sshTarget: string,
 ): Promise<SkillVmReport> {
   return invoke('test_skill_in_vm', { skillId, args, domain, sshTarget });
+}
+
+export async function listMemoryEntries(): Promise<MemoryEntry[]> {
+  return invoke('list_memory_entries');
+}
+
+export async function saveMemoryEntry(entry: MemoryEntry): Promise<MemoryEntry[]> {
+  return invoke('save_memory_entry', { entry });
+}
+
+export async function deleteMemoryEntry(id: string): Promise<MemoryEntry[]> {
+  return invoke('delete_memory_entry', { id });
 }
 
 export async function listPrivilegedActions(): Promise<PrivilegedActionSpec[]> {

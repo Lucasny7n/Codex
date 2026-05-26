@@ -53,6 +53,7 @@ interface SettingsPanelProps {
   onImportConversations: (path: string) => Promise<string>;
   onArchiveAllConversations: () => Promise<void>;
   onDeleteAllConversations: () => Promise<void>;
+  onOpenMemoryManager?: () => void;
   initialTab?: SettingsTab;
 }
 
@@ -284,6 +285,7 @@ export function SettingsPanel({
   onImportConversations,
   onArchiveAllConversations,
   onDeleteAllConversations,
+  onOpenMemoryManager,
   initialTab,
 }: SettingsPanelProps): JSX.Element {
   const [activeTab, setActiveTab] = useState<SettingsTab>(normalizeSettingsTab(initialTab));
@@ -1019,6 +1021,11 @@ export function SettingsPanel({
                 <div className="settings-section-label">Memória</div>
                 <SwitchRow label="Memórias guardadas" description="Usar memórias persistidas quando forem relevantes." checked={personalization.memoriesStored} onChange={(value) => updatePersonalization('memoriesStored', value)} />
                 <SwitchRow label="Histórico de chat de referência" description="Permitir referência ao histórico local de conversas." checked={personalization.referenceChatHistory} onChange={(value) => updatePersonalization('referenceChatHistory', value)} />
+                {onOpenMemoryManager ? (
+                  <button type="button" className="btn-modern" onClick={onOpenMemoryManager}>
+                    Gerenciar memórias
+                  </button>
+                ) : null}
               </section>
 
               <section className="settings-block">

@@ -89,6 +89,7 @@ import { ArchivedConversationsModal } from '../components/chat/ArchivedConversat
 import { TerminalDrawer } from '../components/panels/TerminalDrawer';
 import { HelpDrawer } from '../components/panels/HelpDrawer';
 import { SkillStudioModal } from '../components/panels/SkillStudioModal';
+import { MemoryManagerModal } from '../components/panels/MemoryManagerModal';
 import type { EnvironmentTab } from '../components/models/ModelSelector';
 import { FileManagerModal } from '../components/file/FileManagerModal';
 import { UiIcon, type UiIconName } from '../components/common/AppIcons';
@@ -358,6 +359,7 @@ export default function App(): JSX.Element {
   const [terminalOpen, setTerminalOpen] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false);
   const [skillStudioOpen, setSkillStudioOpen] = useState(false);
+  const [memoryManagerOpen, setMemoryManagerOpen] = useState(false);
   const [localRuntime, setLocalRuntime] = useState<LocalRuntimeSnapshot>();
   const [localRuntimeLoading, setLocalRuntimeLoading] = useState(false);
   const [modelActionBusyId, setModelActionBusyId] = useState<string>();
@@ -1777,6 +1779,7 @@ export default function App(): JSX.Element {
           onImportConversations={handleImportConversations}
           onArchiveAllConversations={handleArchiveAllConversations}
           onDeleteAllConversations={handleDeleteAllConversations}
+          onOpenMemoryManager={() => setMemoryManagerOpen(true)}
           initialTab={settingsTabRequest?.tab ?? 'general'}
         />
       </PremiumModal>
@@ -1796,6 +1799,14 @@ export default function App(): JSX.Element {
         open={skillStudioOpen}
         sessionId={activeChatSession?.id}
         onClose={() => setSkillStudioOpen(false)}
+        onToast={pushToast}
+      />
+
+      <MemoryManagerModal
+        open={memoryManagerOpen}
+        projects={sidebarProjects}
+        activeProject={activeProject}
+        onClose={() => setMemoryManagerOpen(false)}
         onToast={pushToast}
       />
 

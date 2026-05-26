@@ -35,7 +35,7 @@ backend, and after manually tracing the flagged flows.
 | Skill Studio UI | **Partial (read-only)** | lists/plans/tests/approves; **no import/create-by-text/create-with-AI** |
 | VM testing | **Real (logic)** | snapshot→run→rollback, software-only (`run_skill_in_vm`); needs real libvirt to exercise |
 | File attachments | **Partial** | preview text (≤2400 chars) is sent (`CommandInputPanel.tsx:155-181`); no explicit lido/incluído UI state, no large-file chunking/summary |
-| Memory | **Partial / split** | backend file-backed **global** only (`memory_manager.rs`); frontend project memory in **localStorage** (`projectMemoryService.ts`); no edit/delete UI, no unified scope model |
+| Memory | **Reworked this pass** | new structured `MemoryEntry` store (scope/project/origin/confidence/dates), CRUD commands, and a management UI; recall-into-context + NL commands still pending (see below) |
 | Projects | **Real (basic)** | session grouping + per-project memory |
 | Health | **Real but raw** | 20+ real checks (`commands/mod.rs:2375-2674`); UI is a flat grid, not grouped human diagnostic |
 | Permissions / approvals | **Real** | request→pending→resolve, blocks sudo/pkexec, no auto-approval for risky (`permission_manager.rs`, `command_executor.rs`) |
@@ -63,6 +63,35 @@ backend, and after manually tracing the flagged flows.
    `App.tsx`. No share references remain. Frontend lint/typecheck/102 tests green.
 
 ---
+
+## Memory rework (§5) — implemented this pass
+
+Built a unified, structured, locally-stored memory layer (no more opaque
+markdown-only global + localStorage-only project split):
+
+- **Model** (`models/mod.rs`): `MemoryEntry { id, content, kind, scope, project,
+  origin, confidence, manual, createdAt, updatedAt }` with enums
+  `MemoryEntryKind` (preference/fact/policy/fix/note), `MemoryScope`
+  (global/project), `MemoryOrigin` (user/inferred/imported), `MemoryRecallMode`
+  (default/project_only).
+- **Store** (`services/memory_store.rs`): JSON-backed at `{memory_dir}/entries.json`,
+  modeled on the proven `presets.rs` pattern. Pure `upsert` (keyed by id,
+  preserves `createdAt`, forces global entries to drop their project), `remove`,
+  and `recall` (default = global + active project; project_only = isolated).
+  7 unit tests, verified via the `memcheck` harness (7/7).
+- **Commands** (`commands/mod.rs` + `lib.rs`): `list_memory_entries`,
+  `save_memory_entry`, `delete_memory_entry`.
+- **UI** (`MemoryManagerModal.tsx`, opened from Settings → Personalização →
+  "Gerenciar memórias"): list, filter (todas/global/projeto), create, edit,
+  delete, with scope/kind/project/origin/confidence/date shown. 5 vitest tests.
+
+Still pending (next step, needs the running app / tool-use):
+- Wiring `recall()` into the live prompt context (inject global+project memories
+  on send, honoring default vs project-only). The logic + scope semantics are
+  done and tested; only the send-flow injection remains.
+- Natural-language commands ("lembre que…", "esqueça…", "o que você lembra?")
+  — these depend on AI tool-use (§3), which was not selected for this pass.
+- Migrating the old localStorage project summaries into the new store.
 
 ## What is incomplete or only decorative (not yet fixed)
 
