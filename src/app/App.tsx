@@ -1388,7 +1388,7 @@ export default function App(): JSX.Element {
     selectSession(undefined);
   }
 
-  function handleSessionMenuAction(session: AgentSession, action: 'pin' | 'archive' | 'share' | 'move-to-project' | 'remove-from-project'): void {
+  function handleSessionMenuAction(session: AgentSession, action: 'pin' | 'archive' | 'move-to-project' | 'remove-from-project'): void {
     if (action === 'pin') {
       pushToast('info', 'Pino será conectado na próxima etapa.');
       return;
@@ -1397,10 +1397,6 @@ export default function App(): JSX.Element {
       void handleArchiveSession(session).catch((cause) => {
         setError(cause instanceof Error ? cause.message : 'Falha ao arquivar conversa.');
       });
-      return;
-    }
-    if (action === 'share') {
-      pushToast('info', 'Compartilhamento será conectado na próxima etapa.');
       return;
     }
     if (action === 'move-to-project') {
@@ -1717,10 +1713,6 @@ export default function App(): JSX.Element {
                                 <button type="button" onClick={() => { setProjectConversationMenuId(undefined); handleSessionMenuAction(session, 'archive'); }}>
                                   <UiIcon name="archive" className="menu-icon" />
                                   Arquivo
-                                </button>
-                                <button type="button" onClick={() => { setProjectConversationMenuId(undefined); handleSessionMenuAction(session, 'share'); }}>
-                                  <UiIcon name="send" className="menu-icon" />
-                                  Compartilhar
                                 </button>
                                 <button type="button" onClick={() => { setProjectConversationMenuId(undefined); void handleExportSession(session, 'markdown'); }}>
                                   <UiIcon name="download" className="menu-icon" />

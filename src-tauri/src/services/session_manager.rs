@@ -578,12 +578,59 @@ fn normalize_title(title: &str) -> String {
     }
 }
 
+/// Deterministic, clean fallback title derived from the first user message.
+/// This is the *fallback* path (used when no LLM-generated title is available):
+/// it never dumps the raw prompt. It takes the first meaningful line, strips
+/// markdown/code noise, keeps the first few words, and tidies casing so a long
+/// or multi-line paste still yields a short, readable topic.
 fn title_from_content(content: &str) -> String {
-    let compact = normalize_title(content);
+    const MAX_WORDS: usize = 7;
+    const MAX_CHARS: usize = 48;
+
+    // First meaningful line: skip blank lines and entire fenced code blocks,
+    // so a leading ```code``` paste never becomes the title.
+    let mut in_fence = false;
+    let first_line = content
+        .lines()
+        .map(str::trim)
+        .find(|line| {
+            if line.starts_with("```") {
+                in_fence = !in_fence;
+                return false;
+            }
+            !in_fence && !line.is_empty()
+        })
+        .unwrap_or("");
+
+    let cleaned = first_line
+        .trim_start_matches(|c| c == '#' || c == '-' || c == '*' || c == '>' || c == ' ')
+        .replace('`', "");
+    let compact = normalize_title(&cleaned);
     if compact == "Nova conversa" {
         return format!("Conversa {}", now_iso());
     }
-    compact.chars().take(54).collect()
+
+    let mut title: String = compact
+        .split_whitespace()
+        .take(MAX_WORDS)
+        .collect::<Vec<_>>()
+        .join(" ");
+    if title.chars().count() > MAX_CHARS {
+        title = title.chars().take(MAX_CHARS).collect::<String>();
+        if let Some(idx) = title.rfind(' ') {
+            title.truncate(idx);
+        }
+    }
+    let title = title
+        .trim_end_matches(['.', ',', ':', ';', '!', '?', '-'])
+        .trim();
+
+    // Capitalize the first character for a tidy heading.
+    let mut chars = title.chars();
+    match chars.next() {
+        Some(first) => first.to_uppercase().collect::<String>() + chars.as_str(),
+        None => format!("Conversa {}", now_iso()),
+    }
 }
 
 fn safe_file_stem(title: &str) -> String {
@@ -923,5 +970,36 @@ mod tests {
         );
 
         let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn title_from_content_summarizes_instead_of_copying_raw() {
+        // A long, multi-line prompt must not become the literal title.
+        let long = "Preciso de ajuda para otimizar o Ailu Studio inteiro, reduzindo \
+                    peso, removendo código morto e melhorando a integração entre os \
+                    módulos do app.\nSegue um monte de detalhes...";
+        let title = title_from_content(long);
+        assert!(title.chars().count() <= 48, "título curto: {title}");
+        assert!(
+            title.split_whitespace().count() <= 7,
+            "poucas palavras: {title}"
+        );
+        assert!(!title.contains('\n'));
+        // First character capitalized.
+        assert!(title.chars().next().unwrap().is_uppercase());
+    }
+
+    #[test]
+    fn title_from_content_strips_markdown_and_code_noise() {
+        let title = title_from_content("# Correção do Bluetooth\nmais texto");
+        assert_eq!(title, "Correção do Bluetooth");
+
+        let fenced = title_from_content("```\ncodigo\n```\nDiagnóstico da Máquina Local");
+        assert_eq!(fenced, "Diagnóstico da Máquina Local");
+    }
+
+    #[test]
+    fn title_from_content_falls_back_on_empty() {
+        assert!(title_from_content("   \n  ").starts_with("Conversa "));
     }
 }

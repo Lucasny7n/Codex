@@ -8,7 +8,6 @@ import appLogo from '../../assets/app-logo.svg';
 type SessionMenuAction =
   | 'pin'
   | 'archive'
-  | 'share'
   | 'move-to-project'
   | 'remove-from-project';
 
@@ -248,10 +247,6 @@ export function SessionsPanel({
             <button type="button" onClick={() => handleSessionAction(session, 'archive')}>
               <UiIcon name="archive" className="menu-icon" />
               Arquivo
-            </button>
-            <button type="button" onClick={() => handleSessionAction(session, 'share')}>
-              <UiIcon name="send" className="menu-icon" />
-              Compartilhar
             </button>
             <button type="button" onClick={() => { setMenuSessionId(undefined); onExport(session, 'markdown'); }}>
               <UiIcon name="download" className="menu-icon" />
