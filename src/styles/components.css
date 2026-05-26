@@ -9639,3 +9639,27 @@ body,
   color: var(--text-primary);
   font: inherit;
 }
+
+/* ── Attachment read-status badges ──────────────────────────── */
+.attachment-status-badge {
+  padding: 1px 6px;
+  border-radius: 99px;
+  font-size: 0.67rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.status-included {
+  background: rgba(74, 222, 128, 0.12);
+  color: #4ade80;
+}
+
+.status-read {
+  background: rgba(99, 102, 241, 0.12);
+  color: #818cf8;
+}
+
+.status-attached {
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--text-tertiary, var(--text-secondary));
+}
