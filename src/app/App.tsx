@@ -9,10 +9,12 @@ import {
   duplicateSession,
   exportAllConversations,
   exportSession,
+  deleteMemoryEntry,
   getLocalRuntimeState,
   installLocalModel,
   importConversations,
   listArchivedSessions,
+  listMemoryEntries,
   listProviderCredentials,
   listProviderProfiles,
   onCommandLog,
@@ -32,6 +34,7 @@ import {
   removeLocalModel,
   removeProviderProfile,
   renameProviderProfile,
+  saveMemoryEntry,
   saveProviderProfileCredential,
   sendOrderToAgent,
   sendTemporaryOrderToAgent,
@@ -57,6 +60,8 @@ import {
   buildProjectMemoryAttachment,
   updateProjectMemoryFromExchange,
 } from '../lib/memory/projectMemoryService';
+import { buildMemoryAttachment } from '../lib/memory/memoryContextService';
+import { parseMemoryCommand, type MemoryCommand } from '../lib/memory/memoryCommands';
 import { applyAppTheme } from '../lib/theme';
 import {
   canSelectModel,
@@ -76,6 +81,7 @@ import type {
   EnvironmentSelectionInput,
   SelectedFileAttachment,
   ChatAttachment,
+  MemoryRecallMode,
 } from '../types/domain';
 import { useAppStore } from '../stores/appStore';
 
@@ -929,11 +935,134 @@ export default function App(): JSX.Element {
     setTemporaryMessages([]);
   }
 
+  function memoryRecallMode(): MemoryRecallMode {
+    return activeProject && projectMemoryScope === 'project' ? 'project_only' : 'default';
+  }
+
+  function memoryEnabled(): boolean {
+    return settings?.personalization?.memoriesStored !== false;
+  }
+
+  /// Posts a user message + a locally-produced assistant reply without calling
+  /// the model. Used by the deterministic memory-command fallback.
+  async function postLocalExchange(userText: string, assistantText: string): Promise<void> {
+    const now = Date.now();
+    const userMessage: ChatMessage = {
+      id: `mem-user-${now}`,
+      role: 'user',
+      content: userText,
+      createdAt: new Date().toISOString(),
+    };
+    const assistantMessage: ChatMessage = {
+      id: `mem-assistant-${now}`,
+      role: 'assistant',
+      content: assistantText,
+      createdAt: new Date().toISOString(),
+    };
+    if (temporaryChatActive) {
+      setTemporaryMessages((prev) => [...prev, userMessage, assistantMessage]);
+      return;
+    }
+    const sessionId = await ensureSession(userText);
+    const session = useAppStore.getState().sessions.find((item) => item.id === sessionId);
+    if (!session) return;
+    upsertSession({
+      ...session,
+      updatedAt: assistantMessage.createdAt,
+      messages: [...session.messages, userMessage, assistantMessage],
+    });
+  }
+
+  /// Deterministic fallback for simple memory commands while AI tool-use is not
+  /// available. Saves/lists/forgets via the memory_store commands, then replies
+  /// locally — the model is never called.
+  async function handleMemoryCommand(command: MemoryCommand, originalText: string): Promise<void> {
+    if (command.type === 'recall') {
+      const entries = await listMemoryEntries();
+      const scoped = entries.filter((entry) =>
+        command.scope === 'global'
+          ? entry.scope === 'global'
+          : entry.scope === 'project' && entry.project === activeProject,
+      );
+      const header = command.scope === 'global'
+        ? 'O que eu lembro sobre você:'
+        : `O que eu lembro sobre ${activeProject ?? 'este projeto'}:`;
+      const body = scoped.length
+        ? scoped.map((entry) => `- ${entry.content}`).join('\n')
+        : command.scope === 'global'
+          ? 'Ainda não guardei nenhuma memória global sobre você.'
+          : 'Ainda não há memórias para este projeto.';
+      await postLocalExchange(originalText, `${header}\n${body}`);
+      return;
+    }
+    if (command.type === 'forget') {
+      const entries = await listMemoryEntries();
+      const needle = command.query.toLowerCase();
+      const matches = entries.filter((entry) => entry.content.toLowerCase().includes(needle));
+      if (matches.length === 0) {
+        await postLocalExchange(originalText, `Não encontrei memória que combine com "${command.query}".`);
+        return;
+      }
+      for (const match of matches) {
+        await deleteMemoryEntry(match.id);
+      }
+      await postLocalExchange(originalText, `Esqueci ${matches.length} memória(s) que combinavam com "${command.query}".`);
+      return;
+    }
+    // save
+    let content = command.content.trim();
+    if (!content) {
+      const messages = temporaryChatActive ? temporaryMessages : selectedSession?.messages ?? [];
+      content = [...messages].reverse().find((message) => message.role === 'assistant')?.content.trim() ?? '';
+    }
+    if (!content) {
+      await postLocalExchange(originalText, 'Diga o que devo lembrar. Ex.: "lembre que eu prefiro respostas curtas".');
+      return;
+    }
+    let scope = command.scope;
+    let project: string | undefined;
+    if (scope === 'project') {
+      if (activeProject) {
+        project = activeProject;
+      } else {
+        scope = 'global';
+      }
+    }
+    await saveMemoryEntry({
+      id: typeof crypto !== 'undefined' && 'randomUUID' in crypto ? crypto.randomUUID() : `mem-${Date.now()}`,
+      content,
+      kind: 'note',
+      scope,
+      project,
+      origin: 'user',
+      confidence: 1,
+      manual: true,
+      createdAt: '',
+    });
+    const where = scope === 'project' ? `no projeto ${project}` : 'na memória global';
+    await postLocalExchange(originalText, `Guardado ${where}: ${content}`);
+  }
+
   async function handleSendPrompt(prompt: string, mode: InputModeId = 'auto', attachments: ChatAttachment[] = []): Promise<void> {
     const cleaned = trimMultiline(prompt);
     if (!cleaned && attachments.length === 0) return;
     const visibleContent = cleaned || 'Anexo enviado.';
     const outgoingAttachments = [...attachments];
+
+    // Deterministic memory-command fallback (until AI tool-use lands): handle
+    // "lembre que…", "esqueça…", "o que você lembra…" locally and stop here.
+    const memoryCommand = cleaned ? parseMemoryCommand(cleaned) : undefined;
+    if (memoryCommand) {
+      setBusy(true);
+      try {
+        await handleMemoryCommand(memoryCommand, visibleContent);
+      } catch (cause) {
+        setError(cause instanceof Error ? cause.message : 'Falha ao acessar a memória.');
+      } finally {
+        setBusy(false);
+      }
+      return;
+    }
 
     if (!temporaryChatActive && activeProject) {
       const meta = readProjectMeta(activeProject);
@@ -942,6 +1071,23 @@ export default function App(): JSX.Element {
         meta?.memoryScope === 'project' ? meta.instructions : undefined,
       );
       if (projectMemory) outgoingAttachments.push(projectMemory);
+    }
+
+    // Inject relevant structured memories (global + active project per mode).
+    // Best-effort: never block a send if the store cannot be read.
+    if (!temporaryChatActive) {
+      try {
+        const entries = await listMemoryEntries();
+        const memoryAttachment = buildMemoryAttachment(entries, {
+          mode: memoryRecallMode(),
+          activeProject,
+          query: visibleContent,
+          enabled: memoryEnabled(),
+        });
+        if (memoryAttachment) outgoingAttachments.push(memoryAttachment);
+      } catch {
+        // memory is optional context; ignore failures
+      }
     }
 
     if (temporaryChatActive) {

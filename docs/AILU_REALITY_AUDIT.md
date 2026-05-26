@@ -86,12 +86,35 @@ markdown-only global + localStorage-only project split):
   delete, with scope/kind/project/origin/confidence/date shown. 5 vitest tests.
 
 Still pending (next step, needs the running app / tool-use):
-- Wiring `recall()` into the live prompt context (inject global+project memories
-  on send, honoring default vs project-only). The logic + scope semantics are
-  done and tested; only the send-flow injection remains.
-- Natural-language commands ("lembre que…", "esqueça…", "o que você lembra?")
-  — these depend on AI tool-use (§3), which was not selected for this pass.
 - Migrating the old localStorage project summaries into the new store.
+
+### How memory enters the prompt (implemented)
+
+On every non-temporary send, before calling the model
+(`App.tsx::handleSendPrompt`):
+
+1. **Command pre-processing** — `parseMemoryCommand` checks the message for a
+   deterministic memory command ("lembre que…", "salva isso na memória",
+   "salve isso só neste projeto…", "esqueça…", "o que você lembra sobre
+   mim/este projeto?"). If matched, it is handled locally via
+   `save/list/delete_memory_entry` and a reply is posted **without calling the
+   model**. This is the fallback until AI tool-use (§3) lands.
+2. **Recall injection** — otherwise `buildMemoryAttachment`
+   (`lib/memory/memoryContextService.ts`) recalls in-scope memories and appends
+   them as one explicit, labeled context attachment (`contextSource: 'memory'`,
+   shown to the user as a "Memórias (N)" chip — never opaque):
+   - **mode** comes from the project memory scope: `default` = global + active
+     project; `project_only` = active project only (no global). A memory from
+     another project never enters.
+   - **enabled** = `settings.personalization.memoriesStored`; when off, nothing
+     is injected.
+   - **ranking** = relevance (token overlap with the prompt) → scope (project
+     preferred) → confidence → recency.
+   - **limits** = ≤10 entries and ≤1600 chars by default.
+
+   Mirrors the Rust `memory_store::recall` scope semantics. Covered by 8 tests
+   in `tests/memory-context.test.ts` (the 6 required scenarios + ranking +
+   attachment shape) and 7 in `tests/memory-commands.test.ts`.
 
 ## What is incomplete or only decorative (not yet fixed)
 

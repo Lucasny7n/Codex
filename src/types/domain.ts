@@ -161,7 +161,7 @@ export interface ChatAttachment {
   previewTextLimited?: string;
   hidden?: boolean;
   contextText?: string;
-  contextSource?: 'document' | 'preset' | 'project_memory' | 'system';
+  contextSource?: 'document' | 'preset' | 'project_memory' | 'memory' | 'system';
 }
 
 export type VoiceTranscriptionResultStatus = 'done' | 'missing_backend' | 'error';
