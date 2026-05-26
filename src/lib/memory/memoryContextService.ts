@@ -89,11 +89,13 @@ export function buildMemoryAttachment(entries: MemoryEntry[], options: RecallOpt
   if (picked.length === 0) return undefined;
   const lines = picked.map((entry) => `- [${scopeLabel(entry)}] ${entry.content.trim()}`);
   const contextText = `[memórias do usuário — use apenas se relevante, não invente além disto]\n${lines.join('\n')}`;
+  const previewText = lines.join('\n').slice(0, 800);
   return {
     path: 'memory:recall',
     name: `Memórias (${picked.length})`,
     kind: 'text',
-    previewAvailable: false,
+    previewAvailable: true,
+    previewTextLimited: previewText,
     contextText,
     contextSource: 'memory',
   };

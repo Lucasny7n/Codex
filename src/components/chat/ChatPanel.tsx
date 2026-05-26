@@ -3,6 +3,7 @@ import type { AgentSession, ChatMessage } from '../../types/domain';
 import { UiIcon } from '../common/AppIcons';
 import { PopupMenu } from '../common/PremiumUI';
 import { fileIconNameForKind, formatFileSize } from '../file/fileDisplay';
+import type { ChatAttachment } from '../../types/domain';
 
 interface ChatPanelProps {
   session?: AgentSession;
@@ -215,6 +216,36 @@ function MarkdownContent({ content }: { content: string }): JSX.Element {
   return <div className="message-content message-markdown">{blocks.length ? blocks : content}</div>;
 }
 
+function AttachmentChip({ attachment, messageId }: { attachment: ChatAttachment; messageId: string }): JSX.Element {
+  const [expanded, setExpanded] = useState(false);
+  const isMemory = attachment.contextSource === 'memory';
+  const preview = attachment.previewTextLimited ?? (isMemory ? attachment.contextText?.replace(/^\[.*?\]\n/u, '').slice(0, 600) : undefined);
+  const canExpand = Boolean(preview);
+
+  return (
+    <span className={`message-attachment-chip${isMemory ? ' memory-chip' : ''}`} key={`${messageId}-${attachment.path}`}>
+      <span
+        className="message-attachment-chip-inner"
+        role={canExpand ? 'button' : undefined}
+        tabIndex={canExpand ? 0 : undefined}
+        onClick={canExpand ? () => setExpanded((current) => !current) : undefined}
+        onKeyDown={canExpand ? (e) => { if (e.key === 'Enter' || e.key === ' ') setExpanded((c) => !c); } : undefined}
+        title={canExpand ? 'Clique para ver detalhes' : attachment.path}
+      >
+        <UiIcon name={isMemory ? 'spark' : fileIconNameForKind(attachment.kind)} className="message-attachment-icon" />
+        <strong>{attachment.name}</strong>
+        {!isMemory ? <small>{[attachment.kind, formatFileSize(attachment.size)].filter(Boolean).join(' · ')}</small> : null}
+        {canExpand ? <span className="memory-chip-caret" aria-hidden="true">{expanded ? '⌃' : '⌄'}</span> : null}
+      </span>
+      {expanded && preview ? (
+        <div className="memory-chip-detail" role="region" aria-label="Memórias injetadas">
+          <pre>{preview}</pre>
+        </div>
+      ) : null}
+    </span>
+  );
+}
+
 function AssistantTypingIndicator(): JSX.Element {
   return (
     <div className="message-row assistant typing-row" aria-label="Assistente respondendo">
@@ -344,11 +375,11 @@ export function ChatPanel({ session, emptyTitle = 'O que gostaria de explorar?',
                 {message.attachments?.filter((attachment) => !attachment.hidden).length ? (
                   <div className="message-attachment-list" aria-label="Anexos da mensagem">
                     {message.attachments.filter((attachment) => !attachment.hidden).map((attachment) => (
-                      <span key={`${message.id}-${attachment.path}`} className="message-attachment-chip" title={attachment.path}>
-                        <UiIcon name={fileIconNameForKind(attachment.kind)} className="message-attachment-icon" />
-                        <strong>{attachment.name}</strong>
-                        <small>{[attachment.kind, formatFileSize(attachment.size)].filter(Boolean).join(' · ')}</small>
-                      </span>
+                      <AttachmentChip
+                        key={`${message.id}-${attachment.path}`}
+                        attachment={attachment}
+                        messageId={message.id}
+                      />
                     ))}
                   </div>
                 ) : null}
