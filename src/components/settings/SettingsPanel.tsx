@@ -10,6 +10,7 @@ import {
   testLocalModel,
 } from '../../lib/api';
 import { parseComparisonTargets } from '../../lib/models/modelComparisonService';
+import { fuzzyMatch } from '../../lib/models/fuzzyMatch';
 import {
   buildPullCandidateFromQuery,
   normalizeOllamaModelId,
@@ -408,14 +409,14 @@ export function SettingsPanel({
     })
     : managerInstalled;
   const managerPullCandidate = buildPullCandidateFromQuery(managerQuery, managerRuntime);
-  const normalizedCatalogQuery = catalogQuery.trim().toLowerCase();
-  // Word-splitting fuzzy search: all query words must appear somewhere in the
-  // combined model fields. Tolerates partial names and aliases.
-  const catalogQueryWords = normalizedCatalogQuery.split(/\s+/u).filter(Boolean);
+  const normalizedCatalogQuery = catalogQuery.trim();
+  // Typo-tolerant fuzzy search over the combined model fields. Tolerates
+  // partial names, family/size/quant, provider and a single typo on longer
+  // words (see fuzzyMatch).
   const visibleModelItems = modelItems.filter((model) => {
     const modeMatch = modelsSubTab === 'local' ? model.mode === 'local' : model.mode === 'cloud';
     if (!modeMatch) return false;
-    if (catalogQueryWords.length === 0) return FEATURED_MODEL_IDS.includes(model.id);
+    if (!normalizedCatalogQuery) return FEATURED_MODEL_IDS.includes(model.id);
     const haystack = [
       model.id,
       model.modelId,
@@ -425,8 +426,8 @@ export function SettingsPanel({
       model.recommendedUse ?? '',
       ...model.tags,
       ...model.bestFor,
-    ].join(' ').toLowerCase();
-    return catalogQueryWords.every((word) => haystack.includes(word));
+    ].join(' ');
+    return fuzzyMatch(normalizedCatalogQuery, haystack);
   });
 
   async function commit(patch: Partial<AppSettings>): Promise<void> {
@@ -796,7 +797,7 @@ export function SettingsPanel({
                     <small>{managerRuntime?.message ?? 'Ollama ainda não foi consultado.'}</small>
                   </div>
                   <button type="button" className="settings-pill-button" disabled={managerBusyId === 'refresh'} onClick={() => void refreshManager()}>
-                    Refresh
+                    Atualizar
                   </button>
                 </div>
 
@@ -834,7 +835,6 @@ export function SettingsPanel({
                           <small>{[model.size, model.modifiedAt].filter(Boolean).join(' · ') || 'Instalado pelo Ollama'}</small>
                         </header>
                         <div className="ollama-model-meta">
-                          {model.digest ? <span><b>Digest</b>{model.digest}</span> : null}
                           {testStatus ? <span><b>Teste</b>{testStatus.state === 'ready' ? 'respondeu' : testStatus.message}</span> : null}
                         </div>
                         {progress ? (
