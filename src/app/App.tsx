@@ -156,14 +156,28 @@ function accountStatusFromProviderState(
 }
 
 function titleFromContent(content: string): string {
-  const compact = content
+  // First meaningful line, with code fences and markdown noise removed, capped
+  // to a short topic. Avoids dumping the raw prompt as the title.
+  const firstLine = content
+    .replace(/```[\s\S]*?```/g, ' ')
+    .split('\n')
+    .map((line) => line.trim())
+    .find((line) => line.length > 0) ?? '';
+  const compact = firstLine
     .replace(/\s+/g, ' ')
-    .trim()
-    .replace(/^[-–—\s]+/, '');
+    .replace(/^[-–—*#>\s]+/, '')
+    .trim();
   if (!compact) {
     return `Conversa ${new Date().toLocaleString('pt-BR')}`;
   }
-  return compact.length > 54 ? `${compact.slice(0, 51)}...` : compact;
+  const words = compact.split(' ');
+  let title = words.slice(0, 7).join(' ');
+  if (title.length > 48) {
+    title = `${title.slice(0, 45).trim()}…`;
+  } else if (words.length > 7) {
+    title = `${title}…`;
+  }
+  return title.charAt(0).toUpperCase() + title.slice(1);
 }
 
 /// Turns a real execution outcome into a human-readable chat message, showing
@@ -1516,6 +1530,19 @@ export default function App(): JSX.Element {
 
   async function handleInstallLocalModel(model: LocalModelProfile): Promise<void> {
     if (!settings) return;
+    // Heavy models can swap/freeze on modest hardware. Require explicit
+    // confirmation and show the (estimated) memory cost before downloading.
+    const isHeavy = model.caveats?.some((caveat) => caveat.toLowerCase().includes('pesado')) ?? false;
+    if (isHeavy && typeof window !== 'undefined' && typeof window.confirm === 'function') {
+      const proceed = window.confirm(
+        `${model.displayName} é um modelo pesado.\n\n`
+        + `RAM estimada: ${model.ramRequirement || 'desconhecida'} · VRAM estimada: ${model.vramRequirement || 'desconhecida'}\n`
+        + '(valores estimados, não medidos no seu hardware)\n\n'
+        + 'Pode usar swap, ficar muito lento ou travar em máquinas com pouca memória. '
+        + 'Baixar mesmo assim?',
+      );
+      if (!proceed) return;
+    }
     setModelActionBusyId(model.id);
     try {
       const snapshot = await installLocalModel(model.modelId);
