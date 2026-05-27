@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { UiIcon } from '../common/AppIcons';
+import { UiIcon, type UiIconName } from '../common/AppIcons';
 import { PopupMenu } from '../common/PremiumUI';
 import type { AgentSession } from '../../types/domain';
 import type { SettingsTab } from '../settings/SettingsPanel';
@@ -14,6 +14,7 @@ type SessionMenuAction =
 interface SessionsPanelProps {
   sessions: AgentSession[];
   projects: string[];
+  projectAppearance?: Record<string, { icon?: UiIconName; color?: string }>;
   projectSessions?: Record<string, AgentSession[]>;
   activeProject?: string;
   selectedSessionId?: string;
@@ -106,6 +107,7 @@ function isToday(value: string): boolean {
 export function SessionsPanel({
   sessions,
   projects,
+  projectAppearance = {},
   projectSessions = {},
   activeProject,
   selectedSessionId,
@@ -366,11 +368,22 @@ export function SessionsPanel({
               const projectActive = activeProject === project;
               const projectMenuOpen = menuProject === project;
               const nestedSessions = projectActive ? projectSessions[project] ?? [] : [];
+              const appearance = projectAppearance[project];
               return (
                 <div key={project} className={`qwen-project-stack ${projectActive ? 'active' : ''}`}>
                   <article className={`qwen-project-item ${projectActive ? 'active' : ''} ${projectMenuOpen ? 'menu-open' : ''}`}>
                     <button type="button" className="qwen-project-name" onClick={() => onSelectProject(project)}>
-                      <FolderIcon />
+                      {appearance?.icon ? (
+                        <span
+                          className="qwen-project-icon-badge"
+                          style={appearance.color ? { color: appearance.color } : undefined}
+                          aria-hidden="true"
+                        >
+                          <UiIcon name={appearance.icon} className="qwen-row-icon qwen-row-icon-compact" />
+                        </span>
+                      ) : (
+                        <FolderIcon />
+                      )}
                       <span>{project}</span>
                     </button>
                     <div className="popup-anchor">

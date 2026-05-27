@@ -303,6 +303,44 @@ describe('App layout visibility', () => {
     expect(vi.mocked(api.createSession)).not.toHaveBeenCalled();
   });
 
+  it('cria projeto: nome aceita digitação contínua e preset aplica configuração', async () => {
+    vi.mocked(api.bootstrapState).mockResolvedValue(payload([baseSession()]));
+
+    render(<App />);
+
+    await waitFor(() => {
+      expect(screen.getByText('O que gostaria de explorar?')).toBeInTheDocument();
+    });
+
+    // Expande a seção de projetos antes de criar (recolhida por padrão).
+    fireEvent.click(screen.getByText('Projetos'));
+    fireEvent.click(screen.getByText('Novo Projeto'));
+
+    const nameInput = await screen.findByPlaceholderText('Nome do Projeto') as HTMLInputElement;
+
+    // Digitação contínua — simula caractere a caractere. Antes do fix, o modal
+    // re-renderizava e roubava o foco, perdendo o texto.
+    const fullName = 'Meu Projeto de Código';
+    for (const char of fullName) {
+      act(() => {
+        fireEvent.change(nameInput, { target: { value: nameInput.value + char } });
+      });
+    }
+    expect(nameInput).toHaveValue(fullName);
+
+    // Botão criar habilita com nome preenchido.
+    expect(screen.getByText('Criar projeto')).toBeEnabled();
+
+    // Aplica preset "Código" e cria.
+    fireEvent.click(screen.getByText('Código'));
+    fireEvent.click(screen.getByText('Criar projeto'));
+
+    // Projeto criado aparece (sidebar + workspace).
+    await waitFor(() => {
+      expect(screen.getAllByText('Meu Projeto de Código').length).toBeGreaterThan(0);
+    });
+  });
+
   it('home renderiza blueprint limpo sem inspector ou blocos técnicos', async () => {
     vi.mocked(api.bootstrapState).mockResolvedValue(payload([baseSession()]));
 

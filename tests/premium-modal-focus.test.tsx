@@ -37,6 +37,16 @@ describe('PremiumModal focus stability', () => {
     expect(input).toHaveValue(text);
   });
 
+  it('foca o elemento [data-autofocus] ao abrir (não o botão fechar)', () => {
+    render(
+      <PremiumModal open title="Teste" onClose={() => { /* noop */ }}>
+        <button type="button">Antes</button>
+        <input data-autofocus data-testid="auto" placeholder="Nome" />
+      </PremiumModal>,
+    );
+    expect(screen.getByTestId('auto')).toHaveFocus();
+  });
+
   it('onClose instável não reinicia o foco do modal', () => {
     // Wraps the modal so onClose is a new function reference on every render,
     // which was the root cause of the bug.

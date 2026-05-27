@@ -3,12 +3,14 @@ export type UiIconName =
   | 'arrowLeft'
   | 'arrowUp'
   | 'book'
+  | 'car'
   | 'chart'
   | 'check'
   | 'chevronDown'
   | 'chevronLeft'
   | 'chevronRight'
   | 'copy'
+  | 'cpu'
   | 'desktop'
   | 'download'
   | 'edit'
@@ -19,6 +21,7 @@ export type UiIconName =
   | 'fileText'
   | 'folder'
   | 'folderPlus'
+  | 'globe'
   | 'heart'
   | 'home'
   | 'image'
@@ -76,6 +79,14 @@ const iconPaths: Record<UiIconName, JSX.Element> = {
       <path d="M5.5 16.6A2.2 2.2 0 0 1 7.7 14.5h10.8" />
     </>
   ),
+  car: (
+    <>
+      <path d="M5 16.5v2a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V13l2.2-5a2 2 0 0 1 1.8-1.2h10a2 2 0 0 1 1.8 1.2L21 13v5.5a1 1 0 0 1-1 1h0a1 1 0 0 1-1-1v-2" />
+      <path d="M3.5 13h17" />
+      <circle cx="7.5" cy="16" r="1.1" />
+      <circle cx="16.5" cy="16" r="1.1" />
+    </>
+  ),
   chart: (
     <>
       <path d="M4 19.5h16" />
@@ -92,6 +103,13 @@ const iconPaths: Record<UiIconName, JSX.Element> = {
     <>
       <rect x="8" y="8" width="11" height="11" rx="2" />
       <path d="M5 15.5V6.8A1.8 1.8 0 0 1 6.8 5h8.7" />
+    </>
+  ),
+  cpu: (
+    <>
+      <rect x="7" y="7" width="10" height="10" rx="1.5" />
+      <rect x="10" y="10" width="4" height="4" rx="0.5" />
+      <path d="M9 4v3M12 4v3M15 4v3M9 17v3M12 17v3M15 17v3M4 9h3M4 12h3M4 15h3M17 9h3M17 12h3M17 15h3" />
     </>
   ),
   desktop: (
@@ -152,6 +170,13 @@ const iconPaths: Record<UiIconName, JSX.Element> = {
       <path d="M3.8 7.8a2 2 0 0 1 2-2h4.4l2 2h6a2 2 0 0 1 2 2v6.4a2 2 0 0 1-2 2H5.8a2 2 0 0 1-2-2Z" />
       <path d="M12 10.4v5.2" />
       <path d="M9.4 13h5.2" />
+    </>
+  ),
+  globe: (
+    <>
+      <circle cx="12" cy="12" r="8" />
+      <path d="M4 12h16" />
+      <path d="M12 4c2.5 2.5 2.5 13 0 16-2.5-3-2.5-13.5 0-16Z" />
     </>
   ),
   heart: <path d="M12 19.2s-7-4.2-7-9a3.8 3.8 0 0 1 6.8-2.4A3.8 3.8 0 0 1 18.6 10c0 5-6.6 9.2-6.6 9.2Z" />,

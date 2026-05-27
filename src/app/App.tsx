@@ -105,6 +105,12 @@ import { PermissionApprovalModal } from '../components/panels/PermissionApproval
 import type { EnvironmentTab } from '../components/models/ModelSelector';
 import { FileManagerModal } from '../components/file/FileManagerModal';
 import { UiIcon, type UiIconName } from '../components/common/AppIcons';
+import { ProjectAppearancePicker } from '../components/common/ProjectAppearancePicker';
+import {
+  DEFAULT_PROJECT_COLOR,
+  DEFAULT_PROJECT_ICON,
+  PROJECT_ICON_CHOICES,
+} from '../components/common/projectAppearanceOptions';
 import {
   ConfirmDialog,
   ExportDialog,
@@ -298,6 +304,8 @@ function readProjectMeta(project: string): StoredProjectMeta | undefined {
       instructions: typeof candidate.instructions === 'string' ? candidate.instructions : '',
       memoryScope: candidate.memoryScope === 'project' ? 'project' : 'default',
       presetId: PROJECT_PRESETS.some((preset) => preset.id === candidate.presetId) ? candidate.presetId : undefined,
+      icon: PROJECT_ICON_CHOICES.includes(candidate.icon as UiIconName) ? (candidate.icon as UiIconName) : undefined,
+      color: typeof candidate.color === 'string' && /^#[0-9a-fA-F]{6}$/u.test(candidate.color) ? candidate.color : undefined,
       files: Array.isArray(candidate.files) ? candidate.files.filter((item): item is string => typeof item === 'string') : [],
       updatedAt: typeof candidate.updatedAt === 'string' ? candidate.updatedAt : new Date().toISOString(),
     };
@@ -311,65 +319,127 @@ function ProjectFolderIcon(): JSX.Element {
 }
 
 type ProjectMemoryScope = 'default' | 'project';
-type ProjectPresetId = 'investment' | 'homework' | 'writing' | 'health' | 'travel' | 'estudos' | 'codigo' | 'negocios';
+type ProjectPresetId =
+  | 'investment'
+  | 'homework'
+  | 'writing'
+  | 'health'
+  | 'travel'
+  | 'estudos'
+  | 'codigo'
+  | 'negocios'
+  | 'automotivo'
+  | 'migracao'
+  | 'ia_local';
 
 interface StoredProjectMeta {
   title: string;
   instructions: string;
   memoryScope: ProjectMemoryScope;
   presetId?: ProjectPresetId;
+  icon?: UiIconName;
+  color?: string;
   files: string[];
   updatedAt: string;
 }
 
-const PROJECT_PRESETS: Array<{ id: ProjectPresetId; label: string; icon: UiIconName; instructions: string }> = [
+interface ProjectPreset {
+  id: ProjectPresetId;
+  label: string;
+  icon: UiIconName;
+  color: string;
+  memoryScope: ProjectMemoryScope;
+  instructions: string;
+}
+
+const PROJECT_PRESETS: ProjectPreset[] = [
   {
     id: 'investment',
     label: 'Investimento',
     icon: 'chart',
+    color: '#22c55e',
+    memoryScope: 'default',
     instructions: 'Trate o projeto como acompanhamento de investimento. Priorize riscos, premissas, números verificáveis e decisões auditáveis.',
   },
   {
     id: 'homework',
     label: 'Tarefa de casa',
     icon: 'book',
+    color: '#f59e0b',
+    memoryScope: 'default',
     instructions: 'Ajude a resolver tarefas passo a passo, explicando raciocínio, fontes usadas e próximos exercícios.',
   },
   {
     id: 'writing',
     label: 'Escrita',
     icon: 'pen',
+    color: '#8b5cf6',
+    memoryScope: 'default',
     instructions: 'Atue como editor de escrita. Preserve intenção, melhore clareza, estrutura, tom e consistência.',
   },
   {
     id: 'health',
     label: 'Saúde',
     icon: 'heart',
+    color: '#ec4899',
+    memoryScope: 'project',
     instructions: 'Organize informações de saúde com cautela. Diferencie orientação geral de decisão médica e recomende validação profissional quando necessário.',
   },
   {
     id: 'travel',
     label: 'Viagem',
     icon: 'plane',
+    color: '#14b8a6',
+    memoryScope: 'default',
     instructions: 'Planeje viagem com foco em orçamento, datas, deslocamentos, reservas, documentos e alternativas práticas.',
   },
   {
     id: 'estudos',
     label: 'Estudos',
     icon: 'book',
+    color: '#3b82f6',
+    memoryScope: 'default',
     instructions: 'Ajude a aprender e revisar conteúdo. Explique conceitos, crie resumos, elabore perguntas de revisão e sugira próximos passos de estudo.',
   },
   {
     id: 'codigo',
     label: 'Código',
     icon: 'fileCode',
+    color: '#3b82f6',
+    memoryScope: 'default',
     instructions: 'Atue como par de programação. Revise código, sugira melhorias, explique decisões de arquitetura, debug de erros e boas práticas.',
   },
   {
     id: 'negocios',
     label: 'Negócios',
     icon: 'chart',
+    color: '#94a3b8',
+    memoryScope: 'default',
     instructions: 'Foco em decisões de negócios: análise de cenários, métricas, estratégia, comunicação profissional e execução de tarefas corporativas.',
+  },
+  {
+    id: 'automotivo',
+    label: 'Automotivo',
+    icon: 'car',
+    color: '#ef4444',
+    memoryScope: 'default',
+    instructions: 'Foco em veículos: manutenção, peças, diagnóstico de problemas, custos e decisões de compra/venda. Seja prático e cite quando algo exige um mecânico.',
+  },
+  {
+    id: 'migracao',
+    label: 'Migração/Portugal',
+    icon: 'globe',
+    color: '#14b8a6',
+    memoryScope: 'project',
+    instructions: 'Apoie planejamento de migração (foco Portugal): documentos, vistos, prazos, custos, moradia e adaptação. Diferencie orientação geral de aconselhamento jurídico.',
+  },
+  {
+    id: 'ia_local',
+    label: 'IA Local',
+    icon: 'cpu',
+    color: '#8b5cf6',
+    memoryScope: 'default',
+    instructions: 'Foco em IA rodando localmente: escolha de modelos, quantização, runtimes, desempenho no hardware disponível e privacidade. Seja honesto sobre limites do PC.',
   },
 ];
 
@@ -461,6 +531,9 @@ export default function App(): JSX.Element {
   const [projectInstructions, setProjectInstructions] = useState('');
   const [projectMemoryScope, setProjectMemoryScope] = useState<ProjectMemoryScope>('default');
   const [projectPreset, setProjectPreset] = useState<ProjectPresetId>();
+  const [projectIcon, setProjectIcon] = useState<UiIconName>(DEFAULT_PROJECT_ICON);
+  const [projectColor, setProjectColor] = useState<string>(DEFAULT_PROJECT_COLOR);
+  const [projectAppearanceOpen, setProjectAppearanceOpen] = useState(false);
   const [projectFiles, setProjectFiles] = useState<string[]>([]);
   const [projectSessionIds, setProjectSessionIds] = useState<Record<string, string[]>>(() => {
     try {
@@ -546,6 +619,15 @@ export default function App(): JSX.Element {
       .filter((item): item is string => Boolean(item));
     return Array.from(new Set(projects)).slice(0, 12);
   }, [savedProjects]);
+
+  const projectAppearance = useMemo(() => {
+    const map: Record<string, { icon?: UiIconName; color?: string }> = {};
+    for (const project of sidebarProjects) {
+      const meta = readProjectMeta(project);
+      if (meta?.icon || meta?.color) map[project] = { icon: meta.icon, color: meta.color };
+    }
+    return map;
+  }, [sidebarProjects]);
 
   const projectSessionsByName = useMemo(() => {
     const byId = new Map(sessions.map((session) => [session.id, session]));
@@ -736,6 +818,9 @@ export default function App(): JSX.Element {
     setProjectInstructions('');
     setProjectMemoryScope('default');
     setProjectPreset(undefined);
+    setProjectIcon(DEFAULT_PROJECT_ICON);
+    setProjectColor(DEFAULT_PROJECT_COLOR);
+    setProjectAppearanceOpen(false);
     setProjectFiles([]);
     setProjectAdvancedOpen(false);
     setProjectMemoryMenuOpen(false);
@@ -759,6 +844,9 @@ export default function App(): JSX.Element {
     setProjectInstructions(meta?.instructions ?? '');
     setProjectMemoryScope(meta?.memoryScope ?? 'default');
     setProjectPreset(meta?.presetId);
+    setProjectIcon(meta?.icon ?? DEFAULT_PROJECT_ICON);
+    setProjectColor(meta?.color ?? DEFAULT_PROJECT_COLOR);
+    setProjectAppearanceOpen(false);
     setProjectFiles(meta?.files ?? []);
     setProjectAdvancedOpen(Boolean(meta?.instructions || meta?.memoryScope === 'project' || (meta?.files.length ?? 0) > 0));
     setProjectMemoryMenuOpen(false);
@@ -768,8 +856,16 @@ export default function App(): JSX.Element {
   function chooseProjectPreset(presetId: ProjectPresetId): void {
     const preset = PROJECT_PRESETS.find((item) => item.id === presetId);
     if (!preset) return;
+    // Toggle off if re-clicking the active preset.
+    if (projectPreset === presetId) {
+      setProjectPreset(undefined);
+      return;
+    }
     setProjectPreset(presetId);
     setProjectInstructions(preset.instructions);
+    setProjectIcon(preset.icon);
+    setProjectColor(preset.color);
+    setProjectMemoryScope(preset.memoryScope);
   }
 
   function addProjectFile(attachment: SelectedFileAttachment): void {
@@ -812,6 +908,8 @@ export default function App(): JSX.Element {
       instructions: projectInstructions.trim(),
       memoryScope: projectMemoryScope,
       presetId: projectPreset,
+      icon: projectIcon,
+      color: projectColor,
       files: projectFiles,
       updatedAt: new Date().toISOString(),
     };
@@ -1905,6 +2003,7 @@ export default function App(): JSX.Element {
           <SessionsPanel
             sessions={sessions}
             projects={sidebarProjects}
+            projectAppearance={projectAppearance}
             projectSessions={projectSessionsByName}
             activeProject={activeProject}
             selectedSessionId={selectedSessionId}
@@ -2158,10 +2257,28 @@ export default function App(): JSX.Element {
       >
         <div className="project-dialog project-dialog-simple">
           <div className="project-name-row">
-            <span className="project-plus-mark" aria-hidden="true">
-              <UiIcon name="folderPlus" />
-            </span>
+            <div className="popup-anchor project-appearance-anchor">
+              <button
+                type="button"
+                className="project-appearance-button"
+                style={{ background: projectColor }}
+                aria-label="Escolher ícone e cor do projeto"
+                aria-expanded={projectAppearanceOpen}
+                onClick={() => setProjectAppearanceOpen((current) => !current)}
+              >
+                <UiIcon name={projectIcon} className="project-appearance-icon" />
+              </button>
+              <ProjectAppearancePicker
+                open={projectAppearanceOpen}
+                icon={projectIcon}
+                color={projectColor}
+                onClose={() => setProjectAppearanceOpen(false)}
+                onSelectIcon={(icon) => setProjectIcon(icon)}
+                onSelectColor={(color) => setProjectColor(color)}
+              />
+            </div>
             <input
+              data-autofocus
               value={projectName}
               placeholder="Nome do Projeto"
               onChange={(event) => setProjectName(event.target.value)}

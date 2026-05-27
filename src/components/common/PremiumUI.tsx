@@ -33,7 +33,8 @@ export function PremiumModal({ open, title, description, onClose, children, clas
     if (!open) return;
     const previousActive = document.activeElement instanceof HTMLElement ? document.activeElement : undefined;
     const panel = panelRef.current;
-    const first = panel ? focusableElements(panel)[0] : undefined;
+    const explicit = panel?.querySelector<HTMLElement>('[data-autofocus]') ?? undefined;
+    const first = explicit ?? (panel ? focusableElements(panel)[0] : undefined);
     first?.focus();
     const previousOverflow = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
