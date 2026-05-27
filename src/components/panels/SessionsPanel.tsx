@@ -104,6 +104,25 @@ function isToday(value: string): boolean {
   );
 }
 
+type TimeBucket = 'today' | 'week' | 'month' | 'older';
+
+const TIME_BUCKET_LABELS: Record<TimeBucket, string> = {
+  today: 'Hoje',
+  week: 'Últimos 7 dias',
+  month: 'Últimos 30 dias',
+  older: 'Anteriores',
+};
+
+function timeBucket(value: string): TimeBucket {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return 'older';
+  if (isToday(value)) return 'today';
+  const days = (Date.now() - date.getTime()) / 86_400_000;
+  if (days <= 7) return 'week';
+  if (days <= 30) return 'month';
+  return 'older';
+}
+
 export function SessionsPanel({
   sessions,
   projects,
@@ -158,14 +177,19 @@ export function SessionsPanel({
     () => visibleSessions.filter((session) => !nestedSessionIds.has(session.id)),
     [visibleSessions, nestedSessionIds],
   );
-  const todaySessions = useMemo(
-    () => flatSessions.filter((session) => isToday(session.updatedAt || session.createdAt)),
-    [flatSessions],
-  );
-  const olderSessions = useMemo(
-    () => flatSessions.filter((session) => !isToday(session.updatedAt || session.createdAt)),
-    [flatSessions],
-  );
+  const groupedSessions = useMemo(() => {
+    const groups: Array<{ bucket: TimeBucket; sessions: AgentSession[] }> = [
+      { bucket: 'today', sessions: [] },
+      { bucket: 'week', sessions: [] },
+      { bucket: 'month', sessions: [] },
+      { bucket: 'older', sessions: [] },
+    ];
+    const byBucket = new Map(groups.map((g) => [g.bucket, g.sessions]));
+    for (const session of flatSessions) {
+      byBucket.get(timeBucket(session.updatedAt || session.createdAt))?.push(session);
+    }
+    return groups.filter((g) => g.sessions.length > 0);
+  }, [flatSessions]);
 
   function toggleProjects(): void {
     setProjectsOpen((current) => {
@@ -426,10 +450,12 @@ export function SessionsPanel({
         </button>
         {conversationsOpen ? (
           <div className="qwen-session-list">
-            {todaySessions.length > 0 ? <span className="qwen-date-group">Hoje</span> : null}
-            {todaySessions.map((session) => renderConversationItem(session))}
-            {olderSessions.length > 0 ? <span className="qwen-date-group">Anteriores</span> : null}
-            {olderSessions.map((session) => renderConversationItem(session))}
+            {groupedSessions.map((group) => (
+              <div key={group.bucket}>
+                <span className="qwen-date-group">{TIME_BUCKET_LABELS[group.bucket]}</span>
+                {group.sessions.map((session) => renderConversationItem(session))}
+              </div>
+            ))}
           </div>
         ) : null}
       </div>

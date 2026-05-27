@@ -212,6 +212,57 @@ describe('SessionsPanel', () => {
     expect(onRename).toHaveBeenCalledWith(current, 'Sessão limpa');
   });
 
+  it('agrupa conversas por tempo: Hoje / Últimos 7 dias / Últimos 30 dias / Anteriores', () => {
+    const day = 86_400_000;
+    const at = (offsetDays: number) => new Date(Date.now() - offsetDays * day).toISOString();
+    const make = (id: string, title: string, offsetDays: number): AgentSession => ({
+      id,
+      title,
+      createdAt: at(offsetDays),
+      updatedAt: at(offsetDays),
+      status: 'idle',
+      messages: [],
+      tasks: [],
+    });
+    const sessions = [
+      make('s-today', 'Conversa de hoje', 0),
+      make('s-week', 'Conversa da semana', 3),
+      make('s-month', 'Conversa do mês', 15),
+      make('s-old', 'Conversa antiga', 120),
+    ];
+
+    render(
+      <SessionsPanel
+        sessions={sessions}
+        projects={[]}
+        projectSessions={{}}
+        activeProject={undefined}
+        selectedSessionId={undefined}
+        onNewSession={vi.fn()}
+        onNewProject={vi.fn()}
+        onEditProject={vi.fn()}
+        onDeleteProject={vi.fn()}
+        onSelectProject={vi.fn()}
+        onToggleSidebar={vi.fn()}
+        onSelect={vi.fn()}
+        onRename={vi.fn()}
+        onDelete={vi.fn()}
+        onExport={vi.fn()}
+        onDuplicate={vi.fn()}
+        onSessionMenuAction={vi.fn()}
+        onOpenSettings={vi.fn()}
+        onOpenArchivedConversations={vi.fn()}
+        onCloseSession={vi.fn()}
+      />,
+    );
+
+    fireEvent.click(screen.getByText('Todas as conversas'));
+    expect(screen.getByText('Hoje')).toBeInTheDocument();
+    expect(screen.getByText('Últimos 7 dias')).toBeInTheDocument();
+    expect(screen.getByText('Últimos 30 dias')).toBeInTheDocument();
+    expect(screen.getByText('Anteriores')).toBeInTheDocument();
+  });
+
   it('mostra apenas ícones principais quando colapsada', () => {
     render(
       <SessionsPanel

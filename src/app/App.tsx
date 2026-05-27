@@ -63,6 +63,7 @@ import {
 } from '../lib/memory/projectMemoryService';
 import { buildMemoryAttachment } from '../lib/memory/memoryContextService';
 import { parseMemoryCommand, type MemoryCommand } from '../lib/memory/memoryCommands';
+import { titleFromContent } from '../lib/chat/conversationTitle';
 import { detectToolIntent } from '../lib/tools/intent';
 import { runTool } from '../lib/tools/runner';
 import { applyAppTheme } from '../lib/theme';
@@ -159,31 +160,6 @@ function accountStatusFromProviderState(
   if (state === 'misconfigured' || state === 'not_configured') return 'misconfigured';
   if (state === 'experimental' || state === 'mock') return 'experimental';
   return 'unavailable';
-}
-
-function titleFromContent(content: string): string {
-  // First meaningful line, with code fences and markdown noise removed, capped
-  // to a short topic. Avoids dumping the raw prompt as the title.
-  const firstLine = content
-    .replace(/```[\s\S]*?```/g, ' ')
-    .split('\n')
-    .map((line) => line.trim())
-    .find((line) => line.length > 0) ?? '';
-  const compact = firstLine
-    .replace(/\s+/g, ' ')
-    .replace(/^[-–—*#>\s]+/, '')
-    .trim();
-  if (!compact) {
-    return `Conversa ${new Date().toLocaleString('pt-BR')}`;
-  }
-  const words = compact.split(' ');
-  let title = words.slice(0, 7).join(' ');
-  if (title.length > 48) {
-    title = `${title.slice(0, 45).trim()}…`;
-  } else if (words.length > 7) {
-    title = `${title}…`;
-  }
-  return title.charAt(0).toUpperCase() + title.slice(1);
 }
 
 /// Turns a real execution outcome into a human-readable chat message, showing
