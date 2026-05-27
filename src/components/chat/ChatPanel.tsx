@@ -226,30 +226,27 @@ function attachmentReadStatus(attachment: ChatAttachment): { label: string; cls:
 
 function AttachmentChip({ attachment, messageId }: { attachment: ChatAttachment; messageId: string }): JSX.Element {
   const [expanded, setExpanded] = useState(false);
-  const isMemory = attachment.contextSource === 'memory';
-  const isSystem = attachment.contextSource === 'system';
-  const preview = attachment.previewTextLimited ?? (isMemory ? attachment.contextText?.replace(/^\[.*?\]\n/u, '').slice(0, 600) : undefined);
+  const preview = attachment.previewTextLimited;
   const canExpand = Boolean(preview);
-  const readStatus = !isMemory && !isSystem ? attachmentReadStatus(attachment) : undefined;
+  const readStatus = attachmentReadStatus(attachment);
 
   return (
-    <span className={`message-attachment-chip${isMemory ? ' memory-chip' : ''}`} key={`${messageId}-${attachment.path}`}>
+    <span className="message-attachment-chip" key={`${messageId}-${attachment.path}`}>
       <span
         className="message-attachment-chip-inner"
         role={canExpand ? 'button' : undefined}
         tabIndex={canExpand ? 0 : undefined}
-        onClick={canExpand ? () => setExpanded((current) => !current) : undefined}
-        onKeyDown={canExpand ? (e) => { if (e.key === 'Enter' || e.key === ' ') setExpanded((c) => !c); } : undefined}
-        title={canExpand ? 'Clique para ver detalhes' : attachment.path}
+        onClick={canExpand ? () => setExpanded((v) => !v) : undefined}
+        onKeyDown={canExpand ? (e) => { if (e.key === 'Enter' || e.key === ' ') setExpanded((v) => !v); } : undefined}
+        title={canExpand ? 'Clique para ver prévia' : attachment.path}
       >
-        <UiIcon name={isMemory ? 'spark' : fileIconNameForKind(attachment.kind)} className="message-attachment-icon" />
+        <UiIcon name={fileIconNameForKind(attachment.kind)} className="message-attachment-icon" />
         <strong>{attachment.name}</strong>
-        {!isMemory ? <small>{[attachment.kind, formatFileSize(attachment.size)].filter(Boolean).join(' · ')}</small> : null}
+        <small>{[attachment.kind, formatFileSize(attachment.size)].filter(Boolean).join(' · ')}</small>
         {readStatus ? <span className={`attachment-status-badge ${readStatus.cls}`}>{readStatus.label}</span> : null}
-        {canExpand ? <span className="memory-chip-caret" aria-hidden="true">{expanded ? '⌃' : '⌄'}</span> : null}
       </span>
       {expanded && preview ? (
-        <div className="memory-chip-detail" role="region" aria-label="Memórias injetadas">
+        <div className="attachment-preview-detail" role="region" aria-label="Prévia do arquivo">
           <pre>{preview}</pre>
         </div>
       ) : null}
@@ -432,9 +429,9 @@ export function ChatPanel({ session, emptyTitle = 'O que gostaria de explorar?',
                 ) : (
                   <MarkdownContent content={cleanVisibleContent(message.content)} />
                 )}
-                {message.attachments?.filter((attachment) => !attachment.hidden).length ? (
+                {message.attachments?.filter((a) => !a.hidden && (a.contextSource == null || a.contextSource === 'document')).length ? (
                   <div className="message-attachment-list" aria-label="Anexos da mensagem">
-                    {message.attachments.filter((attachment) => !attachment.hidden).map((attachment) => (
+                    {message.attachments.filter((a) => !a.hidden && (a.contextSource == null || a.contextSource === 'document')).map((attachment) => (
                       <AttachmentChip
                         key={`${message.id}-${attachment.path}`}
                         attachment={attachment}

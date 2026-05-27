@@ -78,6 +78,94 @@ describe('ChatPanel', () => {
     expect(screen.getByText('const ok = true;')).toBeInTheDocument();
   });
 
+  it('não renderiza chip de memória no chat — memória é contexto invisível', () => {
+    const now = new Date().toISOString();
+    const sessionWithMemory: AgentSession = {
+      id: 'session-mem',
+      title: 'Chat',
+      createdAt: now,
+      updatedAt: now,
+      status: 'idle',
+      tasks: [],
+      messages: [
+        {
+          id: 'user-1',
+          role: 'user',
+          content: 'oi',
+          createdAt: now,
+          attachments: [
+            {
+              path: 'memory://global',
+              name: 'Memórias ativas',
+              kind: 'text',
+              mimeType: 'text/plain',
+              size: 0,
+              previewAvailable: false,
+              contextSource: 'memory',
+              contextText: '[memórias do usuário]\n- gosta de café',
+            },
+            {
+              path: '/tmp/arquivo.md',
+              name: 'arquivo.md',
+              kind: 'text',
+              mimeType: 'text/plain',
+              size: 42,
+              previewAvailable: true,
+              previewTextLimited: 'conteúdo do arquivo',
+            },
+          ],
+        },
+        { id: 'assistant-1', role: 'assistant', content: 'Tudo certo.', createdAt: now },
+      ],
+    };
+
+    render(<ChatPanel session={sessionWithMemory} />);
+
+    // Memory attachment must not appear as a chip
+    expect(screen.queryByText('Memórias ativas')).not.toBeInTheDocument();
+    // The user file chip SHOULD appear
+    expect(screen.getByText('arquivo.md')).toBeInTheDocument();
+  });
+
+  it('não renderiza toggle de memória por conversa no header do chat', () => {
+    render(<ChatPanel session={chat('Olá!')} />);
+
+    expect(screen.queryByText(/memóri/i)).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /memóri/i })).not.toBeInTheDocument();
+  });
+
+  it('project_memory e preset também não aparecem como chips', () => {
+    const now = new Date().toISOString();
+    const sessionWithSystemAttachments: AgentSession = {
+      id: 'session-sys',
+      title: 'Chat',
+      createdAt: now,
+      updatedAt: now,
+      status: 'idle',
+      tasks: [],
+      messages: [
+        {
+          id: 'user-1',
+          role: 'user',
+          content: 'oi',
+          createdAt: now,
+          attachments: [
+            { path: 'memory://project', name: 'Memória do projeto', kind: 'text', mimeType: 'text/plain', size: 0, previewAvailable: false, contextSource: 'project_memory' },
+            { path: 'preset://default', name: 'Preset padrão', kind: 'text', mimeType: 'text/plain', size: 0, previewAvailable: false, contextSource: 'preset' },
+            { path: 'tool://list_running_processes', name: 'Dados do sistema', kind: 'text', mimeType: 'text/plain', size: 0, previewAvailable: false, hidden: true, contextSource: 'system' },
+          ],
+        },
+        { id: 'assistant-1', role: 'assistant', content: 'Tudo certo.', createdAt: now },
+      ],
+    };
+
+    render(<ChatPanel session={sessionWithSystemAttachments} />);
+
+    expect(screen.queryByText('Memória do projeto')).not.toBeInTheDocument();
+    expect(screen.queryByText('Preset padrão')).not.toBeInTheDocument();
+    expect(screen.queryByText('Dados do sistema')).not.toBeInTheDocument();
+  });
+
   it('traduz 429 como cota sem JSON cru', () => {
     const onOpenEnvironment = vi.fn();
 
