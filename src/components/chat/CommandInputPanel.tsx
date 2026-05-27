@@ -152,20 +152,36 @@ function mimeTypeForAttachment(attachment: SelectedFileAttachment): string | und
   return undefined;
 }
 
+const ATTACHMENT_CONTEXT_LIMIT = 8000;
+const ATTACHMENT_PREVIEW_LIMIT = 1200;
+const TEXTUAL_ATTACHMENT_KINDS = new Set(['text', 'json', 'code']);
+
 function toChatAttachment(attachment: SelectedFileAttachment): ChatAttachment {
-  const preview = attachment.preview && attachment.preview.length <= 2400
-    ? attachment.preview
-    : attachment.preview
-      ? `${attachment.preview.slice(0, 2400)}\n[preview truncado pelo composer]`
-      : undefined;
+  const raw = attachment.preview;
+  const previewAvailable = Boolean(raw);
+  // Short text shown in the expandable chip.
+  const previewTextLimited = raw
+    ? raw.length <= ATTACHMENT_PREVIEW_LIMIT
+      ? raw
+      : `${raw.slice(0, ATTACHMENT_PREVIEW_LIMIT)}\n[mostrando início — conteúdo completo enviado ao modelo]`
+    : undefined;
+  // Readable text actually included in the model context, so the model can
+  // answer about the file and the chip can honestly show "incluído".
+  const isTextual = TEXTUAL_ATTACHMENT_KINDS.has(attachment.kind) || attachment.previewKind === 'text';
+  const contextText = raw && isTextual
+    ? raw.length <= ATTACHMENT_CONTEXT_LIMIT
+      ? raw
+      : `${raw.slice(0, ATTACHMENT_CONTEXT_LIMIT)}\n[conteúdo truncado em ${ATTACHMENT_CONTEXT_LIMIT} caracteres]`
+    : undefined;
   return {
     path: attachment.path,
     name: attachment.name,
     mimeType: mimeTypeForAttachment(attachment),
     size: attachment.size,
     kind: attachment.kind,
-    previewAvailable: Boolean(attachment.preview),
-    previewTextLimited: preview,
+    previewAvailable,
+    previewTextLimited,
+    contextText,
   };
 }
 

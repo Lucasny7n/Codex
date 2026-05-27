@@ -22,6 +22,12 @@ describe('detectToolIntent', () => {
     expect(detectToolIntent('atualize o sistema')).toBe('request_system_update');
   });
 
+  it('routes process questions to list_running_processes', () => {
+    expect(detectToolIntent('quais processos estão rodando no meu PC?')).toBe('list_running_processes');
+    expect(detectToolIntent('mostra os processos')).toBe('list_running_processes');
+    expect(detectToolIntent('o que está consumindo memória no sistema?')).toBe('list_running_processes');
+  });
+
   it('returns undefined for normal chat', () => {
     expect(detectToolIntent('me explique como funciona o tauri')).toBeUndefined();
     expect(detectToolIntent('escreva um poema')).toBeUndefined();

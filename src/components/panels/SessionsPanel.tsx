@@ -142,13 +142,27 @@ export function SessionsPanel({
 
   const visibleSessions = filteredSessions;
   const visibleProjects = projects.filter((project) => project.trim().length > 0);
+  // Sessions shown nested under the active project must NOT also appear in the
+  // flat "Todas as conversas" list — otherwise the same row (and its menu)
+  // renders twice and the menus overlap, looking like duplicated items.
+  const nestedSessionIds = useMemo(() => {
+    const ids = new Set<string>();
+    if (activeProject) {
+      for (const session of projectSessions[activeProject] ?? []) ids.add(session.id);
+    }
+    return ids;
+  }, [activeProject, projectSessions]);
+  const flatSessions = useMemo(
+    () => visibleSessions.filter((session) => !nestedSessionIds.has(session.id)),
+    [visibleSessions, nestedSessionIds],
+  );
   const todaySessions = useMemo(
-    () => visibleSessions.filter((session) => isToday(session.updatedAt || session.createdAt)),
-    [visibleSessions],
+    () => flatSessions.filter((session) => isToday(session.updatedAt || session.createdAt)),
+    [flatSessions],
   );
   const olderSessions = useMemo(
-    () => visibleSessions.filter((session) => !isToday(session.updatedAt || session.createdAt)),
-    [visibleSessions],
+    () => flatSessions.filter((session) => !isToday(session.updatedAt || session.createdAt)),
+    [flatSessions],
   );
 
   function toggleProjects(): void {

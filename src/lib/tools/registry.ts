@@ -1,4 +1,4 @@
-import type { AppHealthCheck, HardwareSnapshot, LocalRuntimeSnapshot } from '../../types/domain';
+import type { AppHealthCheck, HardwareSnapshot, LocalRuntimeSnapshot, ProcessListReport } from '../../types/domain';
 import type { ToolDescriptor } from './types';
 
 /** The intended (non-secret) command for a system update on this target. */
@@ -22,6 +22,13 @@ export const TOOLS: Record<string, ToolDescriptor> = {
   get_health_status: {
     id: 'get_health_status',
     description: 'Roda o diagnóstico de saúde do app e do sistema.',
+    schema: {},
+    risk: 'safe',
+    requiresApproval: false,
+  },
+  list_running_processes: {
+    id: 'list_running_processes',
+    description: 'Lista os processos que mais consomem memória no PC (leitura, sem sudo).',
     schema: {},
     risk: 'safe',
     requiresApproval: false,
@@ -77,6 +84,22 @@ export function formatModels(snapshot: LocalRuntimeSnapshot): string {
     lines.push(`- ${model.id}${model.size ? ` (${model.size})` : ''}`);
   }
   if (snapshot.activeModelId) lines.push(`Ativo: ${snapshot.activeModelId}`);
+  return lines.join('\n');
+}
+
+export function formatProcesses(report: ProcessListReport): string {
+  if (report.error) {
+    return `Não consegui listar os processos: ${report.error}`;
+  }
+  if (report.processes.length === 0) {
+    return 'Nenhum processo retornado pelo sistema.';
+  }
+  const osLabel = report.os === 'linux' ? 'Linux' : report.os === 'macos' ? 'macOS' : report.os;
+  const lines = [`Processos que mais usam memória agora (${osLabel}):`];
+  for (const proc of report.processes.slice(0, 12)) {
+    const name = proc.command.length > 60 ? `${proc.command.slice(0, 57)}...` : proc.command;
+    lines.push(`- ${proc.mem}% mem · ${proc.cpu}% cpu · pid ${proc.pid} (${proc.user}) — ${name}`);
+  }
   return lines.join('\n');
 }
 

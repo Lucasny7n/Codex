@@ -4157,3 +4157,227 @@ pub fn update_base_prompt(state: State<AppState>, content: String) -> Result<(),
         .map_err(AppError::from)
         .map_err(map_err)
 }
+
+// ── System read-only tools and local TTS ──────────────────────────────────
+
+/// Returns true when `name` is resolvable on PATH. Uses `command -v`, which is
+/// a shell builtin and does not execute the target program.
+fn binary_in_path(name: &str) -> bool {
+    Command::new("sh")
+        .arg("-c")
+        .arg(format!("command -v {name}"))
+        .output()
+        .map(|output| output.status.success())
+        .unwrap_or(false)
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProcessEntry {
+    user: String,
+    pid: String,
+    cpu: String,
+    mem: String,
+    command: String,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProcessListReport {
+    os: String,
+    command_used: String,
+    timestamp: String,
+    processes: Vec<ProcessEntry>,
+    error: Option<String>,
+}
+
+/// Read-only listing of the top processes by memory. No sudo, no shell from the
+/// model — a fixed, safe `ps` invocation.
+#[tauri::command]
+pub fn list_running_processes() -> Result<ProcessListReport, ErrorPayload> {
+    let timestamp = crate::models::now_iso();
+    let os = std::env::consts::OS.to_owned();
+
+    if os != "linux" && os != "macos" {
+        return Ok(ProcessListReport {
+            os,
+            command_used: String::new(),
+            timestamp,
+            processes: Vec::new(),
+            error: Some(
+                "Listagem de processos suportada apenas em Linux/macOS neste app.".to_owned(),
+            ),
+        });
+    }
+
+    let command_used = "ps aux --sort=-%mem | head -20".to_owned();
+    let output = Command::new("ps").args(["aux", "--sort=-%mem"]).output();
+    let output = match output {
+        Ok(output) if output.status.success() => output,
+        Ok(output) => {
+            return Ok(ProcessListReport {
+                os,
+                command_used,
+                timestamp,
+                processes: Vec::new(),
+                error: Some(format!(
+                    "`ps` retornou erro: {}",
+                    String::from_utf8_lossy(&output.stderr).trim()
+                )),
+            });
+        }
+        Err(cause) => {
+            return Ok(ProcessListReport {
+                os,
+                command_used,
+                timestamp,
+                processes: Vec::new(),
+                error: Some(format!("Não foi possível executar `ps`: {cause}")),
+            });
+        }
+    };
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let mut processes = Vec::new();
+    // Skip the header row; ps aux columns:
+    // USER PID %CPU %MEM VSZ RSS TTY STAT START TIME COMMAND
+    for line in stdout.lines().skip(1).take(20) {
+        let mut parts = line.split_whitespace();
+        let user = parts.next().unwrap_or_default().to_owned();
+        let pid = parts.next().unwrap_or_default().to_owned();
+        let cpu = parts.next().unwrap_or_default().to_owned();
+        let mem = parts.next().unwrap_or_default().to_owned();
+        // Drop VSZ RSS TTY STAT START TIME (6 columns) before COMMAND.
+        for _ in 0..6 {
+            parts.next();
+        }
+        let command = parts.collect::<Vec<_>>().join(" ");
+        if pid.is_empty() {
+            continue;
+        }
+        processes.push(ProcessEntry {
+            user,
+            pid,
+            cpu,
+            mem,
+            command,
+        });
+    }
+
+    Ok(ProcessListReport {
+        os,
+        command_used,
+        timestamp,
+        processes,
+        error: None,
+    })
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TtsStatus {
+    available: bool,
+    engine: Option<String>,
+    detail: String,
+    install_hint: Option<String>,
+}
+
+/// Detects a local speech engine without speaking. Order of preference:
+/// speech-dispatcher (`spd-say`) then `espeak-ng`/`espeak`.
+fn detect_tts_engine() -> Option<&'static str> {
+    if binary_in_path("spd-say") {
+        Some("spd-say")
+    } else if binary_in_path("espeak-ng") {
+        Some("espeak-ng")
+    } else if binary_in_path("espeak") {
+        Some("espeak")
+    } else {
+        None
+    }
+}
+
+#[tauri::command]
+pub fn get_tts_status() -> Result<TtsStatus, ErrorPayload> {
+    match detect_tts_engine() {
+        Some(engine) => Ok(TtsStatus {
+            available: true,
+            engine: Some(engine.to_owned()),
+            detail: format!("Engine de voz local detectada: {engine}."),
+            install_hint: None,
+        }),
+        None => Ok(TtsStatus {
+            available: false,
+            engine: None,
+            detail: "Nenhuma engine de voz local encontrada.".to_owned(),
+            install_hint: Some(
+                "Instale com: sudo pacman -S speech-dispatcher espeak-ng (Arch) ou o pacote equivalente da sua distro.".to_owned(),
+            ),
+        }),
+    }
+}
+
+/// Speaks `text` via the detected local engine. Text is passed as a process
+/// argument (never through a shell), so it cannot be interpreted as a command.
+#[tauri::command]
+pub fn speak_text(text: String, lang: Option<String>) -> Result<TtsStatus, ErrorPayload> {
+    let trimmed = text.trim();
+    if trimmed.is_empty() {
+        return Ok(TtsStatus {
+            available: true,
+            engine: None,
+            detail: "Nada para falar.".to_owned(),
+            install_hint: None,
+        });
+    }
+
+    let engine = match detect_tts_engine() {
+        Some(engine) => engine,
+        None => return get_tts_status(),
+    };
+
+    let lang = lang.unwrap_or_else(|| "pt-BR".to_owned());
+    let spawn = match engine {
+        "spd-say" => Command::new("spd-say")
+            .args(["-l", &lang, "-w", "--", trimmed])
+            .spawn(),
+        "espeak-ng" | "espeak" => Command::new(engine)
+            .args(["-v", "pt", trimmed])
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn(),
+        _ => return get_tts_status(),
+    };
+
+    match spawn {
+        Ok(_) => Ok(TtsStatus {
+            available: true,
+            engine: Some(engine.to_owned()),
+            detail: format!("Falando com {engine}."),
+            install_hint: None,
+        }),
+        Err(cause) => Ok(TtsStatus {
+            available: false,
+            engine: Some(engine.to_owned()),
+            detail: format!("Falha ao iniciar {engine}: {cause}"),
+            install_hint: None,
+        }),
+    }
+}
+
+/// Stops any in-progress local speech.
+#[tauri::command]
+pub fn stop_speech() -> Result<(), ErrorPayload> {
+    match detect_tts_engine() {
+        Some("spd-say") => {
+            let _ = Command::new("spd-say").arg("-C").output();
+        }
+        Some("espeak-ng") => {
+            let _ = Command::new("pkill").args(["-x", "espeak-ng"]).output();
+        }
+        Some("espeak") => {
+            let _ = Command::new("pkill").args(["-x", "espeak"]).output();
+        }
+        _ => {}
+    }
+    Ok(())
+}

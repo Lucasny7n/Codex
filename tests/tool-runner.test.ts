@@ -7,6 +7,7 @@ vi.mock('../src/lib/api', () => ({
   detectLocalHardware: vi.fn(),
   getLocalRuntimeState: vi.fn(),
   getAppHealthCheck: vi.fn(),
+  listRunningProcesses: vi.fn(),
   requestExecution: vi.fn(),
 }));
 
@@ -77,6 +78,37 @@ describe('runTool', () => {
     expect(api.getAppHealthCheck).toHaveBeenCalled();
     expect(result.ok).toBe(true);
     expect(result.summary).toContain('Diagnóstico');
+  });
+
+  it('list_running_processes returns real process data, not generic OS text', async () => {
+    vi.mocked(api.listRunningProcesses).mockResolvedValue({
+      os: 'linux',
+      commandUsed: 'ps aux --sort=-%mem | head -20',
+      timestamp: 'now',
+      processes: [
+        { user: 'lucas', pid: '1234', cpu: '3.0', mem: '12.5', command: '/usr/lib/firefox/firefox' },
+        { user: 'lucas', pid: '5678', cpu: '1.0', mem: '4.2', command: 'ollama serve' },
+      ],
+    });
+    const result = await runTool('list_running_processes', ctx);
+    expect(api.listRunningProcesses).toHaveBeenCalled();
+    expect(result.ok).toBe(true);
+    expect(result.summary).toContain('Linux');
+    expect(result.summary).toContain('firefox');
+    expect(result.summary).not.toContain('Windows');
+  });
+
+  it('list_running_processes surfaces a human error when ps fails', async () => {
+    vi.mocked(api.listRunningProcesses).mockResolvedValue({
+      os: 'linux',
+      commandUsed: 'ps aux --sort=-%mem | head -20',
+      timestamp: 'now',
+      processes: [],
+      error: '`ps` retornou erro: permissão negada',
+    });
+    const result = await runTool('list_running_processes', ctx);
+    expect(result.ok).toBe(false);
+    expect(result.summary).toContain('permissão negada');
   });
 
   it('request_system_update creates an approval and never executes directly', async () => {

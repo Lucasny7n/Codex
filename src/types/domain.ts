@@ -164,6 +164,29 @@ export interface ChatAttachment {
   contextSource?: 'document' | 'preset' | 'project_memory' | 'memory' | 'system';
 }
 
+export interface ProcessEntry {
+  user: string;
+  pid: string;
+  cpu: string;
+  mem: string;
+  command: string;
+}
+
+export interface ProcessListReport {
+  os: string;
+  commandUsed: string;
+  timestamp: string;
+  processes: ProcessEntry[];
+  error?: string;
+}
+
+export interface TtsStatus {
+  available: boolean;
+  engine?: string;
+  detail: string;
+  installHint?: string;
+}
+
 export type VoiceTranscriptionResultStatus = 'done' | 'missing_backend' | 'error';
 
 export interface VoiceTranscriptionResult {

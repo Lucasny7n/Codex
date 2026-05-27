@@ -2,9 +2,10 @@ import {
   detectLocalHardware,
   getAppHealthCheck,
   getLocalRuntimeState,
+  listRunningProcesses,
   requestExecution,
 } from '../api';
-import { SYSTEM_UPDATE_COMMAND, formatHardware, formatHealth, formatModels } from './registry';
+import { SYSTEM_UPDATE_COMMAND, formatHardware, formatHealth, formatModels, formatProcesses } from './registry';
 import type { ToolContext, ToolResult } from './types';
 
 function humanError(cause: unknown): string {
@@ -35,6 +36,10 @@ export async function runTool(toolId: string, ctx: ToolContext): Promise<ToolRes
       case 'get_health_status': {
         const health = await getAppHealthCheck();
         return { toolId, ok: true, summary: formatHealth(health), data: health };
+      }
+      case 'list_running_processes': {
+        const report = await listRunningProcesses();
+        return { toolId, ok: !report.error, summary: formatProcesses(report), data: report, error: report.error };
       }
       case 'request_system_update': {
         const sessionId = await ctx.ensureSession('Atualização do sistema');

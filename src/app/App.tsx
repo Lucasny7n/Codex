@@ -78,6 +78,7 @@ import type {
   LocalModelInstallProgress,
   LocalRuntimeSnapshot,
   PermissionDecision,
+  PermissionOutcome,
   ProviderCredentialStatus,
   ProviderAccountProfile,
   ProviderRuntimeStatus,
@@ -163,6 +164,26 @@ function titleFromContent(content: string): string {
     return `Conversa ${new Date().toLocaleString('pt-BR')}`;
   }
   return compact.length > 54 ? `${compact.slice(0, 51)}...` : compact;
+}
+
+/// Turns a real execution outcome into a human-readable chat message, showing
+/// actual stdout/stderr (truncated) so results are transparent, never faked.
+function buildOutcomeMessage(outcome: PermissionOutcome): string {
+  const statusLabel = outcome.status === 'success'
+    ? 'Comando concluído'
+    : outcome.status === 'denied'
+      ? 'Comando negado'
+      : outcome.status === 'blocked'
+        ? 'Comando bloqueado'
+        : 'Comando falhou';
+  const parts: string[] = [`${statusLabel}.`];
+  if (outcome.summary) parts.push(outcome.summary);
+  const stdout = (outcome.stdout ?? '').trim();
+  const stderr = (outcome.stderr ?? '').trim();
+  if (stdout) parts.push(`Saída real:\n${stdout.slice(0, 2000)}${stdout.length > 2000 ? '\n[…saída truncada]' : ''}`);
+  if (stderr) parts.push(`Erros:\n${stderr.slice(0, 1000)}${stderr.length > 1000 ? '\n[…]' : ''}`);
+  if (typeof outcome.exitCode === 'number') parts.push(`Código de saída: ${outcome.exitCode}`);
+  return parts.join('\n\n');
 }
 
 function readLocalStorage(key: string): string | undefined {
@@ -427,7 +448,6 @@ export default function App(): JSX.Element {
   const [projectMemoryScope, setProjectMemoryScope] = useState<ProjectMemoryScope>('default');
   const [projectPreset, setProjectPreset] = useState<ProjectPresetId>();
   const [projectFiles, setProjectFiles] = useState<string[]>([]);
-  const [sessionMemoryDisabled, setSessionMemoryDisabled] = useState(false);
   const [projectSessionIds, setProjectSessionIds] = useState<Record<string, string[]>>(() => {
     try {
       const raw = readAiluStorage('project-sessions');
@@ -847,7 +867,19 @@ export default function App(): JSX.Element {
         unlisteners.push(await onSessionChanged((session) => upsertSession(session)));
         unlisteners.push(await onPermissionRaised((request) => addPermission(request)));
         unlisteners.push(await onPermissionResolved((requestId) => removePermission(requestId)));
-        unlisteners.push(await onPermissionOutcome((outcome) => recordPermissionOutcome(outcome)));
+        unlisteners.push(await onPermissionOutcome((outcome) => {
+          recordPermissionOutcome(outcome);
+          if (!outcome.sessionId) return;
+          const target = useAppStore.getState().sessions.find((item) => item.id === outcome.sessionId);
+          if (!target) return;
+          const message: ChatMessage = {
+            id: `outcome-${outcome.requestId}-${Date.now()}`,
+            role: 'assistant',
+            content: buildOutcomeMessage(outcome),
+            createdAt: outcome.at || new Date().toISOString(),
+          };
+          upsertSession({ ...target, updatedAt: message.createdAt, messages: [...target.messages, message] });
+        }));
         unlisteners.push(
           await onLocalRuntimeState((snapshot) => {
             setLocalRuntime(snapshot);
@@ -954,7 +986,6 @@ export default function App(): JSX.Element {
   function handleCreateSession(): void {
     setTemporaryChatActive(false);
     setTemporaryMessages([]);
-    setSessionMemoryDisabled(false);
     if (!activeProject) {
       writeAiluStorage('active-project', '');
     }
@@ -973,7 +1004,6 @@ export default function App(): JSX.Element {
     setTemporaryChatActive(false);
     setTemporaryMessages([]);
     setActiveProject(undefined);
-    setSessionMemoryDisabled(false);
     writeAiluStorage('active-project', '');
     selectSession(sessionId);
   }
@@ -996,7 +1026,6 @@ export default function App(): JSX.Element {
   }
 
   function memoryEnabled(): boolean {
-    if (sessionMemoryDisabled) return false;
     return settings?.personalization?.memoriesStored !== false;
   }
 
@@ -1919,7 +1948,7 @@ export default function App(): JSX.Element {
                     <p>Esta conversa não aparecerá no histórico e as suas mensagens não serão guardadas.</p>
                   </section>
                 ) : (
-                  <ChatPanel session={temporarySession} emptyTitle="Bate-papo Temporário" onOpenEnvironment={() => openEnvironmentTab('ready')} onRedoMessage={handleRedoMessage} isResponding={activeChatResponding} />
+                  <ChatPanel session={temporarySession} emptyTitle="Bate-papo Temporário" onOpenEnvironment={() => openEnvironmentTab('ready')} onRedoMessage={handleRedoMessage} isResponding={activeChatResponding} onToast={pushToast} />
                 )}
                 {commandInput}
               </>
@@ -1999,7 +2028,7 @@ export default function App(): JSX.Element {
               </section>
             ) : (
               <>
-                <ChatPanel session={selectedSession} emptyTitle="O que gostaria de explorar?" onOpenEnvironment={() => openEnvironmentTab('accounts')} onRedoMessage={handleRedoMessage} isResponding={activeChatResponding} memoryDisabled={sessionMemoryDisabled} onToggleMemory={() => setSessionMemoryDisabled((v) => !v)} />
+                <ChatPanel session={selectedSession} emptyTitle="O que gostaria de explorar?" onOpenEnvironment={() => openEnvironmentTab('accounts')} onRedoMessage={handleRedoMessage} isResponding={activeChatResponding} onToast={pushToast} />
                 {commandInput}
               </>
             )}

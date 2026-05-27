@@ -276,46 +276,88 @@ fn attachment_text(value: &Value, key: &str) -> Option<String> {
         .map(redact_secret_like)
 }
 
+/// Below this size the whole readable content of a file attachment is inlined
+/// so the model can answer about it directly. Larger files fall back to a
+/// head + prompt-relevant chunks to keep the prompt bounded.
+const FILE_INLINE_LIMIT: usize = 8000;
+
 fn attachment_context(prompt: &str, attachments: &[Value]) -> String {
     if attachments.is_empty() {
         return String::new();
     }
 
-    let mut blocks = Vec::new();
+    let mut file_blocks = Vec::new();
+    let mut context_blocks = Vec::new();
+
     for attachment in attachments {
+        let context_source = attachment_text(attachment, "contextSource");
+
+        // Memory and tool/system context already carry well-formed contextText.
+        // Pass it through verbatim — it is not a "file" and must not be reframed
+        // as one (avoids the model confusing memory with an attached file).
+        if matches!(
+            context_source.as_deref(),
+            Some("memory") | Some("project_memory") | Some("system") | Some("preset")
+        ) {
+            if let Some(text) = attachment_text(attachment, "contextText") {
+                context_blocks.push(text);
+            }
+            continue;
+        }
+
         let name = attachment_text(attachment, "name").unwrap_or_else(|| "arquivo".to_owned());
         let path = attachment_text(attachment, "path")
             .unwrap_or_else(|| "caminho indisponível".to_owned());
         let kind = attachment_text(attachment, "kind").unwrap_or_else(|| "generic".to_owned());
-        let context_source = attachment_text(attachment, "contextSource");
-        let preview = attachment_text(attachment, "contextText")
+        let content = attachment_text(attachment, "contextText")
             .or_else(|| attachment_text(attachment, "previewTextLimited"));
+
         let mut lines = vec![
-            format!("Nome: {name}"),
+            format!("Arquivo: {name}"),
             format!("Caminho: {path}"),
             format!("Tipo: {kind}"),
         ];
-        if let Some(source) = context_source {
-            lines.push(format!("Origem: {source}"));
-        }
-        if let Some(preview) = preview {
-            let chunks = relevant_chunks(prompt, &preview, 4);
-            if chunks.is_empty() {
-                lines.push("Conteúdo disponível, mas sem trecho textual relevante para a solicitação atual.".to_owned());
-            } else {
-                lines.push("Trechos relevantes para contexto oculto:".to_owned());
-                for (index, chunk) in chunks.iter().enumerate() {
-                    lines.push(format!("[chunk {}]\n{}", index + 1, chunk));
+
+        match content {
+            Some(content) if !content.trim().is_empty() => {
+                if content.len() <= FILE_INLINE_LIMIT {
+                    lines.push(
+                        "Conteúdo do arquivo (texto real lido pelo app — use para responder):"
+                            .to_owned(),
+                    );
+                    lines.push(content);
+                } else {
+                    lines.push(format!(
+                        "Conteúdo do arquivo (texto real, {} caracteres — início + trechos relevantes):",
+                        content.len()
+                    ));
+                    let head: String = content.chars().take(1500).collect();
+                    lines.push(format!("[início]\n{head}"));
+                    for (index, chunk) in relevant_chunks(prompt, &content, 4).iter().enumerate() {
+                        lines.push(format!("[trecho {}]\n{}", index + 1, chunk));
+                    }
                 }
             }
+            _ => {
+                lines.push(
+                    "Sem conteúdo textual legível (arquivo binário ou pré-visualização indisponível). Diga isso ao usuário em vez de inventar conteúdo.".to_owned(),
+                );
+            }
         }
-        blocks.push(lines.join("\n"));
+        file_blocks.push(lines.join("\n"));
     }
 
-    format!(
-        "Anexos brutos/metadados recebidos pelo app. Não renderizar como texto da conversa; use path/metadados e ferramentas locais se precisar abrir.\n\n{}",
-        blocks.join("\n\n")
-    )
+    let mut sections = Vec::new();
+    if !file_blocks.is_empty() {
+        sections.push(format!(
+            "[arquivos anexados pelo usuário]\nO texto abaixo foi lido pelo app e é o conteúdo real do arquivo. Use-o diretamente para responder; não diga que não consegue acessar o arquivo.\n\n{}",
+            file_blocks.join("\n\n")
+        ));
+    }
+    if !context_blocks.is_empty() {
+        sections.push(context_blocks.join("\n\n"));
+    }
+    sections.join("\n\n")
 }
 
 fn relevant_chunks(prompt: &str, text: &str, limit: usize) -> Vec<String> {
@@ -410,7 +452,7 @@ fn prompt_with_attachments(prompt: &str, attachments: &[Value]) -> String {
     if context.is_empty() {
         prompt.to_owned()
     } else {
-        format!("{prompt}\n\n[contexto oculto de anexos]\n{context}")
+        format!("{prompt}\n\n[contexto de anexos e memória]\n{context}")
     }
 }
 
@@ -562,5 +604,49 @@ mod tests {
         );
 
         assert_eq!(plan[1].model_id, "qwen2.5-coder:7b");
+    }
+
+    #[test]
+    fn small_file_attachment_inlines_full_content_and_tells_model_to_use_it() {
+        let attachment = serde_json::json!({
+            "name": "notas.md",
+            "path": "/tmp/notas.md",
+            "kind": "text",
+            "previewTextLimited": "A senha do cofre azul fica embaixo do vaso.",
+        });
+        // A prompt whose words do NOT lexically match the file content.
+        let context = attachment_context("o que está escrito nele?", &[attachment]);
+        assert!(
+            context.contains("A senha do cofre azul fica embaixo do vaso."),
+            "file content must be inlined even when the prompt does not match it lexically"
+        );
+        assert!(context.contains("conteúdo real do arquivo"));
+        assert!(!context.contains("Não renderizar"));
+    }
+
+    #[test]
+    fn memory_context_is_not_reframed_as_a_file() {
+        let memory = serde_json::json!({
+            "name": "Memórias (2)",
+            "path": "memory:recall",
+            "kind": "text",
+            "contextSource": "memory",
+            "contextText": "[memórias do usuário]\n- gosta de café",
+        });
+        let context = attachment_context("o que você sabe sobre mim?", &[memory]);
+        assert!(context.contains("gosta de café"));
+        assert!(!context.contains("Arquivo:"));
+        assert!(!context.contains("arquivos anexados"));
+    }
+
+    #[test]
+    fn binary_attachment_without_text_is_honest() {
+        let attachment = serde_json::json!({
+            "name": "foto.png",
+            "path": "/tmp/foto.png",
+            "kind": "image",
+        });
+        let context = attachment_context("descreva", &[attachment]);
+        assert!(context.contains("Sem conteúdo textual legível"));
     }
 }

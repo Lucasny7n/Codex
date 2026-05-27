@@ -1,8 +1,9 @@
-import { useCallback, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import type { AgentSession, ChatMessage } from '../../types/domain';
 import { UiIcon } from '../common/AppIcons';
 import { PopupMenu } from '../common/PremiumUI';
 import { fileIconNameForKind, formatFileSize } from '../file/fileDisplay';
+import { getTtsStatus, speakText, stopSpeech } from '../../lib/api';
 import type { ChatAttachment } from '../../types/domain';
 
 interface ChatPanelProps {
@@ -11,8 +12,7 @@ interface ChatPanelProps {
   onOpenEnvironment?: () => void;
   onRedoMessage?: (messageId: string) => Promise<void>;
   isResponding?: boolean;
-  memoryDisabled?: boolean;
-  onToggleMemory?: () => void;
+  onToast?: (tone: 'success' | 'error' | 'info', message: string) => void;
 }
 
 interface ParsedProviderError {
@@ -283,13 +283,22 @@ function stripMarkdownForSpeech(text: string): string {
     .trim();
 }
 
-export function ChatPanel({ session, emptyTitle = 'O que gostaria de explorar?', onOpenEnvironment, onRedoMessage, isResponding = false, memoryDisabled = false, onToggleMemory }: ChatPanelProps): JSX.Element {
+export function ChatPanel({ session, emptyTitle = 'O que gostaria de explorar?', onOpenEnvironment, onRedoMessage, isResponding = false, onToast }: ChatPanelProps): JSX.Element {
   const [menuMessageId, setMenuMessageId] = useState<string>();
   const [copiedMessageId, setCopiedMessageId] = useState<string>();
   const [likedIds, setLikedIds] = useState<Set<string>>(new Set());
   const [dislikedIds, setDislikedIds] = useState<Set<string>>(new Set());
   const [speakingId, setSpeakingId] = useState<string>();
-  const [speakError, setSpeakError] = useState<string>();
+  // Web Speech is detectable synchronously; undefined means "probe the backend".
+  const [ttsAvailable, setTtsAvailable] = useState<boolean | undefined>(() => {
+    const hasWebSpeech = typeof window !== 'undefined'
+      && 'speechSynthesis' in window
+      && typeof window.SpeechSynthesisUtterance !== 'undefined';
+    return hasWebSpeech ? true : undefined;
+  });
+  const [ttsHint, setTtsHint] = useState<string | undefined>(undefined);
+  // Tracks whether the active speech is using the backend engine (vs Web Speech).
+  const backendSpeakingRef = useRef(false);
 
   async function copyMessage(message: ChatMessage): Promise<void> {
     const content = cleanVisibleContent(message.content);
@@ -320,33 +329,79 @@ export function ChatPanel({ session, emptyTitle = 'O que gostaria de explorar?',
     setLikedIds((prev) => { const next = new Set(prev); next.delete(id); return next; });
   }, []);
 
-  const speakMessage = useCallback((message: ChatMessage) => {
-    setSpeakError(undefined);
-    if (!('speechSynthesis' in window)) {
-      setSpeakError('Síntese de voz não disponível neste ambiente. No Tauri/Linux, o Web Speech API pode não estar habilitado. Tente em um browser ou habilite o suporte a TTS no WebView.');
-      return;
-    }
-    if (speakingId === message.id) {
+  // When Web Speech is absent (common in the Tauri/Linux WebView), probe the
+  // local backend engine (spd-say/espeak-ng) once.
+  useEffect(() => {
+    if (ttsAvailable !== undefined) return undefined;
+    let active = true;
+    void getTtsStatus().then((status) => {
+      if (!active) return;
+      setTtsHint(status.installHint);
+      setTtsAvailable(status.available);
+    }).catch(() => {
+      if (active) setTtsAvailable(false);
+    });
+    return () => { active = false; };
+  }, [ttsAvailable]);
+
+  const stopSpeaking = useCallback(() => {
+    if (backendSpeakingRef.current) {
+      void stopSpeech();
+      backendSpeakingRef.current = false;
+    } else if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
       window.speechSynthesis.cancel();
-      setSpeakingId(undefined);
+    }
+    setSpeakingId(undefined);
+  }, []);
+
+  const speakMessage = useCallback((message: ChatMessage) => {
+    if (speakingId === message.id) {
+      stopSpeaking();
       return;
     }
-    window.speechSynthesis.cancel();
     const text = stripMarkdownForSpeech(cleanVisibleContent(message.content));
     if (!text.trim()) return;
-    const utterance = new SpeechSynthesisUtterance(text);
-    utterance.lang = 'pt-BR';
-    utterance.rate = 1.0;
-    utterance.onend = () => setSpeakingId(undefined);
-    utterance.onerror = (event) => {
-      setSpeakingId(undefined);
-      if (event.error !== 'interrupted') {
-        setSpeakError(`Falha na leitura: ${event.error}. Web Speech API pode não estar disponível no Tauri.`);
-      }
-    };
+
+    const hasWebSpeech = typeof window !== 'undefined'
+      && 'speechSynthesis' in window
+      && typeof window.SpeechSynthesisUtterance !== 'undefined';
+
+    if (hasWebSpeech) {
+      window.speechSynthesis.cancel();
+      backendSpeakingRef.current = false;
+      const utterance = new SpeechSynthesisUtterance(text);
+      utterance.lang = 'pt-BR';
+      utterance.rate = 1.0;
+      utterance.onend = () => setSpeakingId((current) => current === message.id ? undefined : current);
+      utterance.onerror = (event) => {
+        setSpeakingId((current) => current === message.id ? undefined : current);
+        if (event.error !== 'interrupted' && event.error !== 'canceled') {
+          onToast?.('error', 'Não foi possível ler em voz alta neste ambiente.');
+        }
+      };
+      setSpeakingId(message.id);
+      window.speechSynthesis.speak(utterance);
+      return;
+    }
+
+    // Backend fallback (Linux): spd-say / espeak-ng.
     setSpeakingId(message.id);
-    window.speechSynthesis.speak(utterance);
-  }, [speakingId]);
+    void speakText(text, 'pt-BR').then((status) => {
+      if (status.available && status.engine) {
+        backendSpeakingRef.current = true;
+      } else {
+        setSpeakingId((current) => current === message.id ? undefined : current);
+        setTtsAvailable(false);
+        setTtsHint(status.installHint);
+        onToast?.('info', status.installHint
+          ? `Voz indisponível. ${status.installHint}`
+          : 'Nenhuma engine de voz local encontrada.');
+      }
+    }).catch(() => {
+      setSpeakingId((current) => current === message.id ? undefined : current);
+      onToast?.('error', 'Falha ao iniciar a leitura por voz.');
+    });
+  }, [speakingId, stopSpeaking, onToast]);
 
   if (!session) {
     return (
@@ -360,26 +415,6 @@ export function ChatPanel({ session, emptyTitle = 'O que gostaria de explorar?',
 
   return (
     <section className="panel-chat">
-      {speakError ? (
-        <div className="chat-speak-error" role="alert">
-          <span>{speakError}</span>
-          <button type="button" className="icon-button" onClick={() => setSpeakError(undefined)} aria-label="Fechar">×</button>
-        </div>
-      ) : null}
-      {onToggleMemory ? (
-        <div className="chat-memory-bar">
-          <button
-            type="button"
-            className={`chat-memory-toggle${memoryDisabled ? ' memory-off' : ''}`}
-            onClick={onToggleMemory}
-            aria-pressed={memoryDisabled}
-            title={memoryDisabled ? 'Memórias desativadas nesta conversa — clique para reativar' : 'Memórias ativas nesta conversa — clique para desativar'}
-          >
-            <UiIcon name="spark" />
-            {memoryDisabled ? 'Memórias desativadas' : 'Memórias ativas'}
-          </button>
-        </div>
-      ) : null}
       <div className="chat-messages scroll-y">
         {session.messages.length === 0 ? (
           <div className="empty-state empty-state-inline">
@@ -437,6 +472,8 @@ export function ChatPanel({ session, emptyTitle = 'O que gostaria de explorar?',
                       className={`message-action-button${speakingId === message.id ? ' message-action-active' : ''}`}
                       aria-label={speakingId === message.id ? 'Parar leitura' : 'Ouvir resposta'}
                       aria-pressed={speakingId === message.id}
+                      disabled={ttsAvailable === false}
+                      title={ttsAvailable === false ? (ttsHint ?? 'Voz indisponível neste ambiente') : undefined}
                       onClick={() => speakMessage(message)}
                     >
                       <UiIcon name="music" />

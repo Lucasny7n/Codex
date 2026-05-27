@@ -45,6 +45,8 @@ import type {
   RuntimeEstimate,
   RuntimeRecommendation,
   BenchmarkResult,
+  ProcessListReport,
+  TtsStatus,
 } from '../../types/domain';
 
 export async function bootstrapState(): Promise<BootstrapPayload> {
@@ -146,6 +148,22 @@ export async function transcribeAudio(audioBytes: number[], mimeType?: string, m
 
 export async function recordAndTranscribeShortTest(modelPath?: string): Promise<VoiceTranscriptionResult> {
   return invoke('record_and_transcribe_short_test', { modelPath });
+}
+
+export async function listRunningProcesses(): Promise<ProcessListReport> {
+  return invoke('list_running_processes');
+}
+
+export async function getTtsStatus(): Promise<TtsStatus> {
+  return invoke('get_tts_status');
+}
+
+export async function speakText(text: string, lang?: string): Promise<TtsStatus> {
+  return invoke('speak_text', { text, lang });
+}
+
+export async function stopSpeech(): Promise<void> {
+  await invoke('stop_speech');
 }
 
 export async function appendUserMessage(sessionId: string, content: string): Promise<AgentSession> {

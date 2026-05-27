@@ -98,6 +98,10 @@ pub fn run() {
             commands::update_settings,
             commands::get_base_prompt,
             commands::update_base_prompt,
+            commands::list_running_processes,
+            commands::get_tts_status,
+            commands::speak_text,
+            commands::stop_speech,
         ])
         .run(tauri::generate_context!())
         .expect("erro ao iniciar aplicativo");

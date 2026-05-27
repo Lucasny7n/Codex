@@ -14,6 +14,14 @@ export function detectToolIntent(rawInput: string): string | undefined {
     return 'request_system_update';
   }
 
+  // Running processes (read-only). Checked before hardware so "processos …
+  // no meu PC" is not swallowed by the hardware rule (which also matches "pc").
+  if (/\bprocessos?\b/u.test(input)
+    || /\b(o que|quais|que)\b.*\b(rodando|executando|abertos?|consumindo|usando)\b.*\b(pc|m[áa]quina|sistema|cpu|mem[óo]ria|ram)\b/u.test(input)
+    || /\b(rodando|executando)\b.*\b(no (meu )?(pc|sistema|m[áa]quina))\b/u.test(input)) {
+    return 'list_running_processes';
+  }
+
   // Hardware.
   if (/\b(meu|minha|qual|quais|mostr\w*|ver|detect\w*)\b.*\b(hardware|m[áa]quina|pc|cpu|gpu|placa de v[íi]deo|vram|mem[óo]ria ram)\b/u.test(input)
     || /\bqual (o )?meu hardware\b/u.test(input)) {
