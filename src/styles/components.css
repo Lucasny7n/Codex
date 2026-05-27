@@ -4499,6 +4499,18 @@
   color: var(--text-secondary);
 }
 
+.settings-routing-explainer {
+  margin: 0 0 8px;
+  font-size: 0.84rem;
+  color: var(--text-secondary);
+  line-height: 1.5;
+}
+
+.settings-routing-explainer.settings-routing-muted {
+  font-size: 0.78rem;
+  color: var(--text-tertiary, var(--text-secondary));
+}
+
 .provider-test-result.ok {
   color: var(--success-text, #4ade80);
 }

@@ -88,8 +88,8 @@ export function SkillsPanel({
         <aside className="skills-list scroll-y" aria-label="Lista de skills">
           {skills.length === 0 ? (
             <div className="empty-state empty-state-inline">
-              <strong>Nenhuma skill</strong>
-              <span>Adicione scripts versionados em <code>skills/</code>.</span>
+              <strong>Nenhuma skill ainda</strong>
+              <span>Use a aba <strong>Importar</strong> para colar um manifest/script, ou <strong>Criar por texto</strong> para descrever o que precisa. Toda skill passa por dry-run e aprovação antes de rodar.</span>
             </div>
           ) : null}
           {skills.map((skill) => (

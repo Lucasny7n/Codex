@@ -776,6 +776,22 @@ export function SettingsPanel({
                   onChange={(value) => void commit({ developerMode: value })}
                 />
               </section>
+              {!settings.developerMode ? (
+                <section className="settings-block settings-routing-intro">
+                  <div className="settings-section-label">Roteamento de modelos</div>
+                  <p className="settings-routing-explainer">
+                    O app usa o modelo selecionado na conversa automaticamente. Se ele falhar
+                    (rede, cota ou provider fora do ar) e o fallback estiver ligado, ele tenta o
+                    próximo modelo configurado. Estar ligado não gasta API extra — só roda quando
+                    você envia algo.
+                  </p>
+                  <p className="settings-routing-explainer settings-routing-muted">
+                    Roteamento por tarefa (rápido, código, raciocínio) é planejado e aparece como
+                    avançado quando o backend suportar. Ajustes finos de fallback ficam no Modo
+                    Desenvolvedor.
+                  </p>
+                </section>
+              ) : null}
               {settings.developerMode ? (
                 <section className="settings-block settings-routing-block">
                   <div className="settings-section-label">Roteamento avançado</div>

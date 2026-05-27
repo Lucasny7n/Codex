@@ -255,6 +255,20 @@ describe('SettingsPanel', () => {
     });
   });
 
+  it('Interface comum esconde "Política"/textarea e explica roteamento em linguagem simples', () => {
+    renderSettings({
+      settings: { ...settings(), developerMode: false },
+      initialTab: 'interface',
+    });
+
+    // Sem config crua na superfície comum.
+    expect(screen.queryByLabelText('Política de fallback')).not.toBeInTheDocument();
+    expect(screen.queryByText('Roteamento avançado')).not.toBeInTheDocument();
+    // Explicação humana presente.
+    expect(screen.getByText('Roteamento de modelos')).toBeInTheDocument();
+    expect(screen.getByText(/usa o modelo selecionado na conversa automaticamente/)).toBeInTheDocument();
+  });
+
   it('Modelos aba local mostra modelos locais e accordions informativos', () => {
     renderSettings({ initialTab: 'models' });
 
