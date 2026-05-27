@@ -636,24 +636,26 @@ export function CommandInputPanel({
                 }}
               >
                 <UiIcon name="spark" className="menu-icon menu-item-icon" />
-                Skills e habilidades
+                Skills
               </button>
             ) : null}
-            <span className="menu-section-label">Em breve</span>
-            {PLUS_SOON_ITEMS.map((item) => (
-              <button
-                key={item.label}
-                type="button"
-                className="menu-item is-soon"
-                disabled
-                aria-disabled="true"
-                title="Disponível em breve"
-              >
-                <UiIcon name={item.icon} className="menu-icon menu-item-icon" />
-                {item.label}
-                <span className="menu-soon-badge">em breve</span>
-              </button>
-            ))}
+            <details className="plus-menu-soon">
+              <summary>Em breve</summary>
+              {PLUS_SOON_ITEMS.map((item) => (
+                <button
+                  key={item.label}
+                  type="button"
+                  className="menu-item is-soon"
+                  disabled
+                  aria-disabled="true"
+                  title="Disponível em breve"
+                >
+                  <UiIcon name={item.icon} className="menu-icon menu-item-icon" />
+                  {item.label}
+                  <span className="menu-soon-badge">em breve</span>
+                </button>
+              ))}
+            </details>
           </PopupMenu>
         </div>
 

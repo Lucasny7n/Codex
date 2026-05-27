@@ -82,6 +82,7 @@ function CapabilitySummary({ hardware, backends }: { hardware: HardwareSnapshot;
       <div className="capability-facts">
         <span><strong>Tamanho recomendado</strong>{modelSize}</span>
         <span><strong>Runtime recomendado</strong>{runtimeRec}</span>
+        <span><strong>Quantização</strong>Q4/Q5 (bom equilíbrio)</span>
       </div>
       {!hasRuntime ? (
         <p className="capability-install-hint">

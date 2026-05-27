@@ -101,34 +101,39 @@ export function HardwareSummary({ snapshot }: HardwareSummaryProps): JSX.Element
         </div>
       ) : null}
 
-      {accelerators.length > 0 ? (
-        <div className="health-item-grid">
-          {accelerators.map((acc, i) => (
-            <article key={i} className="health-item-card">
-              <strong>{ACCEL_LABELS[acc.api] ?? acc.api}</strong>
-              <Badge tone={accelTone(acc.status)}>
-                {acc.status === 'healthy' ? 'funcional' :
-                 acc.status === 'present' ? 'presente' :
-                 acc.status === 'unavailable' ? 'indisponível' : 'desconhecido'}
-              </Badge>
-              {acc.detail ? <p>{acc.detail}</p> : null}
-            </article>
-          ))}
-        </div>
-      ) : null}
+      {accelerators.length > 0 || profileTags.length > 0 || notes.length > 0 ? (
+        <details className="settings-details hardware-tech-details">
+          <summary>Detalhes técnicos</summary>
+          {accelerators.length > 0 ? (
+            <div className="health-item-grid" style={{ marginTop: '0.5rem' }}>
+              {accelerators.map((acc, i) => (
+                <article key={i} className="health-item-card">
+                  <strong>{ACCEL_LABELS[acc.api] ?? acc.api}</strong>
+                  <Badge tone={accelTone(acc.status)}>
+                    {acc.status === 'healthy' ? 'funcional' :
+                     acc.status === 'present' ? 'presente' :
+                     acc.status === 'unavailable' ? 'indisponível' : 'desconhecido'}
+                  </Badge>
+                  {acc.detail ? <p>{acc.detail}</p> : null}
+                </article>
+              ))}
+            </div>
+          ) : null}
 
-      {profileTags.length > 0 ? (
-        <div className="ollama-model-meta">
-          {profileTags.map((tag) => (
-            <Badge key={tag} tone="neutral">{PROFILE_TAG_LABELS[tag] ?? tag}</Badge>
-          ))}
-        </div>
-      ) : null}
+          {profileTags.length > 0 ? (
+            <div className="ollama-model-meta" style={{ marginTop: '0.5rem' }}>
+              {profileTags.map((tag) => (
+                <Badge key={tag} tone="neutral">{PROFILE_TAG_LABELS[tag] ?? tag}</Badge>
+              ))}
+            </div>
+          ) : null}
 
-      {notes.length > 0 ? (
-        <ul className="settings-block">
-          {notes.map((note, i) => <li key={i}><small>{note}</small></li>)}
-        </ul>
+          {notes.length > 0 ? (
+            <ul className="settings-block">
+              {notes.map((note, i) => <li key={i}><small>{note}</small></li>)}
+            </ul>
+          ) : null}
+        </details>
       ) : null}
     </div>
   );

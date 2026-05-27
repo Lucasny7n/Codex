@@ -108,6 +108,7 @@ const ADVANCED_PERSONALIZATION: Array<{
   label: string;
   description: string;
 }> = [
+  { key: 'manageCookies', label: 'Gerenciar cookies', description: 'Guarda a preferência para fluxos web que exigirem estado de navegador.' },
   { key: 'webPageExtraction', label: 'Extração da página web', description: 'Guarda a preferência para leitura de páginas quando o backend for conectado.' },
   { key: 'imageSearch', label: 'Pesquisa por imagens', description: 'Preferência visual para busca por imagem, sem executar rede sozinha.' },
   { key: 'webSearch', label: 'Pesquisa na web', description: 'Permite que fluxos futuros solicitem busca web com confirmação clara.' },
@@ -219,6 +220,33 @@ function HealthRow({ status, label, detail, command, action }: {
 
 function preference(settings: AppSettings): AppPersonalizationSettings {
   return { ...DEFAULT_PERSONALIZATION, ...settings.personalization };
+}
+
+function healthHeadline(health: AppHealthCheck): { title: string; detail: string } {
+  const localReady = health.ollama.apiReachable;
+  const hasModels = health.ollama.installedModels.length > 0;
+  const cloudReady = health.providers.some((p) => p.status.state === 'ready');
+  const usable = localReady || cloudReady;
+
+  if (health.overallStatus === 'error' && !usable) {
+    return {
+      title: 'Algo precisa de atenção antes de conversar',
+      detail: 'Nenhuma IA está pronta ainda. Configure a IA local (Ollama) ou um provider de nuvem abaixo.',
+    };
+  }
+  if (usable) {
+    const parts: string[] = [];
+    if (localReady) parts.push(hasModels ? 'IA local disponível' : 'IA local ativa (sem modelo instalado)');
+    if (cloudReady) parts.push('nuvem configurada');
+    const detail = health.overallStatus === 'ok'
+      ? parts.join(' · ')
+      : `${parts.join(' · ')} · algumas integrações avançadas pendentes`;
+    return { title: 'Pronto para conversar', detail };
+  }
+  return {
+    title: 'Quase pronto',
+    detail: 'A IA ainda não está configurada. Veja os itens abaixo para deixar tudo pronto.',
+  };
 }
 
 function buildHealthReport(health: AppHealthCheck): string {
@@ -884,7 +912,7 @@ export function SettingsPanel({
                 </div>
 
                 <label className="ollama-manager-search">
-                  Buscar ou baixar modelo Ollama
+                  Buscar modelo para baixar
                   <div>
                     <input
                       className="input-modern"
@@ -897,8 +925,9 @@ export function SettingsPanel({
                       className="btn-modern btn-modern-primary"
                       disabled={!managerPullCandidate || managerBusyId === managerPullCandidate?.modelId}
                       onClick={() => managerPullCandidate ? void pullManagerModel(managerPullCandidate.modelId) : undefined}
+                      title={managerPullCandidate ? `Baixar ${managerPullCandidate.modelId} pelo Ollama` : undefined}
                     >
-                      {managerPullCandidate ? `Baixar ${managerPullCandidate.modelId}` : 'Baixar modelo'}
+                      Baixar modelo selecionado
                     </button>
                   </div>
                 </label>
@@ -906,6 +935,7 @@ export function SettingsPanel({
                 {managerError ? <div className="input-error-tip" role="alert">{managerError}</div> : null}
                 {managerMessage ? <div className="settings-inline-note" role="status">{managerMessage}</div> : null}
 
+                <div className="settings-section-label">Modelos instalados</div>
                 <div className="ollama-model-grid">
                   {managerInstalledMatches.map((model) => {
                     const progress = managerProgress[model.id] ?? managerProgress[normalizeOllamaQuery(model.id)];
@@ -914,7 +944,7 @@ export function SettingsPanel({
                       <article key={model.id} className="ollama-model-card">
                         <header>
                           <strong>{model.id}</strong>
-                          <small>{[model.size, model.modifiedAt].filter(Boolean).join(' · ') || 'Instalado pelo Ollama'}</small>
+                          <small>{model.size || 'Instalado pelo Ollama'}</small>
                         </header>
                         <div className="ollama-model-meta">
                           {testStatus ? <span><b>Teste</b>{testStatus.state === 'ready' ? 'respondeu' : testStatus.message}</span> : null}
@@ -927,7 +957,7 @@ export function SettingsPanel({
                                 <span style={{ width: `${Math.max(0, Math.min(100, progress.progressPercent))}%` }} />
                               </div>
                             ) : null}
-                            {[progress.downloaded && progress.total ? `${progress.downloaded} / ${progress.total}` : undefined, progress.speed, progress.digest, progress.layer].filter(Boolean).join(' · ')}
+                            {[progress.downloaded && progress.total ? `${progress.downloaded} / ${progress.total}` : undefined, progress.speed, progress.layer].filter(Boolean).join(' · ')}
                           </div>
                         ) : null}
                         {managerRemoveConfirm === model.id ? (
@@ -948,8 +978,8 @@ export function SettingsPanel({
                   })}
                   {managerInstalledMatches.length === 0 ? (
                     <div className="model-picker-empty" role="status">
-                      <strong>Nenhum instalado encontrado</strong>
-                      <span>{managerPullCandidate ? `Use Baixar ${managerPullCandidate.modelId} para testar o download real pelo Ollama.` : 'Aba Local sem busca mostra apenas modelos instalados do Ollama.'}</span>
+                      <strong>Nenhum modelo instalado encontrado</strong>
+                      <span>{managerPullCandidate ? `Use "Baixar modelo selecionado" para baixar ${managerPullCandidate.modelId} pelo Ollama. Veja também o catálogo abaixo.` : 'Busque acima para baixar um modelo, ou explore o catálogo abaixo.'}</span>
                     </div>
                   ) : null}
                 </div>
@@ -1087,7 +1117,9 @@ export function SettingsPanel({
               </section>
 
               {modelsSubTab === 'cloud' ? (
-              <section className="model-comparison-panel" aria-label="Comparação de modelos">
+              <details className="settings-details model-comparison-advanced">
+                <summary>Avançado · Comparação de modelos</summary>
+                <section className="model-comparison-panel" aria-label="Comparação de modelos">
                 <header className="ollama-manager-header">
                   <div>
                     <strong>Comparação de modelos</strong>
@@ -1126,6 +1158,7 @@ export function SettingsPanel({
                   </div>
                 ) : null}
               </section>
+              </details>
               ) : null}
             </div>
           ) : null}
@@ -1238,12 +1271,6 @@ export function SettingsPanel({
                   checked={personalization.customizeAilu}
                   onChange={(value) => updatePersonalization('customizeAilu', value)}
                 />
-                <SwitchRow
-                  label="Gerenciar cookies"
-                  description="Guarda a preferência para fluxos web que exigirem estado de navegador."
-                  checked={personalization.manageCookies}
-                  onChange={(value) => updatePersonalization('manageCookies', value)}
-                />
               </section>
 
               <section className="settings-block prompt-preset-settings">
@@ -1324,9 +1351,9 @@ export function SettingsPanel({
                 <div className="ollama-manager-header">
                   <div>
                     <strong className={`health-overall health-overall-${health?.overallStatus ?? 'unknown'}`}>
-                      {!health ? 'Aguardando diagnóstico' : health.overallStatus === 'ok' ? 'Tudo funcionando' : health.overallStatus === 'warning' ? 'Atenção necessária' : 'Problemas encontrados'}
+                      {!health ? 'Aguardando diagnóstico' : healthHeadline(health).title}
                     </strong>
-                    <small>{health ? 'Diagnóstico executado.' : 'Clique em Verificar para carregar o diagnóstico.'}</small>
+                    <small>{health ? healthHeadline(health).detail : 'Clique em Verificar para carregar o diagnóstico.'}</small>
                   </div>
                   <button type="button" className="settings-pill-button" disabled={healthLoading} onClick={() => void refreshHealth()}>
                     {healthLoading ? 'Verificando…' : 'Verificar agora'}

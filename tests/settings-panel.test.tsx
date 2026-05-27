@@ -326,7 +326,7 @@ describe('SettingsPanel', () => {
     fireEvent.change(screen.getByPlaceholderText('gpt-oss, llama3.2, qwen2.5-coder:7b'), {
       target: { value: 'gpt oss' },
     });
-    fireEvent.click(screen.getByRole('button', { name: 'Baixar gpt-oss' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Baixar modelo selecionado' }));
 
     await waitFor(() => {
       expect(api.installLocalModel).toHaveBeenCalledWith('gpt-oss');
@@ -448,11 +448,13 @@ describe('SettingsPanel', () => {
     expect(screen.getByText('Memórias guardadas')).toBeInTheDocument();
     expect(screen.getByText('Histórico de chat de referência')).toBeInTheDocument();
     expect(screen.getByText('Personalização avançada do Ailu')).toBeInTheDocument();
-    expect(screen.getByText('Gerenciar cookies')).toBeInTheDocument();
+    // Cookies foi movido para "Avançado" — não fica na superfície comum.
+    expect(screen.queryByText('Gerenciar cookies')).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: /Avançado/ }));
 
     for (const label of [
+      'Gerenciar cookies',
       'Extração da página web',
       'Pesquisa por imagens',
       'Pesquisa na web',
@@ -473,6 +475,9 @@ describe('SettingsPanel', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Verificar agora' }));
     await waitFor(() => {
       expect(api.getAppHealthCheck).toHaveBeenCalled();
+      // Cabeçalho em linguagem humana, não "Atenção necessária" genérico.
+      expect(screen.getByText('Pronto para conversar')).toBeInTheDocument();
+      expect(screen.queryByText('Atenção necessária')).not.toBeInTheDocument();
       // Itens do health.items[] aparecem na seção "Outros"
       expect(screen.getByText('Ollama API ativa')).toBeInTheDocument();
       expect(screen.getByText('Backend STT')).toBeInTheDocument();

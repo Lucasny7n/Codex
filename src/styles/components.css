@@ -5206,6 +5206,34 @@
   color: var(--text-tertiary, var(--text-secondary));
 }
 
+.plus-menu-soon {
+  margin-top: 4px;
+  border-top: 1px solid var(--border-subtle);
+  padding-top: 4px;
+}
+
+.plus-menu-soon > summary {
+  list-style: none;
+  cursor: pointer;
+  padding: 6px 12px;
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-tertiary, var(--text-secondary));
+}
+
+.plus-menu-soon > summary::-webkit-details-marker {
+  display: none;
+}
+
+.plus-menu-soon > summary::after {
+  content: ' ›';
+}
+
+.plus-menu-soon[open] > summary::after {
+  content: ' ⌄';
+}
+
 .plus-menu .menu-item.is-soon {
   opacity: 0.55;
   cursor: not-allowed;
