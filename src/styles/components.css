@@ -9203,49 +9203,6 @@ body,
   text-align: center;
 }
 
-/* ── Chat memory toggle bar ─────────────────────────────────── */
-.chat-memory-bar {
-  display: flex;
-  justify-content: flex-end;
-  padding: 4px 12px 0;
-}
-
-.chat-memory-toggle {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  padding: 3px 10px;
-  border-radius: 99px;
-  border: 1px solid var(--border-subtle);
-  background: transparent;
-  color: var(--text-secondary);
-  font-size: 0.72rem;
-  cursor: pointer;
-  transition: background 0.15s, color 0.15s;
-}
-
-.chat-memory-toggle:hover {
-  background: rgba(255,255,255,0.06);
-  color: var(--text-primary);
-}
-
-.chat-memory-toggle.memory-off {
-  border-color: var(--warning, #f59e0b);
-  color: var(--warning, #f59e0b);
-}
-
-/* ── Chat speak error banner ────────────────────────────────── */
-.chat-speak-error {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 6px 14px;
-  background: rgba(220, 38, 38, 0.12);
-  border-bottom: 1px solid rgba(220, 38, 38, 0.25);
-  color: #fca5a5;
-  font-size: 0.8rem;
-}
-
 /* ── Models sub-tabs ────────────────────────────────────────── */
 .models-sub-tabs {
   display: flex;

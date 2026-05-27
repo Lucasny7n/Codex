@@ -25,13 +25,24 @@ export function parseMemoryCommand(rawInput: string): MemoryCommand | undefined 
   const input = normalize(rawInput);
   const lower = input.toLowerCase();
 
-  // Recall queries.
-  if (/^o que (voc[êe]|tu) (lembra|sabe).*(sobre|de) mim\b/u.test(lower)
-    || /^o que (voc[êe]|tu) (lembra|sabe) sobre mim\b/u.test(lower)) {
-    return { type: 'recall', scope: 'global' };
-  }
-  if (/^o que (voc[êe]|tu) (lembra|sabe).*(deste|desse|neste|nesse|do|sobre.*o?) projeto\b/u.test(lower)) {
+  // Recall queries. Cover many pt-BR phrasings the user actually types:
+  // "o que você lembra/sabe sobre mim", "o que você tem salvo/guardado sobre mim",
+  // "o que você guardou/salvou/armazenou sobre mim", "o que você tem sobre mim",
+  // "quais memórias você tem sobre mim", "o que você sabe a meu respeito".
+  const RECALL_VERB = '(?:lembra|sabe|tem|tem salvo|tem guardado|guardou|guardado|salvou|salvo|armazen\\w*|mem[óo]rias?)';
+  const recallProject = new RegExp(
+    `^(?:o que|quais)\\b.*\\b${RECALL_VERB}\\b.*\\bprojeto\\b`,
+    'u',
+  );
+  const recallGlobal = new RegExp(
+    `^(?:o que|quais)\\b.*\\b${RECALL_VERB}\\b.*\\b(?:mim|meu respeito|sobre eu)\\b`,
+    'u',
+  );
+  if (recallProject.test(lower)) {
     return { type: 'recall', scope: 'project' };
+  }
+  if (recallGlobal.test(lower)) {
+    return { type: 'recall', scope: 'global' };
   }
 
   // Forget.

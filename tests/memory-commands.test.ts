@@ -30,8 +30,24 @@ describe('parseMemoryCommand', () => {
     expect(parseMemoryCommand('o que você lembra sobre mim?')).toEqual({ type: 'recall', scope: 'global' });
   });
 
+  it('parses "o que você tem salvo sobre mim?" as a global recall', () => {
+    expect(parseMemoryCommand('o que você tem salvo sobre mim?')).toEqual({ type: 'recall', scope: 'global' });
+  });
+
+  it('parses "o que você guardou sobre mim?" as a global recall', () => {
+    expect(parseMemoryCommand('o que você guardou sobre mim?')).toEqual({ type: 'recall', scope: 'global' });
+  });
+
+  it('parses "quais memórias você tem sobre mim?" as a global recall', () => {
+    expect(parseMemoryCommand('quais memórias você tem sobre mim?')).toEqual({ type: 'recall', scope: 'global' });
+  });
+
   it('parses "o que você lembra sobre este projeto?" as a project recall', () => {
     expect(parseMemoryCommand('o que você lembra sobre este projeto?')).toEqual({ type: 'recall', scope: 'project' });
+  });
+
+  it('parses "o que você tem guardado deste projeto?" as a project recall', () => {
+    expect(parseMemoryCommand('o que você tem guardado deste projeto?')).toEqual({ type: 'recall', scope: 'project' });
   });
 
   it('returns undefined for normal messages', () => {
