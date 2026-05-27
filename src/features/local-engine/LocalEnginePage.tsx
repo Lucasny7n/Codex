@@ -22,6 +22,57 @@ import { HardwareSummary } from './HardwareSummary';
 import { ModelFitPanel } from './ModelFitPanel';
 import { RuntimeRecommendationCard } from './RuntimeRecommendationCard';
 
+function CapabilitySummary({ hardware, backends }: { hardware: HardwareSnapshot; backends: BackendStatus[] }): JSX.Element {
+  const hasRuntime = backends.some(
+    (b) => b.availability === 'ready' || b.availability === 'installed',
+  );
+  const ramGib = hardware.memory.totalBytes / (1024 ** 3);
+  const vramGib = hardware.gpus[0]?.vramTotalBytes
+    ? hardware.gpus[0].vramTotalBytes / (1024 ** 3)
+    : 0;
+  const effectiveGib = Math.max(ramGib, vramGib);
+
+  let headline: string;
+  let sub: string;
+  let tone: 'ok' | 'warn' | 'info';
+
+  if (!hasRuntime) {
+    headline = 'Nenhum runtime instalado';
+    sub = 'Instale o Ollama para usar IA local. Clique em "Runtimes" abaixo para ver as opções.';
+    tone = 'warn';
+  } else if (effectiveGib >= 24) {
+    headline = 'PC com boa capacidade para IA local';
+    sub = `Pode rodar modelos grandes (13B–34B) com conforto. ${vramGib > 0 ? `GPU: ${vramGib.toFixed(0)} GB VRAM.` : `RAM: ${ramGib.toFixed(0)} GB.`}`;
+    tone = 'ok';
+  } else if (effectiveGib >= 12) {
+    headline = 'PC adequado para IA local';
+    sub = `Modelos de 7B a 13B funcionam bem. ${vramGib > 0 ? `GPU: ${vramGib.toFixed(0)} GB VRAM.` : `RAM: ${ramGib.toFixed(0)} GB.`}`;
+    tone = 'ok';
+  } else if (effectiveGib >= 6) {
+    headline = 'PC básico para IA local';
+    sub = `Ideal para modelos de até 7B. Modelos maiores podem ficar lentos.`;
+    tone = 'info';
+  } else {
+    headline = 'PC com limitações para IA local';
+    sub = 'RAM disponível é baixa. Modelos pequenos (1B–3B) ou nuvem são recomendados.';
+    tone = 'warn';
+  }
+
+  const toneClass = tone === 'ok' ? 'health-row-ok' : tone === 'warn' ? 'health-row-warning' : 'health-row-info';
+
+  return (
+    <div className={`health-row ${toneClass}`} style={{ marginBottom: '0.25rem' }}>
+      <span className="health-row-icon" aria-hidden="true">
+        {tone === 'ok' ? '✓' : tone === 'warn' ? '⚠' : 'ℹ'}
+      </span>
+      <div className="health-row-body">
+        <strong className="health-row-label">{headline}</strong>
+        <span className="health-row-detail">{sub}</span>
+      </div>
+    </div>
+  );
+}
+
 export function LocalEnginePage(): JSX.Element {
   const [hardware, setHardware] = useState<HardwareSnapshot | undefined>();
   const [hardwareLoading, setHardwareLoading] = useState(true);
@@ -40,7 +91,6 @@ export function LocalEnginePage(): JSX.Element {
   const [fitResult, setFitResult] = useState<RuntimeEstimate | undefined>();
   const [fitError, setFitError] = useState<string | undefined>();
 
-  // Initial load: initialize to loading=true and only set state in .then() callbacks (async)
   useEffect(() => {
     let cancelled = false;
     detectLocalHardware().then(
@@ -132,15 +182,22 @@ export function LocalEnginePage(): JSX.Element {
     <div className="settings-page">
       <header className="settings-page-heading">
         <span>Máquina Local</span>
-        <h3>Hardware local e engines de IA</h3>
+        <h3>Hardware e engines de IA instaladas</h3>
       </header>
+
+      {/* Resumo de capacidade */}
+      {hardware && !hardwareLoading ? (
+        <section className="settings-block">
+          <CapabilitySummary hardware={hardware} backends={backends} />
+        </section>
+      ) : null}
 
       {/* Hardware */}
       <section className="settings-block">
         <div className="ollama-manager-header">
           <div>
-            <strong>Hardware detectado</strong>
-            <small>CPU, GPU, RAM, disco e aceleradores disponíveis neste PC.</small>
+            <strong>Hardware</strong>
+            <small>CPU, GPU, RAM e aceleradores neste PC.</small>
           </div>
           <button
             type="button"
@@ -162,12 +219,12 @@ export function LocalEnginePage(): JSX.Element {
         {hardware ? <HardwareSummary snapshot={hardware} /> : null}
       </section>
 
-      {/* Backends */}
+      {/* Runtimes */}
       <section className="settings-block">
         <div className="ollama-manager-header">
           <div>
-            <strong>Backends disponíveis</strong>
-            <small>Engines de inferência detectados neste sistema.</small>
+            <strong>Runtimes</strong>
+            <small>Engines de inferência detectadas neste sistema.</small>
           </div>
           <button
             type="button"
@@ -175,7 +232,7 @@ export function LocalEnginePage(): JSX.Element {
             disabled={backendsLoading}
             onClick={loadBackends}
           >
-            {backendsLoading ? 'Carregando...' : 'Atualizar backends'}
+            {backendsLoading ? 'Carregando...' : 'Atualizar runtimes'}
           </button>
         </div>
         {backendsError ? (
@@ -183,7 +240,7 @@ export function LocalEnginePage(): JSX.Element {
         ) : null}
         {backendsLoading && backends.length === 0 ? (
           <div className="model-picker-empty" role="status">
-            <span>Carregando backends...</span>
+            <span>Carregando runtimes...</span>
           </div>
         ) : null}
         {!backendsLoading || backends.length > 0 ? (
@@ -191,73 +248,83 @@ export function LocalEnginePage(): JSX.Element {
         ) : null}
       </section>
 
-      {/* Recomendação */}
-      <section className="settings-block">
-        <div className="ollama-manager-header">
-          <div>
-            <strong>Recomendação de runtime</strong>
-            <small>Qual backend é melhor para um modelo específico neste PC.</small>
-          </div>
-        </div>
-        <form onSubmit={handleRecommend} style={{ display: 'flex', gap: '0.5rem', alignItems: 'flex-end' }}>
-          <input
-            type="text"
-            className="settings-input"
-            value={recommendModelId}
-            onChange={(e) => setRecommendModelId(e.target.value)}
-            placeholder="qwen2.5-coder:7b"
-            aria-label="ID do modelo para recomendar"
-            style={{ flex: 1 }}
-          />
-          <button
-            type="submit"
-            className="settings-pill-button"
-            disabled={!recommendModelId.trim() || recommendLoading}
-          >
-            {recommendLoading ? 'Calculando...' : 'Recomendar'}
-          </button>
-        </form>
-        {recommendError ? (
-          <div className="input-error-tip" role="alert" style={{ marginTop: '0.5rem' }}>{recommendError}</div>
-        ) : null}
-        {recommendation ? (
-          <div style={{ marginTop: '0.75rem' }}>
-            <RuntimeRecommendationCard recommendation={recommendation} backends={backends} />
-          </div>
-        ) : null}
-      </section>
-
-      {/* Estimativa de fit */}
-      <section className="settings-block">
-        <div className="ollama-manager-header">
-          <div>
-            <strong>Estimativa de modelo</strong>
-            <small>Veja se um modelo cabe neste PC com os recursos disponíveis.</small>
-          </div>
-        </div>
-        <ModelFitPanel
-          onEstimate={handleEstimate}
-          loading={fitLoading}
-          result={fitResult}
-          error={fitError}
-        />
-      </section>
-
-      {/* Benchmark */}
+      {/* Ferramentas avançadas — ocultas por padrão */}
       {hardware ? (
         <section className="settings-block">
-          <div className="ollama-manager-header">
-            <div>
-              <strong>Benchmark</strong>
-              <small>Mede velocidade real de inferência. Exige modelo instalado.</small>
+          <details className="settings-details" style={{ paddingTop: 0, borderTop: 'none' }}>
+            <summary style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-primary)', cursor: 'pointer' }}>
+              Ferramentas avançadas
+            </summary>
+            <div style={{ marginTop: '1rem', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+              {/* Recomendação */}
+              <div>
+                <div className="ollama-manager-header">
+                  <div>
+                    <strong>Recomendação de runtime</strong>
+                    <small>Qual engine é melhor para um modelo específico neste PC.</small>
+                  </div>
+                </div>
+                <form onSubmit={handleRecommend} style={{ display: 'flex', gap: '0.5rem', alignItems: 'flex-end' }}>
+                  <input
+                    type="text"
+                    className="settings-input"
+                    value={recommendModelId}
+                    onChange={(e) => setRecommendModelId(e.target.value)}
+                    placeholder="qwen2.5-coder:7b"
+                    aria-label="ID do modelo para recomendar"
+                    style={{ flex: 1 }}
+                  />
+                  <button
+                    type="submit"
+                    className="settings-pill-button"
+                    disabled={!recommendModelId.trim() || recommendLoading}
+                  >
+                    {recommendLoading ? 'Calculando...' : 'Recomendar'}
+                  </button>
+                </form>
+                {recommendError ? (
+                  <div className="input-error-tip" role="alert" style={{ marginTop: '0.5rem' }}>{recommendError}</div>
+                ) : null}
+                {recommendation ? (
+                  <div style={{ marginTop: '0.75rem' }}>
+                    <RuntimeRecommendationCard recommendation={recommendation} backends={backends} />
+                  </div>
+                ) : null}
+              </div>
+
+              {/* Estimativa de fit */}
+              <div>
+                <div className="ollama-manager-header">
+                  <div>
+                    <strong>Estimativa de modelo</strong>
+                    <small>Veja se um modelo cabe neste PC com os recursos disponíveis.</small>
+                  </div>
+                </div>
+                <ModelFitPanel
+                  onEstimate={handleEstimate}
+                  loading={fitLoading}
+                  result={fitResult}
+                  error={fitError}
+                />
+              </div>
+
+              {/* Benchmark */}
+              <div>
+                <div className="ollama-manager-header">
+                  <div>
+                    <strong>Benchmark</strong>
+                    <small>Mede velocidade real de inferência. Exige modelo instalado.</small>
+                  </div>
+                </div>
+                <BenchmarkPanel
+                  modelId={benchmarkModelId}
+                  backends={backends}
+                  onTest={handleTest}
+                  onBenchmark={handleBenchmark}
+                />
+              </div>
             </div>
-          </div>
-          <BenchmarkPanel
-            modelId={benchmarkModelId}
-            backends={backends}
-            onTest={handleTest}
-            onBenchmark={handleBenchmark}
-          />
+          </details>
         </section>
       ) : null}
     </div>

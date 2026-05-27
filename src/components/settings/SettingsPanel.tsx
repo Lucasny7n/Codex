@@ -1221,7 +1221,7 @@ export function SettingsPanel({
                     <strong className={`health-overall health-overall-${health?.overallStatus ?? 'unknown'}`}>
                       {!health ? 'Aguardando diagnóstico' : health.overallStatus === 'ok' ? 'Tudo funcionando' : health.overallStatus === 'warning' ? 'Atenção necessária' : 'Problemas encontrados'}
                     </strong>
-                    <small>{health ? `${health.baseDir} · branch ${health.branch ?? 'desconhecida'}` : 'Clique em Verificar para carregar o diagnóstico.'}</small>
+                    <small>{health ? 'Diagnóstico executado.' : 'Clique em Verificar para carregar o diagnóstico.'}</small>
                   </div>
                   <button type="button" className="settings-pill-button" disabled={healthLoading} onClick={() => void refreshHealth()}>
                     {healthLoading ? 'Verificando…' : 'Verificar agora'}
@@ -1247,14 +1247,24 @@ export function SettingsPanel({
                       ))}
                     </div>
 
-                    {/* Sistema */}
-                    <div className="health-group">
-                      <h4 className="health-group-title">Ferramentas do sistema</h4>
-                      <HealthRow status={health.nodeOk ? 'ok' : 'error'} label="Node.js" detail={health.nodeOk ? 'Disponível no PATH' : 'node não encontrado. Instale via nvm ou pacote do sistema.'} command={health.nodeOk ? undefined : 'nvm install --lts'} />
-                      <HealthRow status={health.npmOk ? 'ok' : 'error'} label="npm" detail={health.npmOk ? 'Disponível no PATH' : 'npm não encontrado. Geralmente vem junto com Node.js.'} />
-                      <HealthRow status={health.cargoOk ? 'ok' : 'error'} label="Rust / cargo" detail={health.cargoOk ? 'Disponível no PATH' : 'cargo não encontrado. Instale via rustup.rs.'} command={health.cargoOk ? undefined : 'curl --proto =https --tlsv1.2 -sSf https://sh.rustup.rs | sh'} />
-                      <HealthRow status={health.tauriOk ? 'ok' : 'warning'} label="Tauri CLI" detail={health.tauriOk ? 'Disponível' : 'tauri-cli não encontrado. Pode ser necessário para desenvolvimento.'} command={health.tauriOk ? undefined : 'cargo install tauri-cli'} />
-                    </div>
+                    {/* Sistema — ferramentas de dev: ocultas por padrão */}
+                    {(!health.nodeOk || !health.npmOk || !health.cargoOk) ? (
+                      <div className="health-group">
+                        <h4 className="health-group-title">Ferramentas de desenvolvimento</h4>
+                        <HealthRow status={health.nodeOk ? 'ok' : 'error'} label="Node.js" detail={health.nodeOk ? 'Disponível' : 'node não encontrado. Instale via nvm ou pacote do sistema.'} command={health.nodeOk ? undefined : 'nvm install --lts'} />
+                        <HealthRow status={health.npmOk ? 'ok' : 'error'} label="npm" detail={health.npmOk ? 'Disponível' : 'npm não encontrado. Geralmente vem junto com Node.js.'} />
+                        <HealthRow status={health.cargoOk ? 'ok' : 'error'} label="Rust / cargo" detail={health.cargoOk ? 'Disponível' : 'cargo não encontrado. Instale via rustup.rs.'} command={health.cargoOk ? undefined : 'curl --proto =https --tlsv1.2 -sSf https://sh.rustup.rs | sh'} />
+                      </div>
+                    ) : (
+                      <details className="settings-details">
+                        <summary>Ferramentas de desenvolvimento (tudo ok)</summary>
+                        <div className="health-group" style={{ marginTop: '0.5rem' }}>
+                          <HealthRow status="ok" label="Node.js" detail="Disponível" />
+                          <HealthRow status="ok" label="npm" detail="Disponível" />
+                          <HealthRow status="ok" label="Rust / cargo" detail="Disponível" />
+                        </div>
+                      </details>
+                    )}
 
                     {/* Providers */}
                     {health.providers.length > 0 ? (
@@ -1277,17 +1287,14 @@ export function SettingsPanel({
                       </div>
                     ) : null}
 
-                    {/* Git/App */}
+                    {/* App e armazenamento */}
                     <div className="health-group">
                       <h4 className="health-group-title">App e armazenamento</h4>
                       <HealthRow
                         status={health.correctBaseDir ? 'ok' : 'warning'}
-                        label="Diretório base"
-                        detail={health.correctBaseDir ? `Correto: ${health.baseDir}` : `Esperado: ${health.expectedBaseDir} · Atual: ${health.baseDir}`}
+                        label="Diretório do app"
+                        detail={health.correctBaseDir ? 'Configurado corretamente' : 'Diretório base fora do esperado — pode causar problemas ao salvar dados.'}
                       />
-                      {health.storageRoot ? (
-                        <HealthRow status="ok" label="Armazenamento" detail={`Raiz: ${health.storageRoot}`} />
-                      ) : null}
                       {health.sessionsCount !== undefined ? (
                         <HealthRow status="ok" label="Conversas salvas" detail={`${health.sessionsCount} conversa(s) armazenada(s)`} />
                       ) : null}
@@ -1306,9 +1313,14 @@ export function SettingsPanel({
                     {/* Erros recentes */}
                     {health.recentErrors.length > 0 ? (
                       <div className="health-group">
-                        <h4 className="health-group-title">Erros recentes</h4>
+                        <h4 className="health-group-title">Problemas recentes</h4>
                         {health.recentErrors.slice(0, 5).map((err, index) => (
-                          <HealthRow key={index} status={err.severity === 'error' ? 'error' : 'warning'} label={err.code} detail={err.message} />
+                          <HealthRow
+                            key={index}
+                            status={err.severity === 'error' ? 'error' : 'warning'}
+                            label={err.message || err.code}
+                            detail=""
+                          />
                         ))}
                       </div>
                     ) : null}
