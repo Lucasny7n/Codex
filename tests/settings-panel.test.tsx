@@ -28,6 +28,7 @@ vi.mock('../src/lib/api', () => ({
   showLocalModel: vi.fn(),
   testLocalModel: vi.fn(),
   testModelRuntime: vi.fn(),
+  testProviderConnection: vi.fn(),
 }));
 
 const readyStatus: ProviderRuntimeStatus = {
@@ -278,6 +279,30 @@ describe('SettingsPanel', () => {
     expect(screen.getByText('GPT-5.4 Mini via OpenRouter')).toBeInTheDocument();
     expect(screen.getByText('Gemini 2.5 Flash')).toBeInTheDocument();
     expect(screen.getByText(/Modelos em destaque/)).toBeInTheDocument();
+  });
+
+  it('Nuvem testa conexão do provider e mostra resultado real (erro)', async () => {
+    vi.mocked(api.testProviderConnection).mockResolvedValue({
+      state: 'error',
+      message: '401 Unauthorized: invalid api key',
+      checkedAt: new Date().toISOString(),
+    });
+    renderSettings({ initialTab: 'models' });
+
+    fireEvent.click(screen.getByRole('tab', { name: 'Nuvem' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Testar conexão' }));
+
+    await waitFor(() => {
+      expect(api.testProviderConnection).toHaveBeenCalledWith('gemini-cli');
+      expect(screen.getByText(/401 Unauthorized: invalid api key/)).toBeInTheDocument();
+    });
+  });
+
+  it('Nuvem nunca expõe API key aberta', () => {
+    renderSettings({ initialTab: 'models' });
+    fireEvent.click(screen.getByRole('tab', { name: 'Nuvem' }));
+    // A superfície de nuvem não renderiza chaves; configuração fica em Contas.
+    expect(document.body.textContent).not.toMatch(/sk-[A-Za-z0-9]{8,}/);
   });
 
   it('Model Manager cria pull candidate gpt-oss e mostra erro inline de pull', async () => {

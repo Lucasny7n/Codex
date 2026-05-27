@@ -8,6 +8,7 @@ import {
   removeLocalModel,
   showLocalModel,
   testLocalModel,
+  testProviderConnection,
 } from '../../lib/api';
 import { parseComparisonTargets } from '../../lib/models/modelComparisonService';
 import { fuzzyMatch } from '../../lib/models/fuzzyMatch';
@@ -393,6 +394,20 @@ export function SettingsPanel({
   const [customPresetLabel, setCustomPresetLabel] = useState('');
   const [customPresetPrompt, setCustomPresetPrompt] = useState('');
   const [modelsSubTab, setModelsSubTab] = useState<'local' | 'cloud'>('local');
+  const [providerTestStatus, setProviderTestStatus] = useState<Record<string, ProviderRuntimeStatus | 'testing'>>({});
+
+  async function testProvider(providerId: string): Promise<void> {
+    setProviderTestStatus((current) => ({ ...current, [providerId]: 'testing' }));
+    try {
+      const result = await testProviderConnection(providerId);
+      setProviderTestStatus((current) => ({ ...current, [providerId]: result }));
+    } catch (cause) {
+      setProviderTestStatus((current) => ({
+        ...current,
+        [providerId]: { state: 'error', message: cause instanceof Error ? cause.message : 'Falha ao testar conexão.', checkedAt: new Date().toISOString() },
+      }));
+    }
+  }
   const [comparisonTargets, setComparisonTargets] = useState('local-ollama/qwen2.5-coder:1.5b\nopenai-api/gpt-5.4-mini');
   const [comparisonPrompt, setComparisonPrompt] = useState('');
   const [comparisonBusy, setComparisonBusy] = useState(false);
@@ -953,19 +968,42 @@ export function SettingsPanel({
                     Gerenciar contas
                   </button>
                 </div>
-                {providers.map((provider) => (
-                  <div key={provider.id} className="health-row health-row-provider">
-                    <span className={`health-row-icon`} aria-hidden="true">
-                      {provider.status.state === 'ready' ? '✓' : provider.status.state === 'error' ? '✗' : '⊙'}
-                    </span>
-                    <div className="health-row-body">
-                      <strong className="health-row-label">{provider.label}</strong>
-                      <span className="health-row-detail">
-                        {provider.status.state === 'ready' ? `Pronto · ${provider.models.length} modelo(s)` : provider.status.message ?? 'Não testado'}
+                {providers.map((provider) => {
+                  const tested = providerTestStatus[provider.id];
+                  const testing = tested === 'testing';
+                  const testResult = tested && tested !== 'testing' ? tested : undefined;
+                  const configured = provider.status.state === 'ready' || provider.configurable && provider.enabled;
+                  return (
+                    <div key={provider.id} className="health-row health-row-provider">
+                      <span className="health-row-icon" aria-hidden="true">
+                        {provider.status.state === 'ready' ? '✓' : provider.status.state === 'error' ? '✗' : '⊙'}
                       </span>
+                      <div className="health-row-body">
+                        <strong className="health-row-label">{provider.label}</strong>
+                        <span className="health-row-detail">
+                          {provider.status.state === 'ready'
+                            ? `Configurado · ${provider.models.length} modelo(s)`
+                            : configured
+                              ? (provider.status.message ?? 'Configurado, não testado')
+                              : 'Não configurado — adicione a chave de API em Contas.'}
+                        </span>
+                        {testResult ? (
+                          <span className={`health-row-detail provider-test-result ${testResult.state === 'ready' ? 'ok' : 'error'}`}>
+                            {testResult.state === 'ready' ? 'Conexão OK' : `Erro: ${testResult.message}`}
+                          </span>
+                        ) : null}
+                      </div>
+                      <button
+                        type="button"
+                        className="settings-pill-button"
+                        disabled={testing}
+                        onClick={() => void testProvider(provider.id)}
+                      >
+                        {testing ? 'Testando…' : 'Testar conexão'}
+                      </button>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </section>
               ) : null}
 

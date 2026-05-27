@@ -4499,6 +4499,14 @@
   color: var(--text-secondary);
 }
 
+.provider-test-result.ok {
+  color: var(--success-text, #4ade80);
+}
+
+.provider-test-result.error {
+  color: var(--danger-text, #fca5a5);
+}
+
 .settings-model-facts {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
