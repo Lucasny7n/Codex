@@ -23,9 +23,10 @@ import { ModelFitPanel } from './ModelFitPanel';
 import { RuntimeRecommendationCard } from './RuntimeRecommendationCard';
 
 function CapabilitySummary({ hardware, backends }: { hardware: HardwareSnapshot; backends: BackendStatus[] }): JSX.Element {
-  const hasRuntime = backends.some(
+  const installedRuntime = backends.find(
     (b) => b.availability === 'ready' || b.availability === 'installed',
   );
+  const hasRuntime = Boolean(installedRuntime);
   const ramGib = hardware.memory.totalBytes / (1024 ** 3);
   const vramGib = hardware.gpus[0]?.vramTotalBytes
     ? hardware.gpus[0].vramTotalBytes / (1024 ** 3)
@@ -35,40 +36,58 @@ function CapabilitySummary({ hardware, backends }: { hardware: HardwareSnapshot;
   let headline: string;
   let sub: string;
   let tone: 'ok' | 'warn' | 'info';
+  let statusWord: string;
+  let modelSize: string;
 
-  if (!hasRuntime) {
-    headline = 'Nenhum runtime instalado';
-    sub = 'Instale o Ollama para usar IA local. Clique em "Runtimes" abaixo para ver as opções.';
-    tone = 'warn';
-  } else if (effectiveGib >= 24) {
-    headline = 'PC com boa capacidade para IA local';
-    sub = `Pode rodar modelos grandes (13B–34B) com conforto. ${vramGib > 0 ? `GPU: ${vramGib.toFixed(0)} GB VRAM.` : `RAM: ${ramGib.toFixed(0)} GB.`}`;
+  if (effectiveGib >= 24) {
+    statusWord = 'bom';
+    headline = 'Seu PC é adequado para IA local';
+    sub = `Roda modelos grandes com conforto. ${vramGib > 0 ? `GPU com ${vramGib.toFixed(0)} GB de VRAM.` : `${ramGib.toFixed(0)} GB de RAM.`}`;
+    modelSize = '13B–34B';
     tone = 'ok';
   } else if (effectiveGib >= 12) {
-    headline = 'PC adequado para IA local';
-    sub = `Modelos de 7B a 13B funcionam bem. ${vramGib > 0 ? `GPU: ${vramGib.toFixed(0)} GB VRAM.` : `RAM: ${ramGib.toFixed(0)} GB.`}`;
+    statusWord = 'bom';
+    headline = 'Seu PC é adequado para IA local';
+    sub = `Modelos médios funcionam bem. ${vramGib > 0 ? `GPU com ${vramGib.toFixed(0)} GB de VRAM.` : `${ramGib.toFixed(0)} GB de RAM.`}`;
+    modelSize = '7B–13B';
     tone = 'ok';
   } else if (effectiveGib >= 6) {
-    headline = 'PC básico para IA local';
-    sub = `Ideal para modelos de até 7B. Modelos maiores podem ficar lentos.`;
+    statusWord = 'limitado';
+    headline = 'Seu PC roda IA local com limites';
+    sub = 'Modelos pequenos funcionam; acima de 7B pode ficar lento.';
+    modelSize = 'até 7B';
     tone = 'info';
   } else {
-    headline = 'PC com limitações para IA local';
-    sub = 'RAM disponível é baixa. Modelos pequenos (1B–3B) ou nuvem são recomendados.';
+    statusWord = 'fraco';
+    headline = 'Seu PC tem capacidade limitada para IA local';
+    sub = 'RAM baixa: prefira modelos pequenos (1B–3B) ou use nuvem.';
+    modelSize = '1B–3B';
     tone = 'warn';
   }
 
+  const runtimeRec = installedRuntime?.label ?? 'Ollama (recomendado instalar)';
   const toneClass = tone === 'ok' ? 'health-row-ok' : tone === 'warn' ? 'health-row-warning' : 'health-row-info';
 
   return (
-    <div className={`health-row ${toneClass}`} style={{ marginBottom: '0.25rem' }}>
-      <span className="health-row-icon" aria-hidden="true">
-        {tone === 'ok' ? '✓' : tone === 'warn' ? '⚠' : 'ℹ'}
-      </span>
-      <div className="health-row-body">
-        <strong className="health-row-label">{headline}</strong>
-        <span className="health-row-detail">{sub}</span>
+    <div className="capability-summary">
+      <div className={`health-row ${toneClass}`} style={{ marginBottom: '0.5rem' }}>
+        <span className="health-row-icon" aria-hidden="true">
+          {tone === 'ok' ? '✓' : tone === 'warn' ? '⚠' : 'ℹ'}
+        </span>
+        <div className="health-row-body">
+          <strong className="health-row-label">{headline} · {statusWord}</strong>
+          <span className="health-row-detail">{sub}</span>
+        </div>
       </div>
+      <div className="capability-facts">
+        <span><strong>Tamanho recomendado</strong>{modelSize}</span>
+        <span><strong>Runtime recomendado</strong>{runtimeRec}</span>
+      </div>
+      {!hasRuntime ? (
+        <p className="capability-install-hint">
+          Nenhum runtime instalado ainda. Veja "Runtimes" abaixo para instalar o Ollama e começar.
+        </p>
+      ) : null}
     </div>
   );
 }

@@ -445,5 +445,14 @@ describe('SettingsPanel', () => {
       expect(screen.getAllByText('✓').length).toBeGreaterThanOrEqual(1);
       expect(screen.queryByText(/CODEX_CONTEXT_BOOTSTRAP/)).not.toBeInTheDocument();
     });
+
+    // Ferramentas dev (Node/npm/cargo) ficam dentro de "Diagnóstico avançado",
+    // recolhido por padrão — não soltas na superfície comum.
+    const advancedDetails = screen.getByText('Diagnóstico avançado').closest('details');
+    expect(advancedDetails).not.toBeNull();
+    expect(advancedDetails).not.toHaveAttribute('open');
+    expect(advancedDetails).toContainElement(screen.getByText('Node.js'));
+    expect(advancedDetails).toContainElement(screen.getByText('Rust / cargo'));
+    expect(advancedDetails).toContainElement(screen.getByRole('button', { name: 'Copiar relatório' }));
   });
 });

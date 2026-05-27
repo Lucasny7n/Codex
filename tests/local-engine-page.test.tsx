@@ -145,6 +145,20 @@ describe('LocalEnginePage', () => {
     expect(api.listRuntimeBackends).toHaveBeenCalledTimes(1);
   });
 
+  it('mostra resumo de capacidade com status, tamanho e runtime recomendados', async () => {
+    vi.mocked(api.detectLocalHardware).mockResolvedValue(hardwareSnapshot());
+    vi.mocked(api.listRuntimeBackends).mockResolvedValue(backendList());
+
+    render(<LocalEnginePage />);
+
+    await waitFor(() => {
+      expect(screen.getByText(/Seu PC é adequado para IA local/)).toBeInTheDocument();
+    });
+    expect(screen.getByText('Tamanho recomendado')).toBeInTheDocument();
+    expect(screen.getByText('7B–13B')).toBeInTheDocument();
+    expect(screen.getByText('Runtime recomendado')).toBeInTheDocument();
+  });
+
   it('exibe estado de carregamento enquanto detecta hardware', () => {
     vi.mocked(api.detectLocalHardware).mockReturnValue(new Promise(() => undefined));
     vi.mocked(api.listRuntimeBackends).mockResolvedValue([]);

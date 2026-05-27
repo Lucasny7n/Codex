@@ -220,6 +220,57 @@ function preference(settings: AppSettings): AppPersonalizationSettings {
   return { ...DEFAULT_PERSONALIZATION, ...settings.personalization };
 }
 
+function buildHealthReport(health: AppHealthCheck): string {
+  const yn = (ok: boolean) => (ok ? 'ok' : 'faltando');
+  const lines = [
+    'Relatório de diagnóstico — Ailu Studio',
+    `Status geral: ${health.overallStatus}`,
+    `IA local (Ollama): ${health.ollama.apiReachable ? 'acessível' : 'inacessível'} · ${health.ollama.installedModels.length} modelo(s)`,
+    `Node: ${yn(health.nodeOk)} · npm: ${yn(health.npmOk)} · cargo: ${yn(health.cargoOk)} · Tauri: ${yn(health.tauriOk)}`,
+    `Diretório base: ${health.baseDir}${health.correctBaseDir ? '' : ` (esperado ${health.expectedBaseDir})`}`,
+    health.storageRoot ? `Armazenamento: ${health.storageRoot}` : undefined,
+    health.branch ? `Branch: ${health.branch}` : undefined,
+    `Providers: ${health.providers.map((p) => `${p.id}=${p.status.state}`).join(', ') || 'nenhum'}`,
+  ].filter(Boolean);
+  if (health.recentErrors.length > 0) {
+    lines.push('Problemas recentes:');
+    for (const err of health.recentErrors.slice(0, 8)) lines.push(`- [${err.severity}] ${err.code}: ${err.message}`);
+  }
+  return lines.join('\n');
+}
+
+function AdvancedHealthDiagnostics({ health }: { health: AppHealthCheck }): JSX.Element {
+  const [copied, setCopied] = useState(false);
+  async function copyReport(): Promise<void> {
+    try {
+      await navigator.clipboard.writeText(buildHealthReport(health));
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1500);
+    } catch {
+      // clipboard optional
+    }
+  }
+  return (
+    <details className="settings-details health-advanced">
+      <summary>Diagnóstico avançado</summary>
+      <div className="health-group" style={{ marginTop: '0.5rem' }}>
+        <HealthRow status={health.nodeOk ? 'ok' : 'error'} label="Node.js" detail={health.nodeOk ? 'Disponível' : 'node não encontrado. Instale via nvm ou pacote do sistema.'} command={health.nodeOk ? undefined : 'nvm install --lts'} />
+        <HealthRow status={health.npmOk ? 'ok' : 'error'} label="npm" detail={health.npmOk ? 'Disponível' : 'npm não encontrado. Geralmente vem junto com Node.js.'} />
+        <HealthRow status={health.cargoOk ? 'ok' : 'error'} label="Rust / cargo" detail={health.cargoOk ? 'Disponível' : 'cargo não encontrado. Instale via rustup.rs.'} command={health.cargoOk ? undefined : 'curl --proto =https --tlsv1.2 -sSf https://sh.rustup.rs | sh'} />
+        <HealthRow status={health.tauriOk ? 'ok' : 'warning'} label="Tauri CLI" detail={health.tauriOk ? 'Disponível' : 'tauri-cli não encontrado (necessário só para desenvolvimento).'} />
+        <HealthRow status={health.correctBaseDir ? 'ok' : 'warning'} label="Diretório base" detail={health.baseDir} />
+        {health.storageRoot ? <HealthRow status="ok" label="Armazenamento" detail={health.storageRoot} /> : null}
+        {health.branch ? <HealthRow status="ok" label="Branch" detail={health.branch} /> : null}
+      </div>
+      <div className="dialog-actions" style={{ marginTop: '0.5rem' }}>
+        <button type="button" className="settings-pill-button" onClick={() => void copyReport()}>
+          {copied ? 'Copiado' : 'Copiar relatório'}
+        </button>
+      </div>
+    </details>
+  );
+}
+
 function fallbackText(settings: AppSettings): string {
   return (settings.aiRouting?.fallbackModels ?? [])
     .map((item) => `${item.enabled === false ? '# ' : ''}${item.providerId}/${item.modelId}${item.accountProfileId ? ` @ ${item.accountProfileId}` : ''}`)
@@ -1247,24 +1298,17 @@ export function SettingsPanel({
                       ))}
                     </div>
 
-                    {/* Sistema — ferramentas de dev: ocultas por padrão */}
-                    {(!health.nodeOk || !health.npmOk || !health.cargoOk) ? (
-                      <div className="health-group">
-                        <h4 className="health-group-title">Ferramentas de desenvolvimento</h4>
-                        <HealthRow status={health.nodeOk ? 'ok' : 'error'} label="Node.js" detail={health.nodeOk ? 'Disponível' : 'node não encontrado. Instale via nvm ou pacote do sistema.'} command={health.nodeOk ? undefined : 'nvm install --lts'} />
-                        <HealthRow status={health.npmOk ? 'ok' : 'error'} label="npm" detail={health.npmOk ? 'Disponível' : 'npm não encontrado. Geralmente vem junto com Node.js.'} />
-                        <HealthRow status={health.cargoOk ? 'ok' : 'error'} label="Rust / cargo" detail={health.cargoOk ? 'Disponível' : 'cargo não encontrado. Instale via rustup.rs.'} command={health.cargoOk ? undefined : 'curl --proto =https --tlsv1.2 -sSf https://sh.rustup.rs | sh'} />
-                      </div>
-                    ) : (
-                      <details className="settings-details">
-                        <summary>Ferramentas de desenvolvimento (tudo ok)</summary>
-                        <div className="health-group" style={{ marginTop: '0.5rem' }}>
-                          <HealthRow status="ok" label="Node.js" detail="Disponível" />
-                          <HealthRow status="ok" label="npm" detail="Disponível" />
-                          <HealthRow status="ok" label="Rust / cargo" detail="Disponível" />
-                        </div>
-                      </details>
-                    )}
+                    {/* Modelos instalados */}
+                    <div className="health-group">
+                      <h4 className="health-group-title">Modelos instalados</h4>
+                      <HealthRow
+                        status={health.ollama.installedModels.length > 0 ? 'ok' : 'warning'}
+                        label={health.ollama.installedModels.length > 0 ? `${health.ollama.installedModels.length} modelo(s) local(is)` : 'Nenhum modelo local instalado'}
+                        detail={health.ollama.installedModels.length > 0
+                          ? health.ollama.installedModels.slice(0, 4).map((m) => m.id).join(', ')
+                          : 'Baixe um modelo em Configurações → Modelos → Locais.'}
+                      />
+                    </div>
 
                     {/* Providers */}
                     {health.providers.length > 0 ? (
@@ -1324,6 +1368,9 @@ export function SettingsPanel({
                         ))}
                       </div>
                     ) : null}
+
+                    {/* Diagnóstico avançado (dev) — recolhido por padrão */}
+                    <AdvancedHealthDiagnostics health={health} />
                   </div>
                 ) : (
                   <div className="model-picker-empty" role="status">
