@@ -16,12 +16,24 @@ interface PermissionApprovalModalProps {
 
 export function PermissionApprovalModal({ permissions, onDecide }: PermissionApprovalModalProps): JSX.Element | null {
   const [busy, setBusy] = useState(false);
+  const [copied, setCopied] = useState(false);
   const pending = permissions.filter((p) => p.status === 'pending');
   const current = pending[0];
 
   if (!current) return null;
 
   const risk = RISK_BADGE[current.riskLevel] ?? { label: current.riskLevel, className: 'risk-medium' };
+  const affectedTarget = current.target && current.target !== current.command ? current.target : undefined;
+
+  async function copyCommand(): Promise<void> {
+    try {
+      await navigator.clipboard.writeText(current.command);
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1500);
+    } catch {
+      // Clipboard may be unavailable; copying is a convenience, not critical.
+    }
+  }
 
   async function decide(decision: 'allow_once' | 'deny_once'): Promise<void> {
     if (busy) return;
@@ -50,10 +62,22 @@ export function PermissionApprovalModal({ permissions, onDecide }: PermissionApp
         <p className="permission-reason">{current.reason}</p>
 
         <div className="permission-command-block">
-          <span className="permission-command-label">Comando pretendido</span>
+          <div className="permission-command-head">
+            <span className="permission-command-label">Comando pretendido</span>
+            <button type="button" className="permission-copy" onClick={() => void copyCommand()}>
+              {copied ? 'Copiado' : 'Copiar comando'}
+            </button>
+          </div>
           <code className="permission-command">{current.command}</code>
           {current.cwd ? <span className="permission-cwd">em {current.cwd}</span> : null}
         </div>
+
+        {affectedTarget ? (
+          <div className="permission-target">
+            <span>Arquivo / alvo afetado:</span>
+            <code>{affectedTarget}</code>
+          </div>
+        ) : null}
 
         {current.rollback ? (
           <div className="permission-rollback">
@@ -86,6 +110,10 @@ export function PermissionApprovalModal({ permissions, onDecide }: PermissionApp
             {busy ? 'Aprovando…' : 'Aprovar e executar'}
           </button>
         </div>
+
+        <p className="permission-policy-note">
+          O Ailu sempre pede aprovação antes de executar ações deste tipo. Nada roda sem o seu OK.
+        </p>
 
         {pending.length > 1 ? (
           <p className="permission-queue-note">
