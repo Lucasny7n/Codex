@@ -9,7 +9,7 @@ import {
   type SttCaptureStatus,
 } from '../../lib/stt/status';
 import type { ChatAttachment, LocalSttConfigSnapshot, SelectedFileAttachment, VoiceTranscriptionResult } from '../../types/domain';
-import { UiIcon } from '../common/AppIcons';
+import { UiIcon, type UiIconName } from '../common/AppIcons';
 import { FileManagerModal } from '../file/FileManagerModal';
 import { fileIconNameForKind, formatFileSize } from '../file/fileDisplay';
 import { PopupMenu, PremiumModal, StatusDot } from '../common/PremiumUI';
@@ -19,6 +19,7 @@ interface CommandInputPanelProps {
   onSendOrder: (order: string, mode: InputModeId, attachments: ChatAttachment[]) => Promise<void>;
   orderDisabledReason?: string;
   onOpenSkills?: () => void;
+  onToast?: (tone: 'success' | 'error' | 'info', message: string) => void;
 }
 
 export type InputModeId = 'auto' | 'thinking' | 'fast' | 'code' | 'terminal';
@@ -61,6 +62,19 @@ const INPUT_MODES: InputModeOption[] = [
     icon: 'desktop',
     description: 'Planeja comandos com aprovação para risco.',
   },
+];
+
+// Planned "+" menu actions not yet wired to a real backend. Shown disabled
+// with an "em breve" badge so we never pretend they work.
+const PLUS_SOON_ITEMS: Array<{ label: string; icon: UiIconName }> = [
+  { label: 'Captura de tela', icon: 'image' },
+  { label: 'Adicionar ao projeto', icon: 'folderPlus' },
+  { label: 'Adicionar do GitHub', icon: 'globe' },
+  { label: 'Conectores', icon: 'desktop' },
+  { label: 'Pesquisa', icon: 'search' },
+  { label: 'Busca na web', icon: 'globe' },
+  { label: 'Estilo', icon: 'pen' },
+  { label: 'Ferramentas', icon: 'fileCode' },
 ];
 
 type VoiceState =
@@ -190,6 +204,7 @@ export function CommandInputPanel({
   onSendOrder,
   orderDisabledReason,
   onOpenSkills,
+  onToast,
 }: CommandInputPanelProps): JSX.Element {
   const [mode, setMode] = useState<InputModeId>('auto');
   const [prompt, setPrompt] = useState('');
@@ -212,6 +227,7 @@ export function CommandInputPanel({
   const mediaRecorderRef = useRef<MediaRecorder>();
   const recordingStreamRef = useRef<MediaStream>();
   const recordedChunksRef = useRef<Blob[]>([]);
+  const lastVoiceToastRef = useRef<VoiceState>('idle');
 
   const selectedMode = INPUT_MODES.find((item) => item.id === mode) ?? INPUT_MODES[0];
   const canSubmit =
@@ -229,6 +245,17 @@ export function CommandInputPanel({
     if (recorder && recorder.state !== 'inactive') recorder.stop();
     stopRecordingTracks();
   }, []);
+
+  // Voice errors surface as a discreet toast, not a persistent red banner under
+  // the composer. Fires once per transition into a failure state.
+  useEffect(() => {
+    const failed = voiceState === 'error' || voiceState === 'missing-backend' || voiceState === 'permission-denied';
+    if (failed && lastVoiceToastRef.current !== voiceState) {
+      const tone = voiceState === 'missing-backend' ? 'info' : 'error';
+      onToast?.(tone, voiceMessage ?? 'Entrada por voz indisponível neste ambiente.');
+    }
+    lastVoiceToastRef.current = voiceState;
+  }, [voiceState, voiceMessage, onToast]);
 
   function applySttSnapshot(snapshot: LocalSttConfigSnapshot, path = sttModelPath): void {
     const normalized = normalizeSttSnapshot(snapshot);
@@ -594,10 +621,10 @@ export function CommandInputPanel({
           >
             <UiIcon name="plus" className="prompt-plus-icon" />
           </button>
-          <PopupMenu open={plusOpen} onClose={() => setPlusOpen(false)} align="left">
+          <PopupMenu open={plusOpen} onClose={() => setPlusOpen(false)} align="left" className="plus-menu">
             <button type="button" className="menu-item" onClick={openFileManager}>
               <UiIcon name="paperclip" className="menu-icon menu-item-icon" />
-              Selecionar arquivo
+              Carregar anexo
             </button>
             {onOpenSkills ? (
               <button
@@ -608,10 +635,25 @@ export function CommandInputPanel({
                   onOpenSkills();
                 }}
               >
-                <UiIcon name="desktop" className="menu-icon menu-item-icon" />
-                Skill Studio
+                <UiIcon name="spark" className="menu-icon menu-item-icon" />
+                Skills e habilidades
               </button>
             ) : null}
+            <span className="menu-section-label">Em breve</span>
+            {PLUS_SOON_ITEMS.map((item) => (
+              <button
+                key={item.label}
+                type="button"
+                className="menu-item is-soon"
+                disabled
+                aria-disabled="true"
+                title="Disponível em breve"
+              >
+                <UiIcon name={item.icon} className="menu-icon menu-item-icon" />
+                {item.label}
+                <span className="menu-soon-badge">em breve</span>
+              </button>
+            ))}
           </PopupMenu>
         </div>
 
@@ -675,17 +717,17 @@ export function CommandInputPanel({
           <UiIcon name="send" />
         </button>
       </div>
-      {voiceMessage ? (
-        <div
-          className={`voice-feedback voice-${voiceState}`}
-          role={voiceState === 'error' || voiceState === 'missing-backend' || voiceState === 'permission-denied' ? 'alert' : 'status'}
-        >
+      {(voiceState === 'recording' || voiceState === 'transcribing' || voiceState === 'done') && voiceMessage ? (
+        <div className={`voice-feedback voice-${voiceState}`} role="status">
           <span>{voiceMessage}</span>
-          {voiceState === 'missing-backend' || voiceState === 'error' || voiceState === 'permission-denied' ? (
-            <button type="button" className="voice-config-button" onClick={openSttSetup}>
-              {voiceState === 'permission-denied' ? 'Configurar microfone' : 'Configurar transcrição local'}
-            </button>
-          ) : null}
+        </div>
+      ) : null}
+      {voiceState === 'error' || voiceState === 'missing-backend' || voiceState === 'permission-denied' ? (
+        <div className="voice-hint" role="note">
+          <span>Voz indisponível agora.</span>
+          <button type="button" className="voice-config-button" onClick={openSttSetup}>
+            {voiceState === 'permission-denied' ? 'Configurar microfone' : 'Configurar transcrição local'}
+          </button>
         </div>
       ) : null}
       {fileManagerOpen ? (

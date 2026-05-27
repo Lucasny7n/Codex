@@ -1969,6 +1969,7 @@ export default function App(): JSX.Element {
       onSendOrder={handleSendPrompt}
       orderDisabledReason={orderDisabledReason}
       onOpenSkills={() => setSkillStudioOpen(true)}
+      onToast={pushToast}
     />
   );
 
