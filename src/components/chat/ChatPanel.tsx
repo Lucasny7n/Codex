@@ -10,6 +10,8 @@ interface ChatPanelProps {
   session?: AgentSession;
   emptyTitle?: string;
   onOpenEnvironment?: () => void;
+  onChangeModel?: () => void;
+  onChangeAccount?: () => void;
   onRedoMessage?: (messageId: string) => Promise<void>;
   isResponding?: boolean;
   onToast?: (tone: 'success' | 'error' | 'info', message: string) => void;
@@ -21,12 +23,24 @@ interface ParsedProviderError {
   status?: string;
   provider?: string;
   model?: string;
+  requestId?: string;
   technical?: string;
 }
 
 function firstMatch(content: string, pattern: RegExp): string | undefined {
   const match = content.match(pattern);
   return match?.[1]?.trim();
+}
+
+/** Removes API keys, bearer tokens, JWTs and key=value secrets before showing
+ *  any original error text to the user. Never let a secret reach the UI. */
+function maskSecrets(text: string): string {
+  return text
+    .replace(/\bsk-[A-Za-z0-9_-]{6,}/g, 'sk-***')
+    .replace(/\bBearer\s+[A-Za-z0-9._-]{6,}/gi, 'Bearer ***')
+    .replace(/\beyJ[A-Za-z0-9._-]{10,}/g, '***token***')
+    .replace(/\b([A-Za-z0-9_-]*(?:api[_-]?key|token|secret|authorization|password))\b\s*[:=]\s*["']?[^"'\s,}]{4,}/gi, '$1=***')
+    .replace(/\b([A-Z][A-Z0-9_]*(?:KEY|TOKEN|SECRET))\s*=\s*[^\s]+/g, '$1=***');
 }
 
 function errorCopyForStatus(status?: string): Pick<ParsedProviderError, 'title' | 'message'> | undefined {
@@ -42,16 +56,22 @@ function errorCopyForStatus(status?: string): Pick<ParsedProviderError, 'title' 
       message: 'A conta não tem acesso a este modelo ou recurso.',
     };
   }
+  if (status === '404') {
+    return {
+      title: 'Modelo indisponível',
+      message: 'O modelo não existe neste provider. Escolha outro modelo.',
+    };
+  }
   if (status === '429') {
     return {
-      title: 'Cota ou limite atingido',
+      title: 'Limite ou crédito insuficiente',
       message: 'Cota excedida nesta conta. Troque a conta, o provider ou aguarde o reset.',
     };
   }
   if (status && Number(status) >= 500) {
     return {
-      title: 'Provider instável',
-      message: 'O serviço respondeu com erro temporário.',
+      title: 'Erro temporário do provider',
+      message: 'O serviço respondeu com erro temporário. Tente novamente em instantes.',
     };
   }
   return undefined;
@@ -75,6 +95,7 @@ function parseProviderError(message: ChatMessage): ParsedProviderError | undefin
   const explicitProviderFailure = /provider|api key|cota|quota|rate limit|permissão negada|unauthorized|forbidden/i.test(content);
   if (!status && !explicitProviderFailure) return undefined;
 
+  const requestId = firstMatch(content, /request[_-]?id["':\s]+([A-Za-z0-9-]{6,})/i);
   const statusCopy = errorCopyForStatus(status);
   const lines = content
     .split('\n')
@@ -83,7 +104,10 @@ function parseProviderError(message: ChatMessage): ParsedProviderError | undefin
     .filter((line) => !/^(Status|Provider|Modelo):/i.test(line))
     .filter((line) => !line.startsWith('{') && !line.startsWith('['));
   const title = statusCopy?.title ?? lines[0] ?? 'Erro de provider';
-  const body = statusCopy?.message ?? lines.slice(1).find((line) => !/^Detalhe:/i.test(line)) ?? 'Revise a conta ou o modelo em Configurações.';
+  const body = statusCopy?.message ?? lines.slice(1).find((line) => !/^Detalhe:/i.test(line)) ?? 'Verifique a conta ou escolha outro modelo.';
+
+  // Original message, sanitized (secrets stripped), capped for the details block.
+  const original = maskSecrets(content).slice(0, 600);
 
   return {
     title,
@@ -91,23 +115,50 @@ function parseProviderError(message: ChatMessage): ParsedProviderError | undefin
     status,
     provider,
     model,
-    technical: [status ? `Status: ${status}` : undefined, provider ? `Provider: ${provider}` : undefined, model ? `Modelo: ${model}` : undefined]
+    requestId,
+    technical: [
+      status ? `Status HTTP: ${status}` : undefined,
+      provider ? `Provider: ${provider}` : undefined,
+      model ? `Modelo: ${model}` : undefined,
+      requestId ? `Request ID: ${requestId}` : undefined,
+      original ? `Mensagem original (sanitizada):\n${original}` : undefined,
+    ]
       .filter(Boolean)
       .join('\n'),
   };
 }
 
-function ProviderErrorCard({ error, onOpenEnvironment }: { error: ParsedProviderError; onOpenEnvironment?: () => void }): JSX.Element {
+/** Detects the backend's fallback note (recorded in reasoningSummary) so the
+ *  chat can show a discreet "respondido com fallback" line. */
+function parseFallbackNotice(message: ChatMessage): string | undefined {
+  if (message.role !== 'assistant') return undefined;
+  const summary = message.reasoningSummary ?? '';
+  if (!/fallback/i.test(summary)) return undefined;
+  const target = firstMatch(summary, /fallback:\s*([A-Za-z0-9/:@_-]+(?:\.[A-Za-z0-9/:@_-]+)*)/i);
+  return target
+    ? `Modelo principal falhou; respondido com fallback ${maskSecrets(target.trim())}.`
+    : 'Modelo principal falhou; respondido com um modelo de fallback.';
+}
+
+function ProviderErrorCard({ error, onChangeModel, onChangeAccount }: {
+  error: ParsedProviderError;
+  onChangeModel?: () => void;
+  onChangeAccount?: () => void;
+}): JSX.Element {
+  const usedLine = error.provider || error.model
+    ? [error.model, error.provider ? `via ${error.provider}` : undefined].filter(Boolean).join(' ')
+    : undefined;
   return (
     <div className="provider-error-card" role="alert">
       <strong>{error.title}</strong>
+      {usedLine ? <span className="provider-error-used">{usedLine}</span> : null}
       <p>{error.message}</p>
       <div className="provider-error-actions">
-        <button type="button" className="btn-modern btn-modern-primary" onClick={onOpenEnvironment} disabled={!onOpenEnvironment}>
-          Trocar conta
-        </button>
-        <button type="button" className="btn-modern" onClick={onOpenEnvironment} disabled={!onOpenEnvironment}>
+        <button type="button" className="btn-modern btn-modern-primary" onClick={onChangeModel} disabled={!onChangeModel}>
           Trocar modelo
+        </button>
+        <button type="button" className="btn-modern" onClick={onChangeAccount} disabled={!onChangeAccount}>
+          Trocar conta
         </button>
       </div>
       {error.technical ? (
@@ -280,7 +331,7 @@ function stripMarkdownForSpeech(text: string): string {
     .trim();
 }
 
-export function ChatPanel({ session, emptyTitle = 'O que gostaria de explorar?', onOpenEnvironment, onRedoMessage, isResponding = false, onToast }: ChatPanelProps): JSX.Element {
+export function ChatPanel({ session, emptyTitle = 'O que gostaria de explorar?', onOpenEnvironment, onChangeModel, onChangeAccount, onRedoMessage, isResponding = false, onToast }: ChatPanelProps): JSX.Element {
   const [menuMessageId, setMenuMessageId] = useState<string>();
   const [copiedMessageId, setCopiedMessageId] = useState<string>();
   const [likedIds, setLikedIds] = useState<Set<string>>(new Set());
@@ -421,14 +472,18 @@ export function ChatPanel({ session, emptyTitle = 'O que gostaria de explorar?',
         ) : null}
         {session.messages.map((message) => {
           const providerError = parseProviderError(message);
+          const fallbackNotice = providerError ? undefined : parseFallbackNotice(message);
           return (
             <div key={message.id} className={`message-row ${message.role}`}>
               <article className={`message-bubble role-${message.role}`}>
                 {providerError ? (
-                  <ProviderErrorCard error={providerError} onOpenEnvironment={onOpenEnvironment} />
+                  <ProviderErrorCard error={providerError} onChangeModel={onChangeModel ?? onOpenEnvironment} onChangeAccount={onChangeAccount ?? onOpenEnvironment} />
                 ) : (
                   <MarkdownContent content={cleanVisibleContent(message.content)} />
                 )}
+                {fallbackNotice ? (
+                  <span className="fallback-notice" role="status">⚠ {fallbackNotice}</span>
+                ) : null}
                 {message.attachments?.filter((a) => !a.hidden && (a.contextSource == null || a.contextSource === 'document')).length ? (
                   <div className="message-attachment-list" aria-label="Anexos da mensagem">
                     {message.attachments.filter((a) => !a.hidden && (a.contextSource == null || a.contextSource === 'document')).map((attachment) => (

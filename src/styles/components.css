@@ -3719,6 +3719,24 @@
   line-height: 1.45;
 }
 
+.provider-error-used {
+  font-size: 0.78rem;
+  color: var(--text-tertiary, var(--text-secondary));
+}
+
+.fallback-notice {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 6px;
+  padding: 3px 10px;
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--border-subtle);
+  background: rgba(245, 158, 11, 0.1);
+  color: var(--text-secondary);
+  font-size: 0.74rem;
+}
+
 .provider-error-actions {
   display: flex;
   flex-wrap: wrap;

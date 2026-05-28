@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import { ChatPanel } from '../src/components/chat/ChatPanel';
 import type { AgentSession } from '../src/types/domain';
@@ -166,18 +166,59 @@ describe('ChatPanel', () => {
     expect(screen.queryByText('Dados do sistema')).not.toBeInTheDocument();
   });
 
-  it('traduz 429 como cota sem JSON cru', () => {
-    const onOpenEnvironment = vi.fn();
-
+  it('erro 429 vira card acionável com provider/modelo na superfície', () => {
     render(
       <ChatPanel
-        onOpenEnvironment={onOpenEnvironment}
-        session={chat('Status: 429\nProvider: openai-api\n{"error":"insufficient_quota"}')}
+        onChangeModel={vi.fn()}
+        onChangeAccount={vi.fn()}
+        session={chat('Status: 429\nProvider: openai-api\nModelo: gpt-5.5\n{"error":"insufficient_quota"}')}
       />,
     );
 
-    expect(screen.getByText('Cota ou limite atingido')).toBeInTheDocument();
-    expect(screen.getByText('Cota excedida nesta conta. Troque a conta, o provider ou aguarde o reset.')).toBeInTheDocument();
-    expect(screen.queryByText(/insufficient_quota/)).not.toBeInTheDocument();
+    expect(screen.getByText('Limite ou crédito insuficiente')).toBeInTheDocument();
+    // Provider + modelo aparecem na superfície.
+    expect(screen.getByText(/gpt-5\.5 via openai-api/)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Trocar modelo' })).toBeEnabled();
+    expect(screen.getByRole('button', { name: 'Trocar conta' })).toBeEnabled();
+  });
+
+  it('erro 401 indica chave inválida', () => {
+    render(<ChatPanel session={chat('Status: 401\nProvider: openrouter\nunauthorized')} />);
+    expect(screen.getByText('API key inválida')).toBeInTheDocument();
+  });
+
+  it('erro 404 indica modelo indisponível', () => {
+    render(<ChatPanel session={chat('Status: 404\nProvider: openrouter\nModelo: claude-x\nmodel not found')} />);
+    expect(screen.getByText('Modelo indisponível')).toBeInTheDocument();
+  });
+
+  it('erro genérico de provider ainda vira card', () => {
+    render(<ChatPanel session={chat('Provider: groq falhou\napi key ausente')} />);
+    expect(screen.getByText(/Detalhes técnicos/)).toBeInTheDocument();
+  });
+
+  it('nunca vaza segredo: API key/Bearer são mascarados nos detalhes', () => {
+    render(
+      <ChatPanel
+        session={chat('Status: 401\nProvider: openai-api\nAuthorization: Bearer sk-live-ABCDEF123456 falhou')}
+      />,
+    );
+    // Abre os detalhes técnicos.
+    fireEvent.click(screen.getByText('Detalhes técnicos'));
+    expect(screen.queryByText(/sk-live-ABCDEF123456/)).not.toBeInTheDocument();
+    expect(document.body.textContent).not.toMatch(/sk-live-ABCDEF123456/);
+  });
+
+  it('mostra aviso discreto de fallback quando o backend usou fallback', () => {
+    render(
+      <ChatPanel
+        session={chat(
+          'Resposta do modelo de fallback.',
+          'Respondido por fallback: openrouter/claude-3.5. Tentativas: openai/gpt-5 -> openrouter/claude-3.5.',
+        )}
+      />,
+    );
+    expect(screen.getByText(/Modelo principal falhou; respondido com fallback/)).toBeInTheDocument();
+    expect(screen.getByText(/openrouter\/claude-3\.5/)).toBeInTheDocument();
   });
 });

@@ -2097,7 +2097,7 @@ export default function App(): JSX.Element {
                     <p>Esta conversa não aparecerá no histórico e as suas mensagens não serão guardadas.</p>
                   </section>
                 ) : (
-                  <ChatPanel session={temporarySession} emptyTitle="Bate-papo Temporário" onOpenEnvironment={() => openEnvironmentTab('ready')} onRedoMessage={handleRedoMessage} isResponding={activeChatResponding} onToast={pushToast} />
+                  <ChatPanel session={temporarySession} emptyTitle="Bate-papo Temporário" onOpenEnvironment={() => openEnvironmentTab('ready')} onChangeModel={() => openSettingsTab('models')} onChangeAccount={() => openEnvironmentTab('accounts')} onRedoMessage={handleRedoMessage} isResponding={activeChatResponding} onToast={pushToast} />
                 )}
                 {commandInput}
               </>
@@ -2177,7 +2177,7 @@ export default function App(): JSX.Element {
               </section>
             ) : (
               <>
-                <ChatPanel session={selectedSession} emptyTitle="O que gostaria de explorar?" onOpenEnvironment={() => openEnvironmentTab('accounts')} onRedoMessage={handleRedoMessage} isResponding={activeChatResponding} onToast={pushToast} />
+                <ChatPanel session={selectedSession} emptyTitle="O que gostaria de explorar?" onOpenEnvironment={() => openEnvironmentTab('accounts')} onChangeModel={() => openSettingsTab('models')} onChangeAccount={() => openEnvironmentTab('accounts')} onRedoMessage={handleRedoMessage} isResponding={activeChatResponding} onToast={pushToast} />
                 {commandInput}
               </>
             )}
