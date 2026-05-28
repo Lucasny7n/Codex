@@ -583,9 +583,34 @@ fn normalize_title(title: &str) -> String {
 /// it never dumps the raw prompt. It takes the first meaningful line, strips
 /// markdown/code noise, keeps the first few words, and tidies casing so a long
 /// or multi-line paste still yields a short, readable topic.
+/// Obviously-offensive stems (pt-BR + en). If any appears in the message the
+/// title is summarized neutrally — insults/slurs are never copied to the title.
+const OFFENSIVE_STEMS: &[&str] = &[
+    "cuz", "merd", "porra", "caralh", "fdp", "viad", "otari", "otári", "burro", "burra",
+    "idiot", "babac", "arrombad", "puta", "puto", "bucet", "fode", "foda", "foda-se",
+    "piroc", "corno", "desgrac", "desgraç", "vagabund", "retardad", "imbecil", "escrot",
+    "travec", "cacet", "fud", "fuck", "shit", "bitch", "asshole", "dick", "cunt", "slut",
+    "whore", "retard", "fagg", "pussy", "bastard", "nigg",
+];
+
+fn contains_offensive(text: &str) -> bool {
+    let lower = text.to_lowercase();
+    if OFFENSIVE_STEMS.iter().any(|stem| lower.contains(stem)) {
+        return true;
+    }
+    // Standalone "cu" as a whole word.
+    lower
+        .split(|c: char| !c.is_alphanumeric())
+        .any(|word| word == "cu")
+}
+
 fn title_from_content(content: &str) -> String {
     const MAX_WORDS: usize = 7;
     const MAX_CHARS: usize = 48;
+
+    if contains_offensive(content) {
+        return "Teste de linguagem informal".to_owned();
+    }
 
     // First meaningful line: skip blank lines and entire fenced code blocks,
     // so a leading ```code``` paste never becomes the title.
@@ -1001,5 +1026,16 @@ mod tests {
     #[test]
     fn title_from_content_falls_back_on_empty() {
         assert!(title_from_content("   \n  ").starts_with("Conversa "));
+    }
+
+    #[test]
+    fn title_from_content_never_copies_offensive_language() {
+        let title = title_from_content("cara você é um idiota completo seu merda");
+        assert_eq!(title, "Teste de linguagem informal");
+        assert!(!title.to_lowercase().contains("idiot"));
+        assert!(!title.to_lowercase().contains("merd"));
+
+        let en = title_from_content("this is fucking broken you piece of shit");
+        assert_eq!(en, "Teste de linguagem informal");
     }
 }

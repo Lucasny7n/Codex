@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { titleFromContent } from '../src/lib/chat/conversationTitle';
+import { containsOffensive, sanitizeTitle, titleFromContent } from '../src/lib/chat/conversationTitle';
 
 describe('titleFromContent', () => {
   it('resume saudação simples em vez de copiar', () => {
@@ -7,10 +7,23 @@ describe('titleFromContent', () => {
     expect(titleFromContent('oi')).toBe('Saudação em português');
   });
 
-  it('resume tom informal/vulgar pela intenção, sem copiar o palavrão', () => {
+  it('mensagem ofensiva curta vira título neutro, sem copiar o palavrão', () => {
     const title = titleFromContent('fala comigo cuzao');
-    expect(title).toBe('Teste de tom informal');
+    expect(title).toBe('Teste de linguagem informal');
     expect(title.toLowerCase()).not.toContain('cuzao');
+  });
+
+  it('mensagem ofensiva LONGA também vira título neutro (bug crítico)', () => {
+    const offensive = 'cara você é um idiota completo e não serve pra nada mesmo seu merda';
+    const title = titleFromContent(offensive);
+    expect(title).toBe('Teste de linguagem informal');
+    expect(containsOffensive(title)).toBe(false);
+  });
+
+  it('detecta ofensa em inglês e não copia', () => {
+    const title = titleFromContent('this app is fucking broken you piece of shit');
+    expect(title).toBe('Teste de linguagem informal');
+    expect(title.toLowerCase()).not.toMatch(/fuck|shit/);
   });
 
   it('detecta pedido de atualização do sistema', () => {
@@ -42,5 +55,29 @@ describe('titleFromContent', () => {
 
   it('cai para rótulo de data quando não há conteúdo', () => {
     expect(titleFromContent('   \n  ')).toContain('Conversa');
+  });
+
+  it('detecta relato de problema', () => {
+    expect(titleFromContent('o app travou e não funciona mais')).toBe('Relato de problema');
+  });
+});
+
+describe('sanitizeTitle (título vindo da IA)', () => {
+  it('rejeita título ofensivo gerado pela IA', () => {
+    expect(sanitizeTitle('Idiota que não sabe nada')).toBe('Teste de linguagem informal');
+    expect(sanitizeTitle('"fuck this"')).toBe('Teste de linguagem informal');
+  });
+
+  it('limpa aspas/pontuação e capitaliza', () => {
+    expect(sanitizeTitle('"plano de migração."')).toBe('Plano de migração');
+  });
+
+  it('encurta título longo a no máximo ~7 palavras', () => {
+    const out = sanitizeTitle('um título muito comprido com muitas palavras demais para a sidebar caber');
+    expect(out?.endsWith('…')).toBe(true);
+  });
+
+  it('retorna undefined para vazio', () => {
+    expect(sanitizeTitle('   ')).toBeUndefined();
   });
 });

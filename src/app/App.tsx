@@ -64,7 +64,7 @@ import {
 } from '../lib/memory/projectMemoryService';
 import { buildMemoryAttachment } from '../lib/memory/memoryContextService';
 import { parseMemoryCommand, type MemoryCommand } from '../lib/memory/memoryCommands';
-import { titleFromContent } from '../lib/chat/conversationTitle';
+import { sanitizeTitle, titleFromContent } from '../lib/chat/conversationTitle';
 import { detectToolIntent } from '../lib/tools/intent';
 import { runTool } from '../lib/tools/runner';
 import { applyAppTheme } from '../lib/theme';
@@ -1104,10 +1104,10 @@ export default function App(): JSX.Element {
       );
       const lastMsg = [...result.messages].reverse().find((m) => m.role === 'assistant');
       if (!lastMsg?.content) return;
-      const raw = lastMsg.content.trim().replace(/^["'«»]+|["'«»]+$/g, '').replace(/[.!?,:;-]+$/g, '').trim();
-      const words = raw.split(/\s+/);
-      if (words.length < 2 || words.length > 10 || raw.length > 80) return;
-      const title = raw.charAt(0).toUpperCase() + raw.slice(1);
+      // Sanitize the AI title: reject offensive content, strip noise, cap length.
+      // If the model echoed something unusable, keep the deterministic title.
+      const title = sanitizeTitle(lastMsg.content);
+      if (!title) return;
       const renamed = await renameSession(sessionId, title);
       upsertSession(renamed);
     } catch {
