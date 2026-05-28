@@ -29,7 +29,8 @@ use crate::models::{
     PrivilegedActionRequestInput, PrivilegedActionSpec, ProviderAccountProfile,
     ProviderCredentialStatus, ProviderGenerateRequest, ProviderRuntimeStatus, ProviderStatusState,
     QuantOption, SessionExportFormat, SessionExportResult, SessionStatus, SkillExecutionPlan,
-    SkillManifest, SkillVmReport, StatusKind, SystemHealthItem, TaskStatus, WorkspaceMeta,
+    SkillManifest, SkillVmReport, StatusKind, SystemHealthItem, TaskStatus, UserSkill,
+    UserSkillDryRun, UserSkillInput, WorkspaceMeta,
 };
 use crate::services::ai_router::{AiRouteRequest, AiRouter};
 use crate::services::memory_store::MemoryEntryStore;
@@ -38,6 +39,7 @@ use crate::services::privileged_helper_client::HelperRequest;
 use crate::services::provider_registry::ProviderRegistry;
 use crate::services::session_manager::SessionManager;
 use crate::services::skills::{self, SkillStore, VirshVmRunner};
+use crate::services::user_skills::UserSkillStore;
 use crate::state::AppState;
 
 fn map_err(error: AppError) -> ErrorPayload {
@@ -2245,6 +2247,48 @@ pub async fn test_skill_in_vm(
     let snapshot = format!("ailu-skill-{skill_id}-{}", Uuid::new_v4());
     let script = script_path.to_string_lossy().to_string();
     Ok(skills::run_skill_in_vm(&runner, &domain, &manifest, &script, &args, &snapshot, None).await)
+}
+
+fn user_skill_store(state: &State<AppState>) -> UserSkillStore {
+    UserSkillStore::default_for_dir(state.config_manager.data_root())
+}
+
+#[tauri::command]
+pub fn list_user_skills(state: State<AppState>) -> Result<Vec<UserSkill>, ErrorPayload> {
+    Ok(user_skill_store(&state).list())
+}
+
+#[tauri::command]
+pub fn save_user_skill(
+    state: State<AppState>,
+    input: UserSkillInput,
+) -> Result<Vec<UserSkill>, ErrorPayload> {
+    user_skill_store(&state)
+        .save(input)
+        .map_err(AppError::Message)
+        .map_err(map_err)
+}
+
+#[tauri::command]
+pub fn delete_user_skill(
+    state: State<AppState>,
+    id: String,
+) -> Result<Vec<UserSkill>, ErrorPayload> {
+    user_skill_store(&state)
+        .delete(&id)
+        .map_err(AppError::Message)
+        .map_err(map_err)
+}
+
+#[tauri::command]
+pub fn dry_run_user_skill(
+    state: State<AppState>,
+    id: String,
+) -> Result<UserSkillDryRun, ErrorPayload> {
+    user_skill_store(&state)
+        .dry_run(&id)
+        .map_err(AppError::Message)
+        .map_err(map_err)
 }
 
 fn memory_entry_store(state: &State<AppState>) -> MemoryEntryStore {

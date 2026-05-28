@@ -89,7 +89,7 @@ pub enum PermissionCategory {
     CriticalSystem,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum RiskLevel {
     Low,
@@ -1136,6 +1136,65 @@ pub struct SkillManifest {
     pub created_at: Option<String>,
     #[serde(default)]
     pub updated_at: Option<String>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum UserSkillSource {
+    Manual,
+    Import,
+    Ai,
+}
+
+/// A user-authored or imported skill, persisted to disk (user_skills.json).
+/// Inert by design: it stores content + metadata and is never executed
+/// automatically; running it for real still requires approval + a backend
+/// runner.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UserSkill {
+    pub id: String,
+    pub name: String,
+    #[serde(default)]
+    pub description: String,
+    #[serde(default)]
+    pub content: String,
+    pub source: UserSkillSource,
+    #[serde(default)]
+    pub permissions: Vec<String>,
+    pub risk: RiskLevel,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UserSkillInput {
+    #[serde(default)]
+    pub id: Option<String>,
+    pub name: String,
+    #[serde(default)]
+    pub description: String,
+    #[serde(default)]
+    pub content: String,
+    #[serde(default)]
+    pub source: Option<UserSkillSource>,
+    #[serde(default)]
+    pub permissions: Vec<String>,
+    #[serde(default)]
+    pub risk: Option<RiskLevel>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UserSkillDryRun {
+    pub skill_id: String,
+    pub summary: String,
+    pub permissions: Vec<String>,
+    pub risk: RiskLevel,
+    pub requires_approval: bool,
+    pub dangerous_tokens: Vec<String>,
+    pub preview: String,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

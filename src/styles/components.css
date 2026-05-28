@@ -9866,6 +9866,24 @@ body,
   gap: 8px;
 }
 
+.local-skill-dryrun-block {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.local-skill-dryrun-summary {
+  margin: 0;
+  font-size: 0.78rem;
+  color: var(--text-primary);
+}
+
+.local-skill-dryrun-approval {
+  margin: 0;
+  font-size: 0.76rem;
+  color: var(--danger-text, #fca5a5);
+}
+
 .local-skill-dryrun {
   margin: 0;
   padding: 10px;

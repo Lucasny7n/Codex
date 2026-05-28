@@ -869,6 +869,40 @@ export interface SkillManifest {
   updatedAt?: string;
 }
 
+export type UserSkillSource = 'manual' | 'import' | 'ai';
+
+export interface UserSkill {
+  id: string;
+  name: string;
+  description: string;
+  content: string;
+  source: UserSkillSource;
+  permissions: string[];
+  risk: RiskLevel;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface UserSkillInput {
+  id?: string;
+  name: string;
+  description?: string;
+  content?: string;
+  source?: UserSkillSource;
+  permissions?: string[];
+  risk?: RiskLevel;
+}
+
+export interface UserSkillDryRun {
+  skillId: string;
+  summary: string;
+  permissions: string[];
+  risk: RiskLevel;
+  requiresApproval: boolean;
+  dangerousTokens: string[];
+  preview: string;
+}
+
 export type SkillExecutionMode = 'vm_tested' | 'manual_dry_run';
 
 export interface SkillExecutionPlan {

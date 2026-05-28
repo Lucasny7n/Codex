@@ -7,16 +7,20 @@ import {
   markSkillTrusted,
   testSkillInVm,
   requestExecution,
+  listUserSkills,
+  saveUserSkill,
+  deleteUserSkill,
+  dryRunUserSkill,
 } from '../../lib/api';
-import type { SkillExecutionPlan, SkillManifest, SkillVmReport, RiskLevel } from '../../types/domain';
-import {
-  type LocalSkill,
-  deleteLocalSkill,
-  parseSkillContent,
-  readLocalSkills,
-  saveLocalSkill,
-  simulateDryRun,
-} from '../../lib/skills/localSkillStore';
+import type {
+  SkillExecutionPlan,
+  SkillManifest,
+  SkillVmReport,
+  RiskLevel,
+  UserSkill,
+  UserSkillDryRun,
+} from '../../types/domain';
+import { parseSkillContent } from '../../lib/skills/localSkillStore';
 
 type StudioTab = 'skills' | 'import' | 'create-text' | 'create-ai';
 
@@ -72,8 +76,9 @@ export function SkillStudioModal({ open, sessionId, onClose, onToast }: SkillStu
   const [createDescription, setCreateDescription] = useState('');
   const [createRisk, setCreateRisk] = useState<RiskLevel>('medium');
   const [createText, setCreateText] = useState('');
-  const [localSkills, setLocalSkills] = useState<LocalSkill[]>([]);
+  const [localSkills, setLocalSkills] = useState<UserSkill[]>([]);
   const [localDryRunId, setLocalDryRunId] = useState<string>();
+  const [localDryRun, setLocalDryRun] = useState<UserSkillDryRun>();
   const [aiChatHistory, setAiChatHistory] = useState<Array<{ role: 'user' | 'assistant'; text: string }>>([]);
   const [aiInput, setAiInput] = useState('');
 
@@ -89,10 +94,12 @@ export function SkillStudioModal({ open, sessionId, onClose, onToast }: SkillStu
     if (!open) return undefined;
     let active = true;
     async function load(): Promise<void> {
-      if (active) setLocalSkills(readLocalSkills());
       try {
-        const next = await listSkills();
-        if (active) setSkills(next);
+        const [repoSkills, userSkills] = await Promise.all([listSkills(), listUserSkills()]);
+        if (active) {
+          setSkills(repoSkills);
+          setLocalSkills(userSkills);
+        }
       } catch (cause) {
         if (active) setError(cause instanceof Error ? cause.message : 'Falha ao carregar skills.');
       }
@@ -229,8 +236,7 @@ export function SkillStudioModal({ open, sessionId, onClose, onToast }: SkillStu
     const parsed = parseSkillContent(raw);
     const lines = [
       `Nome: ${parsed.draft.name}`,
-      `Risco: ${parsed.draft.riskLevel}`,
-      `Categoria: ${parsed.draft.category ?? 'other'}`,
+      `Risco: ${parsed.draft.risk ?? 'medium'}`,
       '',
       ...parsed.notes,
     ];
@@ -238,48 +244,76 @@ export function SkillStudioModal({ open, sessionId, onClose, onToast }: SkillStu
     setImportDraftOk(parsed.ok);
   }
 
-  function saveImportedSkill(): void {
+  async function saveImportedSkill(): Promise<void> {
     const parsed = parseSkillContent(importText.trim());
     if (!parsed.ok) {
       onToast('error', 'Conteúdo inválido para importar.');
       return;
     }
-    saveLocalSkill(parsed.draft);
-    setLocalSkills(readLocalSkills());
-    setImportText('');
-    setImportPreview(undefined);
-    setImportDraftOk(false);
-    setActiveTab('skills');
-    onToast('success', 'Skill importada e salva localmente. Revise antes de testar.');
+    try {
+      setLocalSkills(await saveUserSkill(parsed.draft));
+      setImportText('');
+      setImportPreview(undefined);
+      setImportDraftOk(false);
+      setActiveTab('skills');
+      onToast('success', 'Skill importada e salva. Revise antes de testar.');
+    } catch (cause) {
+      onToast('error', cause instanceof Error ? cause.message : 'Falha ao salvar skill importada.');
+    }
   }
 
-  function saveCreatedSkill(): void {
+  async function saveCreatedSkill(): Promise<void> {
     const name = createName.trim();
     const content = createText.trim();
     if (!name || !content) {
       onToast('error', 'Informe nome e conteúdo da skill.');
       return;
     }
-    saveLocalSkill({
-      name,
-      description: createDescription.trim(),
-      content,
-      riskLevel: createRisk,
-      origin: 'manual',
-    });
-    setLocalSkills(readLocalSkills());
-    setCreateName('');
-    setCreateDescription('');
-    setCreateText('');
-    setCreateRisk('medium');
-    setActiveTab('skills');
-    onToast('success', 'Skill criada e salva localmente. Nada executa sem aprovação.');
+    try {
+      setLocalSkills(await saveUserSkill({
+        name,
+        description: createDescription.trim(),
+        content,
+        risk: createRisk,
+        source: 'manual',
+      }));
+      setCreateName('');
+      setCreateDescription('');
+      setCreateText('');
+      setCreateRisk('medium');
+      setActiveTab('skills');
+      onToast('success', 'Skill criada e salva. Nada executa sem aprovação.');
+    } catch (cause) {
+      onToast('error', cause instanceof Error ? cause.message : 'Falha ao salvar skill.');
+    }
   }
 
-  function removeLocalSkill(id: string): void {
-    setLocalSkills(deleteLocalSkill(id));
-    if (localDryRunId === id) setLocalDryRunId(undefined);
-    onToast('info', 'Skill local removida.');
+  async function removeLocalSkill(id: string): Promise<void> {
+    try {
+      setLocalSkills(await deleteUserSkill(id));
+      if (localDryRunId === id) {
+        setLocalDryRunId(undefined);
+        setLocalDryRun(undefined);
+      }
+      onToast('info', 'Skill removida.');
+    } catch (cause) {
+      onToast('error', cause instanceof Error ? cause.message : 'Falha ao remover skill.');
+    }
+  }
+
+  async function toggleLocalDryRun(id: string): Promise<void> {
+    if (localDryRunId === id) {
+      setLocalDryRunId(undefined);
+      setLocalDryRun(undefined);
+      return;
+    }
+    try {
+      const report = await dryRunUserSkill(id);
+      setLocalDryRunId(id);
+      setLocalDryRun(report);
+    } catch (cause) {
+      onToast('error', cause instanceof Error ? cause.message : 'Falha ao gerar dry-run.');
+    }
   }
 
   function addAiMessage(role: 'user' | 'assistant', text: string): void {
@@ -378,21 +412,27 @@ export function SkillStudioModal({ open, sessionId, onClose, onToast }: SkillStu
                   <article key={skill.id} className="local-skill-card">
                     <header>
                       <strong>{skill.name}</strong>
-                      <span className={`local-skill-risk risk-${skill.riskLevel}`}>risco {skill.riskLevel}</span>
+                      <span className={`local-skill-risk risk-${skill.risk}`}>risco {skill.risk}</span>
                     </header>
                     {skill.description ? <p className="local-skill-desc">{skill.description}</p> : null}
                     <div className="local-skill-meta">
-                      <span>Origem: {skill.origin === 'import' ? 'importada' : 'criada por texto'}</span>
+                      <span>Origem: {skill.source === 'import' ? 'importada' : skill.source === 'ai' ? 'criada com IA' : 'criada por texto'}</span>
                       <span>Permissões: {skill.permissions.length ? skill.permissions.join(', ') : 'nenhuma declarada'}</span>
                     </div>
                     <div className="local-skill-actions">
-                      <button type="button" className="btn-modern" onClick={() => setLocalDryRunId(localDryRunId === skill.id ? undefined : skill.id)}>
+                      <button type="button" className="btn-modern" onClick={() => void toggleLocalDryRun(skill.id)}>
                         {localDryRunId === skill.id ? 'Ocultar dry-run' : 'Testar (dry-run)'}
                       </button>
-                      <button type="button" className="btn-modern danger" onClick={() => removeLocalSkill(skill.id)}>Remover</button>
+                      <button type="button" className="btn-modern danger" onClick={() => void removeLocalSkill(skill.id)}>Remover</button>
                     </div>
-                    {localDryRunId === skill.id ? (
-                      <pre className="local-skill-dryrun" role="status">{simulateDryRun(skill)}</pre>
+                    {localDryRunId === skill.id && localDryRun ? (
+                      <div className="local-skill-dryrun-block" role="status">
+                        <p className="local-skill-dryrun-summary">{localDryRun.summary}</p>
+                        {localDryRun.requiresApproval ? (
+                          <p className="local-skill-dryrun-approval">Esta skill exige aprovação explícita antes de qualquer execução real.</p>
+                        ) : null}
+                        <pre className="local-skill-dryrun">{localDryRun.preview}</pre>
+                      </div>
                     ) : null}
                   </article>
                 ))}

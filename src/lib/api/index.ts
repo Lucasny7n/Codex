@@ -37,6 +37,9 @@ import type {
   SkillManifest,
   SkillExecutionPlan,
   SkillVmReport,
+  UserSkill,
+  UserSkillInput,
+  UserSkillDryRun,
   MemoryEntry,
   HardwareSnapshot,
   BackendStatus,
@@ -317,6 +320,22 @@ export async function testSkillInVm(
   sshTarget: string,
 ): Promise<SkillVmReport> {
   return invoke('test_skill_in_vm', { skillId, args, domain, sshTarget });
+}
+
+export async function listUserSkills(): Promise<UserSkill[]> {
+  return invoke('list_user_skills');
+}
+
+export async function saveUserSkill(input: UserSkillInput): Promise<UserSkill[]> {
+  return invoke('save_user_skill', { input });
+}
+
+export async function deleteUserSkill(id: string): Promise<UserSkill[]> {
+  return invoke('delete_user_skill', { id });
+}
+
+export async function dryRunUserSkill(id: string): Promise<UserSkillDryRun> {
+  return invoke('dry_run_user_skill', { id });
 }
 
 export async function listMemoryEntries(): Promise<MemoryEntry[]> {

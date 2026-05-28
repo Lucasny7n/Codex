@@ -2,6 +2,7 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { SkillStudioModal } from '../src/components/panels/SkillStudioModal';
 import * as api from '../src/lib/api';
+import type { UserSkill, UserSkillInput } from '../src/types/domain';
 
 vi.mock('../src/lib/api', () => ({
   listSkills: vi.fn(),
@@ -9,20 +10,66 @@ vi.mock('../src/lib/api', () => ({
   markSkillTrusted: vi.fn(),
   testSkillInVm: vi.fn(),
   requestExecution: vi.fn(),
+  listUserSkills: vi.fn(),
+  saveUserSkill: vi.fn(),
+  deleteUserSkill: vi.fn(),
+  dryRunUserSkill: vi.fn(),
 }));
+
+// Stateful in-memory backend stand-in, mirroring the Rust store behavior.
+let store: UserSkill[] = [];
+
+function inferRisk(input: UserSkillInput): UserSkill['risk'] {
+  if (/rm\s+-rf|mkfs|dd\s+if=/u.test(input.content ?? '')) return 'high';
+  return input.risk ?? 'low';
+}
 
 beforeEach(() => {
   vi.clearAllMocks();
-  window.localStorage.clear();
+  store = [];
   vi.mocked(api.listSkills).mockResolvedValue([]);
+  vi.mocked(api.listUserSkills).mockImplementation(async () => store);
+  vi.mocked(api.saveUserSkill).mockImplementation(async (input: UserSkillInput) => {
+    store = [
+      {
+        id: `local-${store.length}-${input.name}`,
+        name: input.name,
+        description: input.description ?? '',
+        content: input.content ?? '',
+        source: input.source ?? 'manual',
+        permissions: input.permissions ?? [],
+        risk: inferRisk(input),
+        createdAt: 'now',
+        updatedAt: 'now',
+      },
+      ...store,
+    ];
+    return store;
+  });
+  vi.mocked(api.deleteUserSkill).mockImplementation(async (id: string) => {
+    store = store.filter((s) => s.id !== id);
+    return store;
+  });
+  vi.mocked(api.dryRunUserSkill).mockImplementation(async (id: string) => {
+    const skill = store.find((s) => s.id === id)!;
+    const dangerous = /rm\s+-rf|mkfs|dd\s+if=/u.test(skill.content) ? ['rm -rf'] : [];
+    return {
+      skillId: id,
+      summary: `Simulação de "${skill.name}". Nada é executado aqui.`,
+      permissions: skill.permissions,
+      risk: skill.risk,
+      requiresApproval: skill.risk !== 'low' || dangerous.length > 0,
+      dangerousTokens: dangerous,
+      preview: `# Dry-run simulado\n${skill.content}`,
+    };
+  });
 });
 
 describe('SkillStudioModal', () => {
   it('empty state oferece CTAs Importar / Criar por texto / Criar com IA', async () => {
     render(<SkillStudioModal open sessionId="s1" onClose={vi.fn()} onToast={vi.fn()} />);
-    await waitFor(() => expect(api.listSkills).toHaveBeenCalled());
+    await waitFor(() => expect(api.listUserSkills).toHaveBeenCalled());
     expect(screen.getByText('Nenhuma skill ainda')).toBeInTheDocument();
-    expect(screen.getByText(/dry-run e aprovação antes de rodar/)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Importar' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Criar por texto' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Criar com IA' })).toBeInTheDocument();
@@ -30,7 +77,7 @@ describe('SkillStudioModal', () => {
 
   it('importa: valida manifest JSON e exige dry-run em scripts', async () => {
     render(<SkillStudioModal open sessionId="s1" onClose={vi.fn()} onToast={vi.fn()} />);
-    await waitFor(() => expect(api.listSkills).toHaveBeenCalled());
+    await waitFor(() => expect(api.listUserSkills).toHaveBeenCalled());
 
     fireEvent.click(screen.getByRole('tab', { name: 'Importar' }));
     const textarea = screen.getByPlaceholderText(/Cole aqui o conteúdo da skill/);
@@ -44,10 +91,10 @@ describe('SkillStudioModal', () => {
     expect(screen.getByText(/Sem dry-run no script/i)).toBeInTheDocument();
   });
 
-  it('importa e salva a skill localmente, aparecendo em Minhas Skills', async () => {
+  it('importa JSON válido e persiste no backend', async () => {
     const onToast = vi.fn();
     render(<SkillStudioModal open sessionId="s1" onClose={vi.fn()} onToast={onToast} />);
-    await waitFor(() => expect(api.listSkills).toHaveBeenCalled());
+    await waitFor(() => expect(api.listUserSkills).toHaveBeenCalled());
 
     fireEvent.click(screen.getByRole('tab', { name: 'Importar' }));
     fireEvent.change(screen.getByPlaceholderText(/Cole aqui o conteúdo da skill/), {
@@ -56,16 +103,15 @@ describe('SkillStudioModal', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Analisar' }));
     fireEvent.click(screen.getByRole('button', { name: 'Salvar skill importada' }));
 
+    await waitFor(() => expect(api.saveUserSkill).toHaveBeenCalled());
     expect(onToast).toHaveBeenCalledWith('success', expect.stringContaining('importada'));
-    // Volta para Minhas Skills com a skill local listada.
-    expect(screen.getByText('Skill Importada')).toBeInTheDocument();
-    expect(screen.getByText(/Skills locais/)).toBeInTheDocument();
+    expect(await screen.findByText('Skill Importada')).toBeInTheDocument();
   });
 
-  it('cria skill por texto, persiste e o dry-run é simulado sem executar', async () => {
+  it('cria skill por texto, persiste e dry-run é simulado sem executar', async () => {
     const onToast = vi.fn();
     render(<SkillStudioModal open sessionId="s1" onClose={vi.fn()} onToast={onToast} />);
-    await waitFor(() => expect(api.listSkills).toHaveBeenCalled());
+    await waitFor(() => expect(api.listUserSkills).toHaveBeenCalled());
 
     fireEvent.click(screen.getByRole('tab', { name: 'Criar por texto' }));
     fireEvent.change(screen.getByPlaceholderText('Reiniciar rede'), { target: { value: 'Minha Skill Manual' } });
@@ -74,29 +120,47 @@ describe('SkillStudioModal', () => {
     });
     fireEvent.click(screen.getByRole('button', { name: 'Salvar skill' }));
 
+    await waitFor(() => expect(api.saveUserSkill).toHaveBeenCalled());
     expect(onToast).toHaveBeenCalledWith('success', expect.stringContaining('criada'));
-    expect(screen.getByText('Minha Skill Manual')).toBeInTheDocument();
+    expect(await screen.findByText('Minha Skill Manual')).toBeInTheDocument();
 
-    // Testar (dry-run) mostra preview simulado e NÃO executa nada.
     fireEvent.click(screen.getByRole('button', { name: 'Testar (dry-run)' }));
-    expect(screen.getByText(/Dry-run simulado/)).toBeInTheDocument();
+    await waitFor(() => expect(api.dryRunUserSkill).toHaveBeenCalled());
     expect(screen.getByText(/Nada é executado/)).toBeInTheDocument();
+    // Dry-run NUNCA executa.
     expect(api.requestExecution).not.toHaveBeenCalled();
   });
 
-  it('skill local criada persiste após reabrir o modal', async () => {
-    const { rerender } = render(<SkillStudioModal open sessionId="s1" onClose={vi.fn()} onToast={vi.fn()} />);
-    await waitFor(() => expect(api.listSkills).toHaveBeenCalled());
+  it('skill de alto risco (rm -rf) exige aprovação no dry-run', async () => {
+    render(<SkillStudioModal open sessionId="s1" onClose={vi.fn()} onToast={vi.fn()} />);
+    await waitFor(() => expect(api.listUserSkills).toHaveBeenCalled());
 
     fireEvent.click(screen.getByRole('tab', { name: 'Criar por texto' }));
-    fireEvent.change(screen.getByPlaceholderText('Reiniciar rede'), { target: { value: 'Persistente' } });
-    fireEvent.change(screen.getByPlaceholderText(/Inclua um modo --dry-run/), { target: { value: 'echo persiste' } });
+    fireEvent.change(screen.getByPlaceholderText('Reiniciar rede'), { target: { value: 'Perigosa' } });
+    fireEvent.change(screen.getByPlaceholderText(/Inclua um modo --dry-run/), {
+      target: { value: 'rm -rf /tmp/x' },
+    });
     fireEvent.click(screen.getByRole('button', { name: 'Salvar skill' }));
-    expect(screen.getByText('Persistente')).toBeInTheDocument();
+    await screen.findByText('Perigosa');
 
-    // Fecha e reabre — deve recarregar do store local.
-    rerender(<SkillStudioModal open={false} sessionId="s1" onClose={vi.fn()} onToast={vi.fn()} />);
-    rerender(<SkillStudioModal open sessionId="s1" onClose={vi.fn()} onToast={vi.fn()} />);
-    await waitFor(() => expect(screen.getByText('Persistente')).toBeInTheDocument());
+    fireEvent.click(screen.getByRole('button', { name: 'Testar (dry-run)' }));
+    expect(await screen.findByText(/exige aprovação explícita/)).toBeInTheDocument();
+    expect(api.requestExecution).not.toHaveBeenCalled();
+  });
+
+  it('remove skill local pelo backend', async () => {
+    const onToast = vi.fn();
+    render(<SkillStudioModal open sessionId="s1" onClose={vi.fn()} onToast={onToast} />);
+    await waitFor(() => expect(api.listUserSkills).toHaveBeenCalled());
+
+    fireEvent.click(screen.getByRole('tab', { name: 'Criar por texto' }));
+    fireEvent.change(screen.getByPlaceholderText('Reiniciar rede'), { target: { value: 'Removível' } });
+    fireEvent.change(screen.getByPlaceholderText(/Inclua um modo --dry-run/), { target: { value: 'echo x' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Salvar skill' }));
+    await screen.findByText('Removível');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Remover' }));
+    await waitFor(() => expect(api.deleteUserSkill).toHaveBeenCalled());
+    await waitFor(() => expect(screen.queryByText('Removível')).not.toBeInTheDocument());
   });
 });
