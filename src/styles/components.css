@@ -9758,6 +9758,126 @@ body,
   gap: 12px;
 }
 
+.skill-create-field {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+}
+
+.skill-create-field input,
+.skill-create-field select {
+  padding: 8px 10px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-subtle);
+  background: rgba(255, 255, 255, 0.03);
+  color: var(--text-primary);
+  font: inherit;
+}
+
+.skill-empty-state {
+  text-align: center;
+  padding: 28px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  align-items: center;
+}
+
+.skill-empty-state p {
+  margin: 0;
+  max-width: 38ch;
+  color: var(--text-secondary);
+  font-size: 0.85rem;
+}
+
+.skill-empty-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+.local-skills-section {
+  margin-top: 16px;
+  border-top: 1px solid var(--border-subtle);
+  padding-top: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.local-skills-note {
+  margin: 0;
+  font-size: 0.76rem;
+  color: var(--text-secondary);
+}
+
+.local-skill-card {
+  border: 1px solid var(--border-subtle);
+  border-radius: 10px;
+  padding: 12px;
+  background: var(--bg-surface-soft, rgba(255, 255, 255, 0.02));
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.local-skill-card header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.local-skill-risk {
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  padding: 2px 8px;
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--border-subtle);
+  color: var(--text-secondary);
+}
+
+.local-skill-risk.risk-high,
+.local-skill-risk.risk-critical {
+  color: var(--danger-text, #fca5a5);
+  border-color: rgba(220, 38, 38, 0.4);
+}
+
+.local-skill-desc {
+  margin: 0;
+  font-size: 0.84rem;
+  color: var(--text-primary);
+}
+
+.local-skill-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  font-size: 0.74rem;
+  color: var(--text-secondary);
+}
+
+.local-skill-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.local-skill-dryrun {
+  margin: 0;
+  padding: 10px;
+  border-radius: var(--radius-sm);
+  background: rgba(0, 0, 0, 0.18);
+  font-size: 0.74rem;
+  white-space: pre-wrap;
+  color: var(--text-secondary);
+  max-height: 220px;
+  overflow: auto;
+}
+
 .skill-import-intro {
   font-size: 0.82rem;
   color: var(--text-secondary);

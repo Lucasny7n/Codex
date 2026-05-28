@@ -8,7 +8,15 @@ import {
   testSkillInVm,
   requestExecution,
 } from '../../lib/api';
-import type { SkillExecutionPlan, SkillManifest, SkillVmReport } from '../../types/domain';
+import type { SkillExecutionPlan, SkillManifest, SkillVmReport, RiskLevel } from '../../types/domain';
+import {
+  type LocalSkill,
+  deleteLocalSkill,
+  parseSkillContent,
+  readLocalSkills,
+  saveLocalSkill,
+  simulateDryRun,
+} from '../../lib/skills/localSkillStore';
 
 type StudioTab = 'skills' | 'import' | 'create-text' | 'create-ai';
 
@@ -59,7 +67,13 @@ export function SkillStudioModal({ open, sessionId, onClose, onToast }: SkillStu
   const [error, setError] = useState<string>();
   const [importText, setImportText] = useState('');
   const [importPreview, setImportPreview] = useState<string>();
+  const [importDraftOk, setImportDraftOk] = useState(false);
+  const [createName, setCreateName] = useState('');
+  const [createDescription, setCreateDescription] = useState('');
+  const [createRisk, setCreateRisk] = useState<RiskLevel>('medium');
   const [createText, setCreateText] = useState('');
+  const [localSkills, setLocalSkills] = useState<LocalSkill[]>([]);
+  const [localDryRunId, setLocalDryRunId] = useState<string>();
   const [aiChatHistory, setAiChatHistory] = useState<Array<{ role: 'user' | 'assistant'; text: string }>>([]);
   const [aiInput, setAiInput] = useState('');
 
@@ -75,6 +89,7 @@ export function SkillStudioModal({ open, sessionId, onClose, onToast }: SkillStu
     if (!open) return undefined;
     let active = true;
     async function load(): Promise<void> {
+      if (active) setLocalSkills(readLocalSkills());
       try {
         const next = await listSkills();
         if (active) setSkills(next);
@@ -208,39 +223,63 @@ export function SkillStudioModal({ open, sessionId, onClose, onToast }: SkillStu
     const raw = importText.trim();
     if (!raw) {
       setImportPreview(undefined);
+      setImportDraftOk(false);
       return;
     }
-    // Try to detect if it's JSON manifest or a plain script
-    try {
-      const parsed = JSON.parse(raw) as Partial<SkillManifest>;
-      const lines = [
-        `Nome: ${parsed.name ?? 'desconhecido'}`,
-        `ID: ${parsed.id ?? 'desconhecido'}`,
-        `Descrição: ${parsed.description ?? '-'}`,
-        `Categoria: ${parsed.category ?? '-'}`,
-        `Risco: ${parsed.riskLevel ?? '-'}`,
-        `Script: ${parsed.scriptPath ?? '-'}`,
-        '',
-        'Isso parece um manifest JSON válido.',
-        'Revisão de risco e dry-run obrigatórios antes de confiar.',
-      ];
-      setImportPreview(lines.join('\n'));
-    } catch {
-      // Not JSON — treat as shell script
-      const lines = raw.split('\n');
-      const hasShebang = lines[0]?.startsWith('#!');
-      const hasDryRun = raw.includes('--dry-run') || raw.includes('DRY_RUN');
-      const preview = [
-        `Tipo detectado: script shell${hasShebang ? ` (${lines[0]})` : ''}`,
-        `Dry-run: ${hasDryRun ? 'detectado' : 'não encontrado — obrigatório para aprovação'}`,
-        `Linhas: ${lines.length}`,
-        '',
-        hasDryRun
-          ? 'Script parece ter suporte a dry-run. Revise antes de salvar.'
-          : 'ATENÇÃO: nenhum dry-run detectado. Não é possível confiar nesta skill sem ele.',
-      ];
-      setImportPreview(preview.join('\n'));
+    const parsed = parseSkillContent(raw);
+    const lines = [
+      `Nome: ${parsed.draft.name}`,
+      `Risco: ${parsed.draft.riskLevel}`,
+      `Categoria: ${parsed.draft.category ?? 'other'}`,
+      '',
+      ...parsed.notes,
+    ];
+    setImportPreview(lines.join('\n'));
+    setImportDraftOk(parsed.ok);
+  }
+
+  function saveImportedSkill(): void {
+    const parsed = parseSkillContent(importText.trim());
+    if (!parsed.ok) {
+      onToast('error', 'Conteúdo inválido para importar.');
+      return;
     }
+    saveLocalSkill(parsed.draft);
+    setLocalSkills(readLocalSkills());
+    setImportText('');
+    setImportPreview(undefined);
+    setImportDraftOk(false);
+    setActiveTab('skills');
+    onToast('success', 'Skill importada e salva localmente. Revise antes de testar.');
+  }
+
+  function saveCreatedSkill(): void {
+    const name = createName.trim();
+    const content = createText.trim();
+    if (!name || !content) {
+      onToast('error', 'Informe nome e conteúdo da skill.');
+      return;
+    }
+    saveLocalSkill({
+      name,
+      description: createDescription.trim(),
+      content,
+      riskLevel: createRisk,
+      origin: 'manual',
+    });
+    setLocalSkills(readLocalSkills());
+    setCreateName('');
+    setCreateDescription('');
+    setCreateText('');
+    setCreateRisk('medium');
+    setActiveTab('skills');
+    onToast('success', 'Skill criada e salva localmente. Nada executa sem aprovação.');
+  }
+
+  function removeLocalSkill(id: string): void {
+    setLocalSkills(deleteLocalSkill(id));
+    if (localDryRunId === id) setLocalDryRunId(undefined);
+    onToast('info', 'Skill local removida.');
   }
 
   function addAiMessage(role: 'user' | 'assistant', text: string): void {
@@ -277,11 +316,13 @@ export function SkillStudioModal({ open, sessionId, onClose, onToast }: SkillStu
       onClose={onClose}
       className="skill-studio-modal"
     >
-      <div className="skill-studio-tabs">
+      <div className="skill-studio-tabs" role="tablist" aria-label="Seções do Skill Studio">
         {STUDIO_TABS.map((tab) => (
           <button
             key={tab.id}
             type="button"
+            role="tab"
+            aria-selected={activeTab === tab.id}
             className={`skill-studio-tab${activeTab === tab.id ? ' active' : ''}`}
             onClick={() => setActiveTab(tab.id)}
           >
@@ -294,29 +335,71 @@ export function SkillStudioModal({ open, sessionId, onClose, onToast }: SkillStu
       </div>
 
       {activeTab === 'skills' ? (
-        <SkillsPanel
-          skills={skills}
-          selectedSkillId={selectedSkillId}
-          plan={plan}
-          report={report}
-          args={args}
-          vmDomain={vmDomain}
-          vmSshTarget={vmSshTarget}
-          manualConfirmed={manualConfirmed}
-          busy={busy}
-          speaking={speaking}
-          error={error}
-          onSelect={handleSelect}
-          onArgsChange={setArgs}
-          onVmDomainChange={setVmDomain}
-          onVmSshTargetChange={setVmSshTarget}
-          onSpeak={handleSpeak}
-          onDryRun={handleDryRun}
-          onTestVm={handleTestVm}
-          onManualConfirmChange={setManualConfirmed}
-          onApproveHost={handleApproveHost}
-          onMarkTrusted={handleMarkTrusted}
-        />
+        skills.length === 0 && localSkills.length === 0 ? (
+          <div className="skill-empty-state empty-state">
+            <strong>Nenhuma skill ainda</strong>
+            <p>Skills são automações revisáveis. Toda skill passa por dry-run e aprovação antes de rodar — nada executa sozinho.</p>
+            <div className="skill-empty-actions">
+              <button type="button" className="btn-modern btn-modern-primary" onClick={() => setActiveTab('import')}>Importar</button>
+              <button type="button" className="btn-modern" onClick={() => setActiveTab('create-text')}>Criar por texto</button>
+              <button type="button" className="btn-modern" onClick={() => setActiveTab('create-ai')}>Criar com IA</button>
+            </div>
+          </div>
+        ) : (
+          <>
+            <SkillsPanel
+              skills={skills}
+              selectedSkillId={selectedSkillId}
+              plan={plan}
+              report={report}
+              args={args}
+              vmDomain={vmDomain}
+              vmSshTarget={vmSshTarget}
+              manualConfirmed={manualConfirmed}
+              busy={busy}
+              speaking={speaking}
+              error={error}
+              onSelect={handleSelect}
+              onArgsChange={setArgs}
+              onVmDomainChange={setVmDomain}
+              onVmSshTargetChange={setVmSshTarget}
+              onSpeak={handleSpeak}
+              onDryRun={handleDryRun}
+              onTestVm={handleTestVm}
+              onManualConfirmChange={setManualConfirmed}
+              onApproveHost={handleApproveHost}
+              onMarkTrusted={handleMarkTrusted}
+            />
+            {localSkills.length > 0 ? (
+              <section className="local-skills-section">
+                <h4 className="settings-section-label">Skills locais (você criou ou importou)</h4>
+                <p className="local-skills-note">Salvas neste dispositivo. Execução real exige backend + aprovação; aqui o teste é um dry-run simulado.</p>
+                {localSkills.map((skill) => (
+                  <article key={skill.id} className="local-skill-card">
+                    <header>
+                      <strong>{skill.name}</strong>
+                      <span className={`local-skill-risk risk-${skill.riskLevel}`}>risco {skill.riskLevel}</span>
+                    </header>
+                    {skill.description ? <p className="local-skill-desc">{skill.description}</p> : null}
+                    <div className="local-skill-meta">
+                      <span>Origem: {skill.origin === 'import' ? 'importada' : 'criada por texto'}</span>
+                      <span>Permissões: {skill.permissions.length ? skill.permissions.join(', ') : 'nenhuma declarada'}</span>
+                    </div>
+                    <div className="local-skill-actions">
+                      <button type="button" className="btn-modern" onClick={() => setLocalDryRunId(localDryRunId === skill.id ? undefined : skill.id)}>
+                        {localDryRunId === skill.id ? 'Ocultar dry-run' : 'Testar (dry-run)'}
+                      </button>
+                      <button type="button" className="btn-modern danger" onClick={() => removeLocalSkill(skill.id)}>Remover</button>
+                    </div>
+                    {localDryRunId === skill.id ? (
+                      <pre className="local-skill-dryrun" role="status">{simulateDryRun(skill)}</pre>
+                    ) : null}
+                  </article>
+                ))}
+              </section>
+            ) : null}
+          </>
+        )
       ) : null}
 
       {activeTab === 'import' ? (
@@ -341,13 +424,18 @@ export function SkillStudioModal({ open, sessionId, onClose, onToast }: SkillStu
             >
               Analisar
             </button>
+            {importDraftOk ? (
+              <button type="button" className="btn-modern btn-modern-primary" onClick={saveImportedSkill}>
+                Salvar skill importada
+              </button>
+            ) : null}
           </div>
           {importPreview ? (
             <div className="skill-import-preview">
               <strong>Análise</strong>
               <pre>{importPreview}</pre>
               <p className="skill-import-warning">
-                Revise o conteúdo acima. Salvar e confiar requer integração completa com o backend — disponível em breve.
+                A skill é salva localmente neste dispositivo após revisão. Execução real exige backend + aprovação explícita — o teste local é um dry-run simulado.
               </p>
             </div>
           ) : null}
@@ -357,30 +445,47 @@ export function SkillStudioModal({ open, sessionId, onClose, onToast }: SkillStu
       {activeTab === 'create-text' ? (
         <div className="skill-create-panel">
           <p className="skill-import-intro">
-            Descreva o que a skill deve fazer, ou cole um script existente.
-            O Ailu irá analisar e gerar um manifest com risco, dry-run e rollback quando possível.
+            Crie uma skill manualmente. Ela fica salva neste dispositivo e nunca executa sem aprovação.
           </p>
-          <textarea
-            className="skill-import-textarea"
-            value={createText}
-            onChange={(e) => setCreateText(e.target.value)}
-            placeholder="Ex.: Reiniciar o serviço de rede quando cair, com dry-run que verifica a rota sem mudar nada."
-            rows={8}
-          />
+          <label className="skill-create-field">
+            <span>Nome</span>
+            <input value={createName} onChange={(e) => setCreateName(e.target.value)} placeholder="Reiniciar rede" />
+          </label>
+          <label className="skill-create-field">
+            <span>Descrição</span>
+            <input value={createDescription} onChange={(e) => setCreateDescription(e.target.value)} placeholder="O que a skill faz e quando usar" />
+          </label>
+          <label className="skill-create-field">
+            <span>Risco</span>
+            <select value={createRisk} onChange={(e) => setCreateRisk(e.target.value as RiskLevel)}>
+              <option value="low">Baixo</option>
+              <option value="medium">Médio</option>
+              <option value="high">Alto</option>
+              <option value="critical">Crítico</option>
+            </select>
+          </label>
+          <label className="skill-create-field">
+            <span>Conteúdo (script ou passos)</span>
+            <textarea
+              className="skill-import-textarea"
+              value={createText}
+              onChange={(e) => setCreateText(e.target.value)}
+              placeholder={'#!/usr/bin/env bash\n# Inclua um modo --dry-run que apenas mostra o que faria.'}
+              rows={8}
+            />
+          </label>
           <div className="skill-import-actions">
             <button
               type="button"
               className="btn-modern btn-modern-primary"
-              disabled={!createText.trim()}
-              onClick={() => {
-                onToast('info', 'Geração de skill por texto requer provider configurado. Configure em Configurações → Modelos.');
-              }}
+              disabled={!createName.trim() || !createText.trim()}
+              onClick={saveCreatedSkill}
             >
-              Gerar skill com IA
+              Salvar skill
             </button>
           </div>
           <p className="skill-import-warning">
-            Requer provider de IA configurado. O resultado será exibido para revisão antes de salvar.
+            Salva localmente. Para gerar conteúdo com IA, use a aba "Criar com IA" (requer provider configurado).
           </p>
         </div>
       ) : null}

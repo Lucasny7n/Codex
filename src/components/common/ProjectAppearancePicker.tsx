@@ -28,15 +28,18 @@ export function ProjectAppearancePicker({
     }
     function handleKey(event: KeyboardEvent): void {
       if (event.key === 'Escape') {
-        event.stopPropagation();
+        // Capture phase + stopImmediatePropagation so Escape closes only this
+        // popover, not the surrounding modal (which also listens on document).
+        event.stopImmediatePropagation();
+        event.preventDefault();
         onClose();
       }
     }
     document.addEventListener('mousedown', handlePointer);
-    document.addEventListener('keydown', handleKey);
+    document.addEventListener('keydown', handleKey, true);
     return () => {
       document.removeEventListener('mousedown', handlePointer);
-      document.removeEventListener('keydown', handleKey);
+      document.removeEventListener('keydown', handleKey, true);
     };
   }, [open, onClose]);
 

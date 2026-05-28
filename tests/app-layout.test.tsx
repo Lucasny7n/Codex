@@ -331,8 +331,14 @@ describe('App layout visibility', () => {
     // Botão criar habilita com nome preenchido.
     expect(screen.getByText('Criar projeto')).toBeEnabled();
 
-    // Aplica preset "Código" e cria.
+    // O seletor de ícone/cor abre sem quebrar o layout.
+    fireEvent.click(screen.getByLabelText('Escolher ícone e cor do projeto'));
+    expect(screen.getByRole('dialog', { name: 'Ícone e cor do projeto' })).toBeInTheDocument();
+    fireEvent.keyDown(document, { key: 'Escape' });
+
+    // Aplica preset "Código": deve refletir a cor do preset no botão de aparência.
     fireEvent.click(screen.getByText('Código'));
+    expect(screen.getByLabelText('Escolher ícone e cor do projeto')).toHaveStyle({ background: '#3b82f6' });
     fireEvent.click(screen.getByText('Criar projeto'));
 
     // Projeto criado aparece (sidebar + workspace).
