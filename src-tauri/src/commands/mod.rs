@@ -3809,6 +3809,8 @@ mod agent_order_tests {
             "opa".to_owned(),
             None,
             Vec::new(),
+            None,
+            None,
         )
         .await
         .expect("temporário mock deve responder");
@@ -3858,6 +3860,8 @@ mod agent_order_tests {
             "continue".to_owned(),
             Some("terminal".to_owned()),
             Vec::new(),
+            None,
+            None,
         )
         .await
         .expect("temporário mock deve responder com histórico");
