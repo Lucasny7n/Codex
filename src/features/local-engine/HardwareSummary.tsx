@@ -52,47 +52,33 @@ export function HardwareSummary({ snapshot }: HardwareSummaryProps): JSX.Element
       <div className="ollama-manager-header">
         <div>
           <strong>{os.distro ?? os.os}</strong>
-          {os.kernel ? <small> · kernel {os.kernel}</small> : null}
         </div>
-        <small>Detectado em {formatDateTime(detectedAt)}</small>
       </div>
 
+      {/* Surface: the two things that decide what runs locally — RAM and GPU. */}
       <div className="ollama-model-meta">
-        <span>
-          <strong>CPU</strong>
-          <small>{cpu.model ?? 'desconhecida'}</small>
-          {cpu.physicalCores != null && cpu.logicalThreads != null ? (
-            <small>{cpu.physicalCores}c / {cpu.logicalThreads}t</small>
-          ) : null}
-        </span>
-
         <span>
           <strong>RAM</strong>
           <small>{formatGib(memory.totalBytes)} total</small>
           {memory.availableBytes != null ? (
             <small>{formatGib(memory.availableBytes)} livre</small>
           ) : null}
-          {memory.swapTotalBytes > 0 ? (
-            <small>swap {formatGib(memory.swapTotalBytes)}</small>
-          ) : null}
         </span>
 
-        {gpus.map((gpu, i) => (
+        {gpus.length > 0 ? gpus.map((gpu, i) => (
           <span key={i}>
             <strong>GPU</strong>
             <small>{gpu.name ?? gpu.vendor}</small>
             {gpu.vramTotalBytes != null ? (
-              <small>VRAM {formatGib(gpu.vramTotalBytes)}</small>
+              <small>{formatGib(gpu.vramTotalBytes)} de VRAM</small>
             ) : null}
           </span>
-        ))}
-
-        {disks.map((disk, i) => (
-          <span key={i}>
-            <strong>Disco ({disk.mount})</strong>
-            <small>{formatGib(disk.availableBytes)} livres de {formatGib(disk.totalBytes)}</small>
+        )) : (
+          <span>
+            <strong>GPU</strong>
+            <small>Nenhuma GPU dedicada detectada</small>
           </span>
-        ))}
+        )}
       </div>
 
       {ramLimited ? (
@@ -101,9 +87,29 @@ export function HardwareSummary({ snapshot }: HardwareSummaryProps): JSX.Element
         </div>
       ) : null}
 
-      {accelerators.length > 0 || profileTags.length > 0 || notes.length > 0 ? (
-        <details className="settings-details hardware-tech-details">
-          <summary>Detalhes técnicos</summary>
+      <details className="settings-details hardware-tech-details">
+        <summary>Detalhes técnicos</summary>
+        <div className="health-item-grid" style={{ marginTop: '0.5rem' }}>
+          <article className="health-item-card">
+            <strong>CPU</strong>
+            <p>{cpu.model ?? 'desconhecida'}{cpu.physicalCores != null && cpu.logicalThreads != null ? ` · ${cpu.physicalCores}c / ${cpu.logicalThreads}t` : ''}</p>
+          </article>
+          {os.kernel ? (
+            <article className="health-item-card"><strong>Kernel</strong><p>{os.kernel}</p></article>
+          ) : null}
+          {memory.swapTotalBytes > 0 ? (
+            <article className="health-item-card"><strong>Swap</strong><p>{formatGib(memory.swapTotalBytes)}</p></article>
+          ) : null}
+          {disks.map((disk, i) => (
+            <article key={i} className="health-item-card">
+              <strong>Disco ({disk.mount})</strong>
+              <p>{formatGib(disk.availableBytes)} livres de {formatGib(disk.totalBytes)}</p>
+            </article>
+          ))}
+          <article className="health-item-card"><strong>Detectado em</strong><p>{formatDateTime(detectedAt)}</p></article>
+        </div>
+        {accelerators.length > 0 || profileTags.length > 0 || notes.length > 0 ? (
+          <>
           {accelerators.length > 0 ? (
             <div className="health-item-grid" style={{ marginTop: '0.5rem' }}>
               {accelerators.map((acc, i) => (
@@ -133,8 +139,9 @@ export function HardwareSummary({ snapshot }: HardwareSummaryProps): JSX.Element
               {notes.map((note, i) => <li key={i}><small>{note}</small></li>)}
             </ul>
           ) : null}
-        </details>
-      ) : null}
+          </>
+        ) : null}
+      </details>
     </div>
   );
 }

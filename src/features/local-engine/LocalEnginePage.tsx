@@ -68,6 +68,23 @@ function CapabilitySummary({ hardware, backends }: { hardware: HardwareSnapshot;
   const runtimeRec = installedRuntime?.label ?? 'Ollama (recomendado instalar)';
   const toneClass = tone === 'ok' ? 'health-row-ok' : tone === 'warn' ? 'health-row-warning' : 'health-row-info';
 
+  // Plain-language guidance derived from the capacity tier.
+  const runsWell = effectiveGib >= 24
+    ? 'Modelos de código e chat até 34B, com boa velocidade.'
+    : effectiveGib >= 12
+      ? 'Modelos de 7B a 13B (código, chat e resumo) com fluidez.'
+      : effectiveGib >= 6
+        ? 'Modelos pequenos de 1B a 7B para chat e tarefas leves.'
+        : 'Modelos muito pequenos (1B–3B) para testes rápidos.';
+  const runsSlow = effectiveGib >= 24
+    ? 'Modelos acima de 70B podem exigir mais VRAM/RAM.'
+    : effectiveGib >= 12
+      ? 'Modelos acima de 13B podem usar swap e ficar lentos.'
+      : 'Modelos acima de 7B tendem a usar swap e ficar lentos.';
+  const howToImprove = vramGib > 0
+    ? 'Use quantização Q4/Q5 e feche apps pesados antes de rodar modelos grandes.'
+    : 'Uma GPU com VRAM dedicada acelera bastante; por ora, prefira modelos pequenos e quantizados.';
+
   return (
     <div className="capability-summary">
       <div className={`health-row ${toneClass}`} style={{ marginBottom: '0.5rem' }}>
@@ -83,6 +100,11 @@ function CapabilitySummary({ hardware, backends }: { hardware: HardwareSnapshot;
         <span><strong>Tamanho recomendado</strong>{modelSize}</span>
         <span><strong>Runtime recomendado</strong>{runtimeRec}</span>
         <span><strong>Quantização</strong>Q4/Q5 (bom equilíbrio)</span>
+      </div>
+      <div className="capability-guidance">
+        <p><strong>O que você pode rodar bem:</strong> {runsWell}</p>
+        <p><strong>O que pode ficar lento:</strong> {runsSlow}</p>
+        <p><strong>Como melhorar:</strong> {howToImprove}</p>
       </div>
       {!hasRuntime ? (
         <p className="capability-install-hint">

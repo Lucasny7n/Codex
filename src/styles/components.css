@@ -4499,6 +4499,23 @@
   color: var(--text-secondary);
 }
 
+.capability-guidance {
+  margin-top: 10px;
+  display: grid;
+  gap: 4px;
+}
+
+.capability-guidance p {
+  margin: 0;
+  font-size: 0.82rem;
+  color: var(--text-secondary);
+  line-height: 1.45;
+}
+
+.capability-guidance strong {
+  color: var(--text-primary);
+}
+
 .settings-routing-explainer {
   margin: 0 0 8px;
   font-size: 0.84rem;

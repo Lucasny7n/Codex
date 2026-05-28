@@ -499,4 +499,24 @@ describe('SettingsPanel', () => {
     expect(advancedDetails).toContainElement(screen.getByText('Rust / cargo'));
     expect(advancedDetails).toContainElement(screen.getByRole('button', { name: 'Copiar relatório' }));
   });
+
+  it('Saúde não diz "Pronto para conversar" se o provider selecionado falha sem fallback', async () => {
+    const failing: ProviderRuntimeStatus = {
+      state: 'error',
+      message: 'Gemini CLI indisponível.',
+      checkedAt: new Date().toISOString(),
+    };
+    renderSettings({
+      initialTab: 'health',
+      providers: providers(failing),
+      settings: { ...settings(), executionMode: 'cloud', selectedProviderId: 'gemini-cli' },
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Verificar agora' }));
+    await waitFor(() => {
+      expect(api.getAppHealthCheck).toHaveBeenCalled();
+      expect(screen.getByText('Atenção: o modelo selecionado não está pronto')).toBeInTheDocument();
+      expect(screen.queryByText('Pronto para conversar')).not.toBeInTheDocument();
+    });
+  });
 });

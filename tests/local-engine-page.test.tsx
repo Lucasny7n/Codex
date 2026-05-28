@@ -135,7 +135,7 @@ describe('LocalEnginePage', () => {
     render(<LocalEnginePage />);
 
     await waitFor(() => {
-      expect(screen.getByText('AMD Ryzen 5 5500')).toBeInTheDocument();
+      expect(screen.getByText(/AMD Ryzen 5 5500/)).toBeInTheDocument();
     });
 
     expect(screen.getByText('AMD Radeon RX 7600')).toBeInTheDocument();
@@ -197,7 +197,7 @@ describe('LocalEnginePage', () => {
     render(<LocalEnginePage />);
 
     await waitFor(() => {
-      expect(screen.getByText('AMD Ryzen 5 5500')).toBeInTheDocument();
+      expect(screen.getByText(/AMD Ryzen 5 5500/)).toBeInTheDocument();
     });
 
     fireEvent.click(screen.getByRole('button', { name: 'Atualizar hardware' }));
@@ -215,7 +215,7 @@ describe('LocalEnginePage', () => {
     render(<LocalEnginePage />);
 
     await waitFor(() => {
-      expect(screen.getByText('AMD Ryzen 5 5500')).toBeInTheDocument();
+      expect(screen.getByText(/AMD Ryzen 5 5500/)).toBeInTheDocument();
     });
 
     const input = screen.getByRole('textbox', { name: /ID do modelo para recomendar/i });
@@ -246,7 +246,7 @@ describe('LocalEnginePage', () => {
     render(<LocalEnginePage />);
 
     await waitFor(() => {
-      expect(screen.getByText('AMD Ryzen 5 5500')).toBeInTheDocument();
+      expect(screen.getByText(/AMD Ryzen 5 5500/)).toBeInTheDocument();
     });
 
     fireEvent.change(screen.getByRole('textbox', { name: /ID do modelo para recomendar/i }), {
@@ -268,7 +268,7 @@ describe('LocalEnginePage', () => {
     render(<LocalEnginePage />);
 
     await waitFor(() => {
-      expect(screen.getByText('AMD Ryzen 5 5500')).toBeInTheDocument();
+      expect(screen.getByText(/AMD Ryzen 5 5500/)).toBeInTheDocument();
     });
 
     expect(screen.getByText('Nenhum backend pronto. Instale Ollama ou llama.cpp primeiro.')).toBeInTheDocument();

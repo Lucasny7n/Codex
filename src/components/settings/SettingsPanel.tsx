@@ -34,6 +34,7 @@ import type {
   AppPersonalizationSettings,
   AppSettings,
   AppHealthCheck,
+  SystemHealthItem,
   LocalModelInstallProgress,
   LocalRuntimeSnapshot,
   ModelComparisonResponse,
@@ -222,11 +223,34 @@ function preference(settings: AppSettings): AppPersonalizationSettings {
   return { ...DEFAULT_PERSONALIZATION, ...settings.personalization };
 }
 
-function healthHeadline(health: AppHealthCheck): { title: string; detail: string } {
+interface HealthSelectedContext {
+  /** True when the user's currently-selected path (cloud provider or local) is ready. */
+  selectedReady: boolean;
+  /** True when the selected execution mode is local. */
+  localSelected: boolean;
+  /** True when a fallback model is configured and enabled. */
+  hasFallback: boolean;
+}
+
+function healthHeadline(
+  health: AppHealthCheck,
+  selected?: HealthSelectedContext,
+): { title: string; detail: string } {
   const localReady = health.ollama.apiReachable;
   const hasModels = health.ollama.installedModels.length > 0;
   const cloudReady = health.providers.some((p) => p.status.state === 'ready');
   const usable = localReady || cloudReady;
+
+  // The selected provider/model drives the headline: don't claim "Pronto para
+  // conversar" if the chosen path is failing and there's no fallback.
+  if (selected && !selected.selectedReady && !selected.hasFallback) {
+    return {
+      title: 'Atenção: o modelo selecionado não está pronto',
+      detail: selected.localSelected
+        ? 'A IA local selecionada não respondeu. Inicie o Ollama ou escolha um modelo de nuvem.'
+        : 'O provider de nuvem selecionado não está pronto. Configure a chave, troque de modelo ou ative um fallback.',
+    };
+  }
 
   if (health.overallStatus === 'error' && !usable) {
     return {
@@ -238,6 +262,7 @@ function healthHeadline(health: AppHealthCheck): { title: string; detail: string
     const parts: string[] = [];
     if (localReady) parts.push(hasModels ? 'IA local disponível' : 'IA local ativa (sem modelo instalado)');
     if (cloudReady) parts.push('nuvem configurada');
+    if (selected && !selected.selectedReady && selected.hasFallback) parts.push('usando fallback');
     const detail = health.overallStatus === 'ok'
       ? parts.join(' · ')
       : `${parts.join(' · ')} · algumas integrações avançadas pendentes`;
@@ -268,7 +293,13 @@ function buildHealthReport(health: AppHealthCheck): string {
   return lines.join('\n');
 }
 
-function AdvancedHealthDiagnostics({ health }: { health: AppHealthCheck }): JSX.Element {
+// Dev/tooling health items (Codex CLI, git workspace, node/npm/cargo/tauri…)
+// belong in the advanced diagnostic, not the common surface.
+function isDevHealthItem(item: SystemHealthItem): boolean {
+  return /codex|(\bcli\b)|git|workspace|node|npm|cargo|tauri|playwright|rust/iu.test(`${item.id} ${item.label}`);
+}
+
+function AdvancedHealthDiagnostics({ health, extraItems = [] }: { health: AppHealthCheck; extraItems?: SystemHealthItem[] }): JSX.Element {
   const [copied, setCopied] = useState(false);
   async function copyReport(): Promise<void> {
     try {
@@ -290,6 +321,9 @@ function AdvancedHealthDiagnostics({ health }: { health: AppHealthCheck }): JSX.
         <HealthRow status={health.correctBaseDir ? 'ok' : 'warning'} label="Diretório base" detail={health.baseDir} />
         {health.storageRoot ? <HealthRow status="ok" label="Armazenamento" detail={health.storageRoot} /> : null}
         {health.branch ? <HealthRow status="ok" label="Branch" detail={health.branch} /> : null}
+        {extraItems.map((item) => (
+          <HealthRow key={item.id} status={item.status} label={item.label} detail={item.detail} command={item.command} action={item.action} />
+        ))}
       </div>
       <div className="dialog-actions" style={{ marginTop: '0.5rem' }}>
         <button type="button" className="settings-pill-button" onClick={() => void copyReport()}>
@@ -492,6 +526,18 @@ export function SettingsPanel({
     fallbackModels: settings.aiRouting?.fallbackModels ?? [],
   };
   const selectedAgentLabel = profiles.find((profile) => profile.id === settings.selectedAgentId)?.label ?? 'Padrão';
+  const localSelected = settings.executionMode === 'local';
+  const selectedHealthContext = {
+    localSelected,
+    selectedReady: localSelected
+      ? Boolean(localRuntime?.apiReachable)
+      : providers.find((p) => p.id === settings.selectedProviderId)?.status.state === 'ready',
+    hasFallback: Boolean(settings.aiRouting?.fallbackEnabled)
+      && (settings.aiRouting?.fallbackModels ?? []).some((m) => m.enabled !== false),
+  };
+  const healthHead = health ? healthHeadline(health, selectedHealthContext) : undefined;
+  const commonHealthItems = health ? (health.items ?? []).filter((item) => !isDevHealthItem(item)) : [];
+  const devHealthItems = health ? (health.items ?? []).filter(isDevHealthItem) : [];
   const installedLocalModels = new Set(localRuntime?.installedModels.map((model) => model.id) ?? []);
   const managerRuntime = managerRuntimeOverride ?? localRuntime;
   const managerInstalled = managerRuntime?.installedModels ?? [];
@@ -1351,9 +1397,9 @@ export function SettingsPanel({
                 <div className="ollama-manager-header">
                   <div>
                     <strong className={`health-overall health-overall-${health?.overallStatus ?? 'unknown'}`}>
-                      {!health ? 'Aguardando diagnóstico' : healthHeadline(health).title}
+                      {!healthHead ? 'Aguardando diagnóstico' : healthHead.title}
                     </strong>
-                    <small>{health ? healthHeadline(health).detail : 'Clique em Verificar para carregar o diagnóstico.'}</small>
+                    <small>{healthHead ? healthHead.detail : 'Clique em Verificar para carregar o diagnóstico.'}</small>
                   </div>
                   <button type="button" className="settings-pill-button" disabled={healthLoading} onClick={() => void refreshHealth()}>
                     {healthLoading ? 'Verificando…' : 'Verificar agora'}
@@ -1391,21 +1437,21 @@ export function SettingsPanel({
                       />
                     </div>
 
-                    {/* Providers */}
+                    {/* Providers — extras não configurados são opcionais, não erro crítico */}
                     {health.providers.length > 0 ? (
                       <div className="health-group">
                         <h4 className="health-group-title">Providers de nuvem</h4>
                         {health.providers.map((p) => (
                           <HealthRow
                             key={p.id}
-                            status={p.status.state === 'ready' ? 'ok' : p.hasKey ? 'warning' : 'error'}
+                            status={p.status.state === 'ready' ? 'ok' : 'warning'}
                             label={p.id}
                             detail={
                               p.status.state === 'ready'
                                 ? `Conectado · ${p.profileCount ?? 0} perfil(is)`
                                 : p.hasKey
                                   ? `Chave configurada mas não testada: ${p.status.message ?? ''}`
-                                  : 'Sem chave de API. Configure em Configurações → Modelos.'
+                                  : 'Não configurado (opcional). Configure em Configurações → Modelos.'
                             }
                           />
                         ))}
@@ -1426,10 +1472,10 @@ export function SettingsPanel({
                     </div>
 
                     {/* Outros itens do diagnóstico */}
-                    {(health.items ?? []).length > 0 ? (
+                    {commonHealthItems.length > 0 ? (
                       <div className="health-group">
                         <h4 className="health-group-title">Outros</h4>
-                        {(health.items ?? []).map((item) => (
+                        {commonHealthItems.map((item) => (
                           <HealthRow key={item.id} status={item.status} label={item.label} detail={item.detail} command={item.command} action={item.action} />
                         ))}
                       </div>
@@ -1451,7 +1497,7 @@ export function SettingsPanel({
                     ) : null}
 
                     {/* Diagnóstico avançado (dev) — recolhido por padrão */}
-                    <AdvancedHealthDiagnostics health={health} />
+                    <AdvancedHealthDiagnostics health={health} extraItems={devHealthItems} />
                   </div>
                 ) : (
                   <div className="model-picker-empty" role="status">
