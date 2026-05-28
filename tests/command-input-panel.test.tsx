@@ -216,9 +216,18 @@ describe('CommandInputPanel', () => {
     expect(screen.getByText('Busca na web').closest('button')).toBeDisabled();
     expect(screen.getAllByText('em breve').length).toBeGreaterThan(0);
 
+    // Itens futuros ficam agrupados em "Recursos futuros" (recolhido).
+    const soon = screen.getByText('Recursos futuros').closest('details');
+    expect(soon).not.toBeNull();
+    expect(soon).toContainElement(screen.getByText('Captura de tela'));
+
     // Nada de itens antigos/inventados.
     expect(screen.queryByText('Selecionar pasta')).not.toBeInTheDocument();
     expect(screen.queryByText('Usar terminal')).not.toBeInTheDocument();
+
+    // Fecha com Esc.
+    fireEvent.keyDown(document, { key: 'Escape' });
+    expect(screen.queryByText('Carregar anexo')).not.toBeInTheDocument();
   });
 
   it('voz indisponível não cria banner vermelho persistente — usa toast + hint discreto', async () => {
