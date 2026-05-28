@@ -586,11 +586,11 @@ fn normalize_title(title: &str) -> String {
 /// Obviously-offensive stems (pt-BR + en). If any appears in the message the
 /// title is summarized neutrally — insults/slurs are never copied to the title.
 const OFFENSIVE_STEMS: &[&str] = &[
-    "cuz", "merd", "porra", "caralh", "fdp", "viad", "otari", "otári", "burro", "burra",
-    "idiot", "babac", "arrombad", "puta", "puto", "bucet", "fode", "foda", "foda-se",
-    "piroc", "corno", "desgrac", "desgraç", "vagabund", "retardad", "imbecil", "escrot",
-    "travec", "cacet", "fud", "fuck", "shit", "bitch", "asshole", "dick", "cunt", "slut",
-    "whore", "retard", "fagg", "pussy", "bastard", "nigg",
+    "cuz", "merd", "porra", "caralh", "fdp", "viad", "otari", "otári", "burro", "burra", "idiot",
+    "babac", "arrombad", "puta", "puto", "bucet", "fode", "foda", "foda-se", "piroc", "corno",
+    "desgrac", "desgraç", "vagabund", "retardad", "imbecil", "escrot", "travec", "cacet", "fud",
+    "fuck", "shit", "bitch", "asshole", "dick", "cunt", "slut", "whore", "retard", "fagg", "pussy",
+    "bastard", "nigg",
 ];
 
 fn contains_offensive(text: &str) -> bool {
