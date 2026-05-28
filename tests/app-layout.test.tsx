@@ -22,6 +22,10 @@ vi.mock('../src/lib/api', () => ({
   getFileAttachment: vi.fn(),
   getLocalRuntimeState: vi.fn(),
   getSttConfigState: vi.fn(),
+  getTtsStatus: vi.fn(() => Promise.resolve({ available: false, detail: 'sem voz no teste' })),
+  speakText: vi.fn(() => Promise.resolve({ available: false, detail: 'sem voz no teste' })),
+  stopSpeech: vi.fn(() => Promise.resolve()),
+  listRunningProcesses: vi.fn(),
   installLocalModel: vi.fn(),
   installLocalRuntime: vi.fn(),
   importConversations: vi.fn(),
@@ -297,6 +301,50 @@ describe('App layout visibility', () => {
 
     expect(screen.queryByTestId('onboarding-empty-state')).not.toBeInTheDocument();
     expect(vi.mocked(api.createSession)).not.toHaveBeenCalled();
+  });
+
+  it('cria projeto: nome aceita digitação contínua e preset aplica configuração', async () => {
+    vi.mocked(api.bootstrapState).mockResolvedValue(payload([baseSession()]));
+
+    render(<App />);
+
+    await waitFor(() => {
+      expect(screen.getByText('O que gostaria de explorar?')).toBeInTheDocument();
+    });
+
+    // Expande a seção de projetos antes de criar (recolhida por padrão).
+    fireEvent.click(screen.getByText('Projetos'));
+    fireEvent.click(screen.getByText('Novo Projeto'));
+
+    const nameInput = await screen.findByPlaceholderText('Nome do Projeto') as HTMLInputElement;
+
+    // Digitação contínua — simula caractere a caractere. Antes do fix, o modal
+    // re-renderizava e roubava o foco, perdendo o texto.
+    const fullName = 'Meu Projeto de Código';
+    for (const char of fullName) {
+      act(() => {
+        fireEvent.change(nameInput, { target: { value: nameInput.value + char } });
+      });
+    }
+    expect(nameInput).toHaveValue(fullName);
+
+    // Botão criar habilita com nome preenchido.
+    expect(screen.getByText('Criar projeto')).toBeEnabled();
+
+    // O seletor de ícone/cor abre sem quebrar o layout.
+    fireEvent.click(screen.getByLabelText('Escolher ícone e cor do projeto'));
+    expect(screen.getByRole('dialog', { name: 'Ícone e cor do projeto' })).toBeInTheDocument();
+    fireEvent.keyDown(document, { key: 'Escape' });
+
+    // Aplica preset "Código": deve refletir a cor do preset no botão de aparência.
+    fireEvent.click(screen.getByText('Código'));
+    expect(screen.getByLabelText('Escolher ícone e cor do projeto')).toHaveStyle({ background: '#3b82f6' });
+    fireEvent.click(screen.getByText('Criar projeto'));
+
+    // Projeto criado aparece (sidebar + workspace).
+    await waitFor(() => {
+      expect(screen.getAllByText('Meu Projeto de Código').length).toBeGreaterThan(0);
+    });
   });
 
   it('home renderiza blueprint limpo sem inspector ou blocos técnicos', async () => {
@@ -665,7 +713,7 @@ describe('App layout visibility', () => {
     expect(await screen.findByText('opa')).toBeInTheDocument();
     expect(screen.getByLabelText('Assistente respondendo')).toBeInTheDocument();
     expect(api.createSession).toHaveBeenCalledTimes(1);
-    expect(api.sendOrderToAgent).toHaveBeenCalledWith('created-session', 'opa', 'auto', []);
+    expect(api.sendOrderToAgent).toHaveBeenCalledWith('created-session', 'opa', 'auto', [], undefined, undefined);
 
     const now = new Date().toISOString();
     resolveOrder({
@@ -776,6 +824,8 @@ describe('App layout visibility', () => {
         'mensagem sem histórico',
         'auto',
         [],
+        undefined,
+        undefined,
       );
     });
     expect(await screen.findByText('mensagem sem histórico')).toBeInTheDocument();

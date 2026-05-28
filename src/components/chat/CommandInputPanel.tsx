@@ -8,28 +8,18 @@ import {
   sttFailureMessage,
   type SttCaptureStatus,
 } from '../../lib/stt/status';
-import type { PrivilegedActionSpec } from '../../types/domain';
 import type { ChatAttachment, LocalSttConfigSnapshot, SelectedFileAttachment, VoiceTranscriptionResult } from '../../types/domain';
-import { UiIcon } from '../common/AppIcons';
+import { UiIcon, type UiIconName } from '../common/AppIcons';
 import { FileManagerModal } from '../file/FileManagerModal';
 import { fileIconNameForKind, formatFileSize } from '../file/fileDisplay';
 import { PopupMenu, PremiumModal, StatusDot } from '../common/PremiumUI';
 
 interface CommandInputPanelProps {
   busy: boolean;
-  privilegedActions: PrivilegedActionSpec[];
   onSendOrder: (order: string, mode: InputModeId, attachments: ChatAttachment[]) => Promise<void>;
-  onExecuteCommand: (command: string) => Promise<void>;
-  onRequestPrivilegedAction: (actionId: string, args: Record<string, unknown>, dryRun: boolean) => Promise<void>;
-  actionJsonExamples: Record<string, string>;
   orderDisabledReason?: string;
-  executionMode?: 'cloud' | 'local';
-  activeModelLabel?: string;
-  providerLabel?: string;
-  runtimeState?: string;
-  onOpenModelSelector?: () => void;
-  onOpenTerminal?: () => void;
   onOpenSkills?: () => void;
+  onToast?: (tone: 'success' | 'error' | 'info', message: string) => void;
 }
 
 export type InputModeId = 'auto' | 'thinking' | 'fast' | 'code' | 'terminal';
@@ -72,6 +62,14 @@ const INPUT_MODES: InputModeOption[] = [
     icon: 'desktop',
     description: 'Planeja comandos com aprovação para risco.',
   },
+];
+
+// A short, honest preview of planned "+" actions. Kept small and collapsed so
+// the surface stays clean — we never pretend these work.
+const PLUS_SOON_ITEMS: Array<{ label: string; icon: UiIconName }> = [
+  { label: 'Captura de tela', icon: 'image' },
+  { label: 'Adicionar do GitHub', icon: 'globe' },
+  { label: 'Busca na web', icon: 'globe' },
 ];
 
 type VoiceState =
@@ -163,20 +161,36 @@ function mimeTypeForAttachment(attachment: SelectedFileAttachment): string | und
   return undefined;
 }
 
+const ATTACHMENT_CONTEXT_LIMIT = 8000;
+const ATTACHMENT_PREVIEW_LIMIT = 1200;
+const TEXTUAL_ATTACHMENT_KINDS = new Set(['text', 'json', 'code']);
+
 function toChatAttachment(attachment: SelectedFileAttachment): ChatAttachment {
-  const preview = attachment.preview && attachment.preview.length <= 2400
-    ? attachment.preview
-    : attachment.preview
-      ? `${attachment.preview.slice(0, 2400)}\n[preview truncado pelo composer]`
-      : undefined;
+  const raw = attachment.preview;
+  const previewAvailable = Boolean(raw);
+  // Short text shown in the expandable chip.
+  const previewTextLimited = raw
+    ? raw.length <= ATTACHMENT_PREVIEW_LIMIT
+      ? raw
+      : `${raw.slice(0, ATTACHMENT_PREVIEW_LIMIT)}\n[mostrando início — conteúdo completo enviado ao modelo]`
+    : undefined;
+  // Readable text actually included in the model context, so the model can
+  // answer about the file and the chip can honestly show "incluído".
+  const isTextual = TEXTUAL_ATTACHMENT_KINDS.has(attachment.kind) || attachment.previewKind === 'text';
+  const contextText = raw && isTextual
+    ? raw.length <= ATTACHMENT_CONTEXT_LIMIT
+      ? raw
+      : `${raw.slice(0, ATTACHMENT_CONTEXT_LIMIT)}\n[conteúdo truncado em ${ATTACHMENT_CONTEXT_LIMIT} caracteres]`
+    : undefined;
   return {
     path: attachment.path,
     name: attachment.name,
     mimeType: mimeTypeForAttachment(attachment),
     size: attachment.size,
     kind: attachment.kind,
-    previewAvailable: Boolean(attachment.preview),
-    previewTextLimited: preview,
+    previewAvailable,
+    previewTextLimited,
+    contextText,
   };
 }
 
@@ -185,6 +199,7 @@ export function CommandInputPanel({
   onSendOrder,
   orderDisabledReason,
   onOpenSkills,
+  onToast,
 }: CommandInputPanelProps): JSX.Element {
   const [mode, setMode] = useState<InputModeId>('auto');
   const [prompt, setPrompt] = useState('');
@@ -207,6 +222,7 @@ export function CommandInputPanel({
   const mediaRecorderRef = useRef<MediaRecorder>();
   const recordingStreamRef = useRef<MediaStream>();
   const recordedChunksRef = useRef<Blob[]>([]);
+  const lastVoiceToastRef = useRef<VoiceState>('idle');
 
   const selectedMode = INPUT_MODES.find((item) => item.id === mode) ?? INPUT_MODES[0];
   const canSubmit =
@@ -224,6 +240,19 @@ export function CommandInputPanel({
     if (recorder && recorder.state !== 'inactive') recorder.stop();
     stopRecordingTracks();
   }, []);
+
+  // Voice errors surface as a single discreet toast (not a persistent banner),
+  // fired once per transition into a failure state (no repeats while it stays).
+  // The message is the real, concise diagnostic; copy/diagnostic actions live
+  // in the inline hint below the field.
+  useEffect(() => {
+    const failed = voiceState === 'error' || voiceState === 'missing-backend' || voiceState === 'permission-denied';
+    if (failed && lastVoiceToastRef.current !== voiceState) {
+      const tone = voiceState === 'missing-backend' ? 'info' : 'error';
+      onToast?.(tone, voiceMessage ?? 'Entrada por voz indisponível neste ambiente.');
+    }
+    lastVoiceToastRef.current = voiceState;
+  }, [voiceState, voiceMessage, onToast]);
 
   function applySttSnapshot(snapshot: LocalSttConfigSnapshot, path = sttModelPath): void {
     const normalized = normalizeSttSnapshot(snapshot);
@@ -589,10 +618,10 @@ export function CommandInputPanel({
           >
             <UiIcon name="plus" className="prompt-plus-icon" />
           </button>
-          <PopupMenu open={plusOpen} onClose={() => setPlusOpen(false)} align="left">
+          <PopupMenu open={plusOpen} onClose={() => setPlusOpen(false)} align="left" className="plus-menu">
             <button type="button" className="menu-item" onClick={openFileManager}>
               <UiIcon name="paperclip" className="menu-icon menu-item-icon" />
-              Selecionar arquivo
+              Carregar anexo
             </button>
             {onOpenSkills ? (
               <button
@@ -603,10 +632,27 @@ export function CommandInputPanel({
                   onOpenSkills();
                 }}
               >
-                <UiIcon name="desktop" className="menu-icon menu-item-icon" />
-                Skill Studio
+                <UiIcon name="spark" className="menu-icon menu-item-icon" />
+                Skills
               </button>
             ) : null}
+            <details className="plus-menu-soon">
+              <summary>Recursos futuros</summary>
+              {PLUS_SOON_ITEMS.map((item) => (
+                <button
+                  key={item.label}
+                  type="button"
+                  className="menu-item is-soon"
+                  disabled
+                  aria-disabled="true"
+                  title="Disponível em breve"
+                >
+                  <UiIcon name={item.icon} className="menu-icon menu-item-icon" />
+                  {item.label}
+                  <span className="menu-soon-badge">em breve</span>
+                </button>
+              ))}
+            </details>
           </PopupMenu>
         </div>
 
@@ -670,17 +716,26 @@ export function CommandInputPanel({
           <UiIcon name="send" />
         </button>
       </div>
-      {voiceMessage ? (
-        <div
-          className={`voice-feedback voice-${voiceState}`}
-          role={voiceState === 'error' || voiceState === 'missing-backend' || voiceState === 'permission-denied' ? 'alert' : 'status'}
-        >
+      {(voiceState === 'recording' || voiceState === 'transcribing' || voiceState === 'done') && voiceMessage ? (
+        <div className={`voice-feedback voice-${voiceState}`} role="status">
           <span>{voiceMessage}</span>
-          {voiceState === 'missing-backend' || voiceState === 'error' || voiceState === 'permission-denied' ? (
-            <button type="button" className="voice-config-button" onClick={openSttSetup}>
-              {voiceState === 'permission-denied' ? 'Configurar microfone' : 'Configurar transcrição local'}
+        </div>
+      ) : null}
+      {voiceState === 'error' || voiceState === 'missing-backend' || voiceState === 'permission-denied' ? (
+        <div className="voice-hint" role="note">
+          <span>Voz indisponível agora.</span>
+          {sttSnapshot?.installCommand ? (
+            <button
+              type="button"
+              className="voice-config-button"
+              onClick={() => void navigator.clipboard?.writeText(sttSnapshot.installCommand)}
+            >
+              Copiar comando
             </button>
           ) : null}
+          <button type="button" className="voice-config-button" onClick={openSttSetup}>
+            {voiceState === 'permission-denied' ? 'Configurar microfone' : 'Abrir diagnóstico de voz'}
+          </button>
         </div>
       ) : null}
       {fileManagerOpen ? (

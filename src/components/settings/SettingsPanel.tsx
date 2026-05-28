@@ -8,8 +8,10 @@ import {
   removeLocalModel,
   showLocalModel,
   testLocalModel,
+  testProviderConnection,
 } from '../../lib/api';
 import { parseComparisonTargets } from '../../lib/models/modelComparisonService';
+import { fuzzyMatch } from '../../lib/models/fuzzyMatch';
 import {
   buildPullCandidateFromQuery,
   normalizeOllamaModelId,
@@ -32,6 +34,7 @@ import type {
   AppPersonalizationSettings,
   AppSettings,
   AppHealthCheck,
+  SystemHealthItem,
   LocalModelInstallProgress,
   LocalRuntimeSnapshot,
   ModelComparisonResponse,
@@ -54,10 +57,11 @@ interface SettingsPanelProps {
   onImportConversations: (path: string) => Promise<string>;
   onArchiveAllConversations: () => Promise<void>;
   onDeleteAllConversations: () => Promise<void>;
+  onOpenMemoryManager?: () => void;
   initialTab?: SettingsTab;
 }
 
-export type SettingsTab = 'general' | 'interface' | 'models' | 'conversations' | 'personalization' | 'health' | 'meu-pc';
+export type SettingsTab = 'general' | 'interface' | 'models' | 'conversations' | 'personalization' | 'health' | 'maquina-local';
 
 const SETTINGS_TABS: Array<{ id: SettingsTab; label: string }> = [
   { id: 'general', label: 'Geral' },
@@ -66,7 +70,7 @@ const SETTINGS_TABS: Array<{ id: SettingsTab; label: string }> = [
   { id: 'conversations', label: 'Conversas' },
   { id: 'personalization', label: 'Personalização' },
   { id: 'health', label: 'Saúde' },
-  { id: 'meu-pc', label: 'Meu PC' },
+  { id: 'maquina-local', label: 'Máquina Local' },
 ];
 
 const LANGUAGE_OPTIONS: Array<{ value: AiResponseLanguage; label: string }> = [
@@ -105,6 +109,7 @@ const ADVANCED_PERSONALIZATION: Array<{
   label: string;
   description: string;
 }> = [
+  { key: 'manageCookies', label: 'Gerenciar cookies', description: 'Guarda a preferência para fluxos web que exigirem estado de navegador.' },
   { key: 'webPageExtraction', label: 'Extração da página web', description: 'Guarda a preferência para leitura de páginas quando o backend for conectado.' },
   { key: 'imageSearch', label: 'Pesquisa por imagens', description: 'Preferência visual para busca por imagem, sem executar rede sozinha.' },
   { key: 'webSearch', label: 'Pesquisa na web', description: 'Permite que fluxos futuros solicitem busca web com confirmação clara.' },
@@ -181,14 +186,152 @@ function cleanSettingsErrorMessage(message: string | undefined, fallback: string
   return firstUsefulLine.length > 180 ? `${firstUsefulLine.slice(0, 177)}...` : firstUsefulLine;
 }
 
-function healthStatusLabel(status: 'ok' | 'warning' | 'error'): string {
-  if (status === 'ok') return 'OK';
-  if (status === 'warning') return 'Atenção';
-  return 'Erro';
+function HealthRow({ status, label, detail, command, action }: {
+  status: 'ok' | 'warning' | 'error';
+  label: string;
+  detail: string;
+  command?: string;
+  action?: string;
+}): JSX.Element {
+  const icon = status === 'ok' ? '✓' : status === 'warning' ? '⚠' : '✗';
+  return (
+    <div className={`health-row health-row-${status}`}>
+      <span className="health-row-icon" aria-hidden="true">{icon}</span>
+      <div className="health-row-body">
+        <strong className="health-row-label">{label}</strong>
+        <span className="health-row-detail">{detail}</span>
+        {action ? <span className="health-row-action">{action}</span> : null}
+        {command ? (
+          <div className="health-row-command">
+            <code>{command}</code>
+            <button
+              type="button"
+              className="health-row-copy"
+              onClick={() => void navigator.clipboard.writeText(command)}
+              title="Copiar comando"
+            >
+              Copiar
+            </button>
+          </div>
+        ) : null}
+      </div>
+    </div>
+  );
 }
 
 function preference(settings: AppSettings): AppPersonalizationSettings {
   return { ...DEFAULT_PERSONALIZATION, ...settings.personalization };
+}
+
+interface HealthSelectedContext {
+  /** True when the user's currently-selected path (cloud provider or local) is ready. */
+  selectedReady: boolean;
+  /** True when the selected execution mode is local. */
+  localSelected: boolean;
+  /** True when a fallback model is configured and enabled. */
+  hasFallback: boolean;
+}
+
+function healthHeadline(
+  health: AppHealthCheck,
+  selected?: HealthSelectedContext,
+): { title: string; detail: string } {
+  const localReady = health.ollama.apiReachable;
+  const hasModels = health.ollama.installedModels.length > 0;
+  const cloudReady = health.providers.some((p) => p.status.state === 'ready');
+  const usable = localReady || cloudReady;
+
+  // The selected provider/model drives the headline: don't claim "Pronto para
+  // conversar" if the chosen path is failing and there's no fallback.
+  if (selected && !selected.selectedReady && !selected.hasFallback) {
+    return {
+      title: 'Atenção: o modelo selecionado não está pronto',
+      detail: selected.localSelected
+        ? 'A IA local selecionada não respondeu. Inicie o Ollama ou escolha um modelo de nuvem.'
+        : 'O provider de nuvem selecionado não está pronto. Configure a chave, troque de modelo ou ative um fallback.',
+    };
+  }
+
+  if (health.overallStatus === 'error' && !usable) {
+    return {
+      title: 'Algo precisa de atenção antes de conversar',
+      detail: 'Nenhuma IA está pronta ainda. Configure a IA local (Ollama) ou um provider de nuvem abaixo.',
+    };
+  }
+  if (usable) {
+    const parts: string[] = [];
+    if (localReady) parts.push(hasModels ? 'IA local disponível' : 'IA local ativa (sem modelo instalado)');
+    if (cloudReady) parts.push('nuvem configurada');
+    if (selected && !selected.selectedReady && selected.hasFallback) parts.push('usando fallback');
+    const detail = health.overallStatus === 'ok'
+      ? parts.join(' · ')
+      : `${parts.join(' · ')} · algumas integrações avançadas pendentes`;
+    return { title: 'Pronto para conversar', detail };
+  }
+  return {
+    title: 'Quase pronto',
+    detail: 'A IA ainda não está configurada. Veja os itens abaixo para deixar tudo pronto.',
+  };
+}
+
+function buildHealthReport(health: AppHealthCheck): string {
+  const yn = (ok: boolean) => (ok ? 'ok' : 'faltando');
+  const lines = [
+    'Relatório de diagnóstico — Ailu Studio',
+    `Status geral: ${health.overallStatus}`,
+    `IA local (Ollama): ${health.ollama.apiReachable ? 'acessível' : 'inacessível'} · ${health.ollama.installedModels.length} modelo(s)`,
+    `Node: ${yn(health.nodeOk)} · npm: ${yn(health.npmOk)} · cargo: ${yn(health.cargoOk)} · Tauri: ${yn(health.tauriOk)}`,
+    `Diretório base: ${health.baseDir}${health.correctBaseDir ? '' : ` (esperado ${health.expectedBaseDir})`}`,
+    health.storageRoot ? `Armazenamento: ${health.storageRoot}` : undefined,
+    health.branch ? `Branch: ${health.branch}` : undefined,
+    `Providers: ${health.providers.map((p) => `${p.id}=${p.status.state}`).join(', ') || 'nenhum'}`,
+  ].filter(Boolean);
+  if (health.recentErrors.length > 0) {
+    lines.push('Problemas recentes:');
+    for (const err of health.recentErrors.slice(0, 8)) lines.push(`- [${err.severity}] ${err.code}: ${err.message}`);
+  }
+  return lines.join('\n');
+}
+
+// Dev/tooling health items (Codex CLI, git workspace, node/npm/cargo/tauri…)
+// belong in the advanced diagnostic, not the common surface.
+function isDevHealthItem(item: SystemHealthItem): boolean {
+  return /codex|(\bcli\b)|git|workspace|node|npm|cargo|tauri|playwright|rust/iu.test(`${item.id} ${item.label}`);
+}
+
+function AdvancedHealthDiagnostics({ health, extraItems = [] }: { health: AppHealthCheck; extraItems?: SystemHealthItem[] }): JSX.Element {
+  const [copied, setCopied] = useState(false);
+  async function copyReport(): Promise<void> {
+    try {
+      await navigator.clipboard.writeText(buildHealthReport(health));
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1500);
+    } catch {
+      // clipboard optional
+    }
+  }
+  return (
+    <details className="settings-details health-advanced">
+      <summary>Diagnóstico avançado</summary>
+      <div className="health-group" style={{ marginTop: '0.5rem' }}>
+        <HealthRow status={health.nodeOk ? 'ok' : 'error'} label="Node.js" detail={health.nodeOk ? 'Disponível' : 'node não encontrado. Instale via nvm ou pacote do sistema.'} command={health.nodeOk ? undefined : 'nvm install --lts'} />
+        <HealthRow status={health.npmOk ? 'ok' : 'error'} label="npm" detail={health.npmOk ? 'Disponível' : 'npm não encontrado. Geralmente vem junto com Node.js.'} />
+        <HealthRow status={health.cargoOk ? 'ok' : 'error'} label="Rust / cargo" detail={health.cargoOk ? 'Disponível' : 'cargo não encontrado. Instale via rustup.rs.'} command={health.cargoOk ? undefined : 'curl --proto =https --tlsv1.2 -sSf https://sh.rustup.rs | sh'} />
+        <HealthRow status={health.tauriOk ? 'ok' : 'warning'} label="Tauri CLI" detail={health.tauriOk ? 'Disponível' : 'tauri-cli não encontrado (necessário só para desenvolvimento).'} />
+        <HealthRow status={health.correctBaseDir ? 'ok' : 'warning'} label="Diretório base" detail={health.baseDir} />
+        {health.storageRoot ? <HealthRow status="ok" label="Armazenamento" detail={health.storageRoot} /> : null}
+        {health.branch ? <HealthRow status="ok" label="Branch" detail={health.branch} /> : null}
+        {extraItems.map((item) => (
+          <HealthRow key={item.id} status={item.status} label={item.label} detail={item.detail} command={item.command} action={item.action} />
+        ))}
+      </div>
+      <div className="dialog-actions" style={{ marginTop: '0.5rem' }}>
+        <button type="button" className="settings-pill-button" onClick={() => void copyReport()}>
+          {copied ? 'Copiado' : 'Copiar relatório'}
+        </button>
+      </div>
+    </details>
+  );
 }
 
 function fallbackText(settings: AppSettings): string {
@@ -286,6 +429,7 @@ export function SettingsPanel({
   onImportConversations,
   onArchiveAllConversations,
   onDeleteAllConversations,
+  onOpenMemoryManager,
   initialTab,
 }: SettingsPanelProps): JSX.Element {
   const [activeTab, setActiveTab] = useState<SettingsTab>(normalizeSettingsTab(initialTab));
@@ -311,6 +455,21 @@ export function SettingsPanel({
   const [customPresetId, setCustomPresetId] = useState<string>();
   const [customPresetLabel, setCustomPresetLabel] = useState('');
   const [customPresetPrompt, setCustomPresetPrompt] = useState('');
+  const [modelsSubTab, setModelsSubTab] = useState<'local' | 'cloud'>('local');
+  const [providerTestStatus, setProviderTestStatus] = useState<Record<string, ProviderRuntimeStatus | 'testing'>>({});
+
+  async function testProvider(providerId: string): Promise<void> {
+    setProviderTestStatus((current) => ({ ...current, [providerId]: 'testing' }));
+    try {
+      const result = await testProviderConnection(providerId);
+      setProviderTestStatus((current) => ({ ...current, [providerId]: result }));
+    } catch (cause) {
+      setProviderTestStatus((current) => ({
+        ...current,
+        [providerId]: { state: 'error', message: cause instanceof Error ? cause.message : 'Falha ao testar conexão.', checkedAt: new Date().toISOString() },
+      }));
+    }
+  }
   const [comparisonTargets, setComparisonTargets] = useState('local-ollama/qwen2.5-coder:1.5b\nopenai-api/gpt-5.4-mini');
   const [comparisonPrompt, setComparisonPrompt] = useState('');
   const [comparisonBusy, setComparisonBusy] = useState(false);
@@ -367,6 +526,18 @@ export function SettingsPanel({
     fallbackModels: settings.aiRouting?.fallbackModels ?? [],
   };
   const selectedAgentLabel = profiles.find((profile) => profile.id === settings.selectedAgentId)?.label ?? 'Padrão';
+  const localSelected = settings.executionMode === 'local';
+  const selectedHealthContext = {
+    localSelected,
+    selectedReady: localSelected
+      ? Boolean(localRuntime?.apiReachable)
+      : providers.find((p) => p.id === settings.selectedProviderId)?.status.state === 'ready',
+    hasFallback: Boolean(settings.aiRouting?.fallbackEnabled)
+      && (settings.aiRouting?.fallbackModels ?? []).some((m) => m.enabled !== false),
+  };
+  const healthHead = health ? healthHeadline(health, selectedHealthContext) : undefined;
+  const commonHealthItems = health ? (health.items ?? []).filter((item) => !isDevHealthItem(item)) : [];
+  const devHealthItems = health ? (health.items ?? []).filter(isDevHealthItem) : [];
   const installedLocalModels = new Set(localRuntime?.installedModels.map((model) => model.id) ?? []);
   const managerRuntime = managerRuntimeOverride ?? localRuntime;
   const managerInstalled = managerRuntime?.installedModels ?? [];
@@ -378,19 +549,25 @@ export function SettingsPanel({
     })
     : managerInstalled;
   const managerPullCandidate = buildPullCandidateFromQuery(managerQuery, managerRuntime);
-  const normalizedCatalogQuery = catalogQuery.trim().toLowerCase();
+  const normalizedCatalogQuery = catalogQuery.trim();
+  // Typo-tolerant fuzzy search over the combined model fields. Tolerates
+  // partial names, family/size/quant, provider and a single typo on longer
+  // words (see fuzzyMatch).
   const visibleModelItems = modelItems.filter((model) => {
+    const modeMatch = modelsSubTab === 'local' ? model.mode === 'local' : model.mode === 'cloud';
+    if (!modeMatch) return false;
     if (!normalizedCatalogQuery) return FEATURED_MODEL_IDS.includes(model.id);
-    return [
+    const haystack = [
       model.id,
       model.modelId,
       model.displayName,
       model.providerLabel,
-      model.mode === 'local' ? model.family : undefined,
-      model.recommendedUse,
+      model.mode === 'local' ? (model.family ?? '') : '',
+      model.recommendedUse ?? '',
       ...model.tags,
       ...model.bestFor,
-    ].filter(Boolean).join(' ').toLowerCase().includes(normalizedCatalogQuery);
+    ].join(' ');
+    return fuzzyMatch(normalizedCatalogQuery, haystack);
   });
 
   async function commit(patch: Partial<AppSettings>): Promise<void> {
@@ -673,6 +850,22 @@ export function SettingsPanel({
                   onChange={(value) => void commit({ developerMode: value })}
                 />
               </section>
+              {!settings.developerMode ? (
+                <section className="settings-block settings-routing-intro">
+                  <div className="settings-section-label">Roteamento de modelos</div>
+                  <p className="settings-routing-explainer">
+                    O app usa o modelo selecionado na conversa automaticamente. Se ele falhar
+                    (rede, cota ou provider fora do ar) e o fallback estiver ligado, ele tenta o
+                    próximo modelo configurado. Estar ligado não gasta API extra — só roda quando
+                    você envia algo.
+                  </p>
+                  <p className="settings-routing-explainer settings-routing-muted">
+                    Roteamento por tarefa (rápido, código, raciocínio) é planejado e aparece como
+                    avançado quando o backend suportar. Ajustes finos de fallback ficam no Modo
+                    Desenvolvedor.
+                  </p>
+                </section>
+              ) : null}
               {settings.developerMode ? (
                 <section className="settings-block settings-routing-block">
                   <div className="settings-section-label">Roteamento avançado</div>
@@ -728,22 +921,44 @@ export function SettingsPanel({
             <div className="settings-page">
               <header className="settings-page-heading">
                 <span>Modelos</span>
-                <h3>Gerenciador Ollama e catálogo cloud</h3>
+                <h3>{modelsSubTab === 'local' ? 'Modelos Locais — Ollama e llama.cpp' : 'Modelos Nuvem — Providers e API'}</h3>
               </header>
 
+              <div className="models-sub-tabs" role="tablist" aria-label="Tipo de modelos">
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={modelsSubTab === 'local'}
+                  className={`models-sub-tab${modelsSubTab === 'local' ? ' active' : ''}`}
+                  onClick={() => { setModelsSubTab('local'); setCatalogQuery(''); }}
+                >
+                  Locais
+                </button>
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={modelsSubTab === 'cloud'}
+                  className={`models-sub-tab${modelsSubTab === 'cloud' ? ' active' : ''}`}
+                  onClick={() => { setModelsSubTab('cloud'); setCatalogQuery(''); }}
+                >
+                  Nuvem
+                </button>
+              </div>
+
+              {modelsSubTab === 'local' ? (
               <section className="ollama-manager" aria-label="Model Manager Ollama">
                 <div className="ollama-manager-header">
                   <div>
-                    <strong>Model Manager local</strong>
+                    <strong>Gerenciador de modelos locais</strong>
                     <small>{managerRuntime?.message ?? 'Ollama ainda não foi consultado.'}</small>
                   </div>
                   <button type="button" className="settings-pill-button" disabled={managerBusyId === 'refresh'} onClick={() => void refreshManager()}>
-                    Refresh
+                    Atualizar
                   </button>
                 </div>
 
                 <label className="ollama-manager-search">
-                  Buscar ou baixar modelo Ollama
+                  Buscar modelo para baixar
                   <div>
                     <input
                       className="input-modern"
@@ -756,6 +971,7 @@ export function SettingsPanel({
                       className="btn-modern btn-modern-primary"
                       disabled={!managerPullCandidate || managerBusyId === managerPullCandidate?.modelId}
                       onClick={() => managerPullCandidate ? void pullManagerModel(managerPullCandidate.modelId) : undefined}
+                      title={managerPullCandidate ? `Baixar ${managerPullCandidate.modelId} pelo Ollama` : undefined}
                     >
                       {managerPullCandidate ? `Baixar ${managerPullCandidate.modelId}` : 'Baixar modelo'}
                     </button>
@@ -765,6 +981,7 @@ export function SettingsPanel({
                 {managerError ? <div className="input-error-tip" role="alert">{managerError}</div> : null}
                 {managerMessage ? <div className="settings-inline-note" role="status">{managerMessage}</div> : null}
 
+                <div className="settings-section-label">Modelos instalados</div>
                 <div className="ollama-model-grid">
                   {managerInstalledMatches.map((model) => {
                     const progress = managerProgress[model.id] ?? managerProgress[normalizeOllamaQuery(model.id)];
@@ -773,10 +990,9 @@ export function SettingsPanel({
                       <article key={model.id} className="ollama-model-card">
                         <header>
                           <strong>{model.id}</strong>
-                          <small>{[model.size, model.modifiedAt].filter(Boolean).join(' · ') || 'Instalado pelo Ollama'}</small>
+                          <small>{model.size || 'Instalado pelo Ollama'}</small>
                         </header>
                         <div className="ollama-model-meta">
-                          {model.digest ? <span><b>Digest</b>{model.digest}</span> : null}
                           {testStatus ? <span><b>Teste</b>{testStatus.state === 'ready' ? 'respondeu' : testStatus.message}</span> : null}
                         </div>
                         {progress ? (
@@ -787,7 +1003,7 @@ export function SettingsPanel({
                                 <span style={{ width: `${Math.max(0, Math.min(100, progress.progressPercent))}%` }} />
                               </div>
                             ) : null}
-                            {[progress.downloaded && progress.total ? `${progress.downloaded} / ${progress.total}` : undefined, progress.speed, progress.digest, progress.layer].filter(Boolean).join(' · ')}
+                            {[progress.downloaded && progress.total ? `${progress.downloaded} / ${progress.total}` : undefined, progress.speed, progress.layer].filter(Boolean).join(' · ')}
                           </div>
                         ) : null}
                         {managerRemoveConfirm === model.id ? (
@@ -808,8 +1024,8 @@ export function SettingsPanel({
                   })}
                   {managerInstalledMatches.length === 0 ? (
                     <div className="model-picker-empty" role="status">
-                      <strong>Nenhum instalado encontrado</strong>
-                      <span>{managerPullCandidate ? `Use Baixar ${managerPullCandidate.modelId} para testar o download real pelo Ollama.` : 'Aba Local sem busca mostra apenas modelos instalados do Ollama.'}</span>
+                      <strong>Nenhum modelo instalado encontrado</strong>
+                      <span>{managerPullCandidate ? `Use "Baixar modelo selecionado" para baixar ${managerPullCandidate.modelId} pelo Ollama. Veja também o catálogo abaixo.` : 'Busque acima para baixar um modelo, ou explore o catálogo abaixo.'}</span>
                     </div>
                   ) : null}
                 </div>
@@ -829,8 +1045,127 @@ export function SettingsPanel({
                   </details>
                 ) : null}
               </section>
+              ) : null}
 
-              <section className="model-comparison-panel" aria-label="Comparação de modelos">
+              {modelsSubTab === 'cloud' ? (
+              <section className="settings-block" aria-label="Modelos de nuvem">
+                <div className="ollama-manager-header">
+                  <div>
+                    <strong>Providers configurados</strong>
+                    <small>Configure chaves de API em Contas e depois selecione o modelo desejado.</small>
+                  </div>
+                  <button type="button" className="settings-pill-button" onClick={() => {
+                    // Scroll to providers section or show info
+                  }}>
+                    Gerenciar contas
+                  </button>
+                </div>
+                {providers.map((provider) => {
+                  const tested = providerTestStatus[provider.id];
+                  const testing = tested === 'testing';
+                  const testResult = tested && tested !== 'testing' ? tested : undefined;
+                  const configured = provider.status.state === 'ready' || provider.configurable && provider.enabled;
+                  return (
+                    <div key={provider.id} className="health-row health-row-provider">
+                      <span className="health-row-icon" aria-hidden="true">
+                        {provider.status.state === 'ready' ? '✓' : provider.status.state === 'error' ? '✗' : '⊙'}
+                      </span>
+                      <div className="health-row-body">
+                        <strong className="health-row-label">{provider.label}</strong>
+                        <span className="health-row-detail">
+                          {provider.status.state === 'ready'
+                            ? `Configurado · ${provider.models.length} modelo(s)`
+                            : configured
+                              ? (provider.status.message ?? 'Configurado, não testado')
+                              : 'Não configurado — adicione a chave de API em Contas.'}
+                        </span>
+                        {testResult ? (
+                          <span className={`health-row-detail provider-test-result ${testResult.state === 'ready' ? 'ok' : 'error'}`}>
+                            {testResult.state === 'ready' ? 'Conexão OK' : `Erro: ${testResult.message}`}
+                          </span>
+                        ) : null}
+                      </div>
+                      <button
+                        type="button"
+                        className="settings-pill-button"
+                        disabled={testing}
+                        onClick={() => void testProvider(provider.id)}
+                      >
+                        {testing ? 'Testando…' : 'Testar conexão'}
+                      </button>
+                    </div>
+                  );
+                })}
+              </section>
+              ) : null}
+
+              <section className="settings-model-list" aria-label={`Catálogo de modelos ${modelsSubTab === 'local' ? 'locais' : 'nuvem'}`}>
+                <div className="settings-model-catalog-toolbar">
+                  <span>
+                    <strong>Catálogo {modelsSubTab === 'local' ? 'local' : 'nuvem'}</strong>
+                    <small>{catalogQuery.trim() ? `${visibleModelItems.length} resultado(s)` : 'Modelos em destaque. Busque por nome, família, tamanho ou provider.'}</small>
+                  </span>
+                  <input
+                    className="input-modern"
+                    value={catalogQuery}
+                    placeholder={modelsSubTab === 'local' ? 'qwen coder 7, llama 3, mistral…' : 'gpt, claude, gemini, deepseek…'}
+                    aria-label="Buscar no catálogo de modelos"
+                    onChange={(event) => setCatalogQuery(event.target.value)}
+                  />
+                </div>
+                {visibleModelItems.map((model) => {
+                  const expanded = expandedModelId === model.id;
+                  const installed = model.mode === 'local' && (installedLocalModels.has(model.id) || installedLocalModels.has(model.modelId));
+                  const status = modelStatusLabel(model, providers, localRuntime);
+                  const isHeavy = model.mode === 'local' && model.caveats.some((c) => c.includes('pesado'));
+                  return (
+                    <article key={model.id} className={`settings-model-accordion ${expanded ? 'open' : ''}`}>
+                      <button
+                        type="button"
+                        className="settings-model-trigger"
+                        aria-expanded={expanded}
+                        onClick={() => setExpandedModelId(expanded ? '' : model.id)}
+                      >
+                        <span className="settings-model-chevron" aria-hidden="true">{expanded ? '⌄' : '›'}</span>
+                        <strong>{model.displayName}</strong>
+                        {isHeavy ? <span className="model-heavy-badge" title="Pode não caber na sua RAM">⚠ pesado</span> : null}
+                        <small>{modelStatusLabel(model, providers, localRuntime)}</small>
+                      </button>
+                      {expanded ? (
+                        <div className="settings-model-details">
+                          {isHeavy ? (
+                            <div className="model-heavy-warning">
+                              Modelo pesado: requer memória significativa. Pode usar swap ou travar em hardware com menos de 16 GB.
+                              Use apenas se souber o que está fazendo.
+                            </div>
+                          ) : null}
+                          <p>{model.recommendedUse ? `${model.displayName} é indicado para ${model.recommendedUse.toLowerCase()}.` : `${model.displayName} está no catálogo local do app.`}</p>
+                          <div className="settings-model-facts">
+                            <span><strong>Comprimento máximo do contexto</strong>{model.estimatedLimits.summary}</span>
+                            <span><strong>Comprimento máximo de geração</strong>{UNKNOWN_MODEL_VALUE}</span>
+                            <span><strong>Modalidade</strong>{modelModality(model)}</span>
+                            <span><strong>Fornecedor</strong>{modelProviderLabel(model)}</span>
+                            <span><strong>Tipo</strong>{modelTypeLabel(model)}</span>
+                            {model.mode === 'local' ? <span><strong>Status local</strong>{installed ? 'Instalado' : status}</span> : null}
+                            {model.mode === 'cloud' ? <span><strong>Status</strong>{status}</span> : null}
+                          </div>
+                        </div>
+                      ) : null}
+                    </article>
+                  );
+                })}
+                {visibleModelItems.length === 0 ? (
+                  <div className="model-picker-empty" role="status">
+                    <strong>Nenhum modelo encontrado</strong>
+                    <span>Tente termos diferentes. Ex.: "qwen coder 7" para modelos de código da família qwen 7B.</span>
+                  </div>
+                ) : null}
+              </section>
+
+              {modelsSubTab === 'cloud' ? (
+              <details className="settings-details model-comparison-advanced">
+                <summary>Avançado · Comparação de modelos</summary>
+                <section className="model-comparison-panel" aria-label="Comparação de modelos">
                 <header className="ollama-manager-header">
                   <div>
                     <strong>Comparação de modelos</strong>
@@ -869,61 +1204,8 @@ export function SettingsPanel({
                   </div>
                 ) : null}
               </section>
-
-              <section className="settings-model-list" aria-label="Informações dos modelos">
-                <div className="settings-model-catalog-toolbar">
-                  <span>
-                    <strong>Catálogo de referência</strong>
-                    <small>{catalogQuery.trim() ? `${visibleModelItems.length} resultado(s)` : 'Mostrando apenas modelos em destaque. Use busca para ver mais.'}</small>
-                  </span>
-                  <input
-                    className="input-modern"
-                    value={catalogQuery}
-                    placeholder="Buscar no catálogo"
-                    aria-label="Buscar no catálogo de modelos"
-                    onChange={(event) => setCatalogQuery(event.target.value)}
-                  />
-                </div>
-                {visibleModelItems.map((model) => {
-                  const expanded = expandedModelId === model.id;
-                  const installed = model.mode === 'local' && (installedLocalModels.has(model.id) || installedLocalModels.has(model.modelId));
-                  const status = modelStatusLabel(model, providers, localRuntime);
-                  return (
-                    <article key={model.id} className={`settings-model-accordion ${expanded ? 'open' : ''}`}>
-                      <button
-                        type="button"
-                        className="settings-model-trigger"
-                        aria-expanded={expanded}
-                        onClick={() => setExpandedModelId(expanded ? '' : model.id)}
-                      >
-                        <span className="settings-model-chevron" aria-hidden="true">{expanded ? '⌄' : '›'}</span>
-                        <strong>{model.displayName}</strong>
-                        <small>{modelStatusLabel(model, providers, localRuntime)}</small>
-                      </button>
-                      {expanded ? (
-                        <div className="settings-model-details">
-                          <p>{model.recommendedUse ? `${model.displayName} é indicado para ${model.recommendedUse.toLowerCase()}.` : `${model.displayName} está no catálogo local do app.`}</p>
-                          <div className="settings-model-facts">
-                            <span><strong>Comprimento máximo do contexto</strong>{model.estimatedLimits.summary}</span>
-                            <span><strong>Comprimento máximo de geração</strong>{UNKNOWN_MODEL_VALUE}</span>
-                            <span><strong>Modalidade</strong>{modelModality(model)}</span>
-                            <span><strong>Fornecedor</strong>{modelProviderLabel(model)}</span>
-                            <span><strong>Tipo</strong>{modelTypeLabel(model)}</span>
-                            {model.mode === 'local' ? <span><strong>Status local</strong>{installed ? 'Instalado' : status}</span> : null}
-                            {model.mode === 'cloud' ? <span><strong>Status</strong>{status}</span> : null}
-                          </div>
-                        </div>
-                      ) : null}
-                    </article>
-                  );
-                })}
-                {visibleModelItems.length === 0 ? (
-                  <div className="model-picker-empty" role="status">
-                    <strong>Nenhum modelo encontrado</strong>
-                    <span>Ajuste a busca para consultar o catálogo de referência.</span>
-                  </div>
-                ) : null}
-              </section>
+              </details>
+              ) : null}
             </div>
           ) : null}
 
@@ -1021,6 +1303,11 @@ export function SettingsPanel({
                 <div className="settings-section-label">Memória</div>
                 <SwitchRow label="Memórias guardadas" description="Usar memórias persistidas quando forem relevantes." checked={personalization.memoriesStored} onChange={(value) => updatePersonalization('memoriesStored', value)} />
                 <SwitchRow label="Histórico de chat de referência" description="Permitir referência ao histórico local de conversas." checked={personalization.referenceChatHistory} onChange={(value) => updatePersonalization('referenceChatHistory', value)} />
+                {onOpenMemoryManager ? (
+                  <button type="button" className="btn-modern" onClick={onOpenMemoryManager}>
+                    Gerenciar memórias
+                  </button>
+                ) : null}
               </section>
 
               <section className="settings-block">
@@ -1029,12 +1316,6 @@ export function SettingsPanel({
                   description={`Mantém preferências de comportamento para o perfil ${selectedAgentLabel}.`}
                   checked={personalization.customizeAilu}
                   onChange={(value) => updatePersonalization('customizeAilu', value)}
-                />
-                <SwitchRow
-                  label="Gerenciar cookies"
-                  description="Guarda a preferência para fluxos web que exigirem estado de navegador."
-                  checked={personalization.manageCookies}
-                  onChange={(value) => updatePersonalization('manageCookies', value)}
                 />
               </section>
 
@@ -1102,7 +1383,7 @@ export function SettingsPanel({
             </div>
           ) : null}
 
-          {activeTab === 'meu-pc' ? (
+          {activeTab === 'maquina-local' ? (
             <LocalEnginePage />
           ) : null}
 
@@ -1110,36 +1391,120 @@ export function SettingsPanel({
             <div className="settings-page">
               <header className="settings-page-heading">
                 <span>Saúde</span>
-                <h3>Diagnóstico real do sistema</h3>
+                <h3>Estado real do sistema</h3>
               </header>
               <section className="settings-block health-panel">
                 <div className="ollama-manager-header">
                   <div>
-                    <strong>Status geral: {health ? healthStatusLabel(health.overallStatus) : 'não carregado'}</strong>
-                    <small>{health ? `${health.baseDir} · branch ${health.branch ?? 'desconhecida'}` : 'Carregue o diagnóstico para ver ações sugeridas.'}</small>
+                    <strong className={`health-overall health-overall-${health?.overallStatus ?? 'unknown'}`}>
+                      {!healthHead ? 'Aguardando diagnóstico' : healthHead.title}
+                    </strong>
+                    <small>{healthHead ? healthHead.detail : 'Clique em Verificar para carregar o diagnóstico.'}</small>
                   </div>
                   <button type="button" className="settings-pill-button" disabled={healthLoading} onClick={() => void refreshHealth()}>
-                    {healthLoading ? 'Verificando...' : 'Atualizar'}
+                    {healthLoading ? 'Verificando…' : 'Verificar agora'}
                   </button>
                 </div>
                 {healthError ? <div className="input-error-tip" role="alert">{healthError}</div> : null}
-                <div className="health-item-grid">
-                  {(health?.items ?? []).map((item) => (
-                    <article key={item.id} className={`health-item-card health-${item.status}`}>
-                      <strong>{item.label}</strong>
-                      <small>{healthStatusLabel(item.status)}</small>
-                      <p>{item.detail}</p>
-                      {item.action ? <span>{item.action}</span> : null}
-                      {item.command ? <code>{item.command}</code> : null}
-                    </article>
-                  ))}
-                  {!health ? (
-                    <div className="model-picker-empty" role="status">
-                      <strong>Diagnóstico não carregado</strong>
-                      <span>Use Atualizar para verificar Ollama, STT, portal, ícone, CI e Git.</span>
+
+                {health ? (
+                  <div className="health-groups">
+                    {/* IA Local */}
+                    <div className="health-group">
+                      <h4 className="health-group-title">IA Local</h4>
+                      <HealthRow
+                        status={health.ollama.apiReachable ? 'ok' : 'error'}
+                        label="Ollama"
+                        detail={health.ollama.apiReachable
+                          ? `Acessível · ${health.ollama.installedModels.length} modelo(s) instalado(s)`
+                          : 'Serviço Ollama inacessível. Inicie com: ollama serve'}
+                        command={health.ollama.apiReachable ? undefined : 'ollama serve'}
+                      />
+                      {health.ollama.problems.slice(0, 3).map((problem, index) => (
+                        <HealthRow key={index} status="warning" label="Aviso Ollama" detail={problem} />
+                      ))}
                     </div>
-                  ) : null}
-                </div>
+
+                    {/* Modelos instalados */}
+                    <div className="health-group">
+                      <h4 className="health-group-title">Modelos instalados</h4>
+                      <HealthRow
+                        status={health.ollama.installedModels.length > 0 ? 'ok' : 'warning'}
+                        label={health.ollama.installedModels.length > 0 ? `${health.ollama.installedModels.length} modelo(s) local(is)` : 'Nenhum modelo local instalado'}
+                        detail={health.ollama.installedModels.length > 0
+                          ? health.ollama.installedModels.slice(0, 4).map((m) => m.id).join(', ')
+                          : 'Baixe um modelo em Configurações → Modelos → Locais.'}
+                      />
+                    </div>
+
+                    {/* Providers — extras não configurados são opcionais, não erro crítico */}
+                    {health.providers.length > 0 ? (
+                      <div className="health-group">
+                        <h4 className="health-group-title">Providers de nuvem</h4>
+                        {health.providers.map((p) => (
+                          <HealthRow
+                            key={p.id}
+                            status={p.status.state === 'ready' ? 'ok' : 'warning'}
+                            label={p.id}
+                            detail={
+                              p.status.state === 'ready'
+                                ? `Conectado · ${p.profileCount ?? 0} perfil(is)`
+                                : p.hasKey
+                                  ? `Chave configurada mas não testada: ${p.status.message ?? ''}`
+                                  : 'Não configurado (opcional). Configure em Configurações → Modelos.'
+                            }
+                          />
+                        ))}
+                      </div>
+                    ) : null}
+
+                    {/* App e armazenamento */}
+                    <div className="health-group">
+                      <h4 className="health-group-title">App e armazenamento</h4>
+                      <HealthRow
+                        status={health.correctBaseDir ? 'ok' : 'warning'}
+                        label="Diretório do app"
+                        detail={health.correctBaseDir ? 'Configurado corretamente' : 'Diretório base fora do esperado — pode causar problemas ao salvar dados.'}
+                      />
+                      {health.sessionsCount !== undefined ? (
+                        <HealthRow status="ok" label="Conversas salvas" detail={`${health.sessionsCount} conversa(s) armazenada(s)`} />
+                      ) : null}
+                    </div>
+
+                    {/* Outros itens do diagnóstico */}
+                    {commonHealthItems.length > 0 ? (
+                      <div className="health-group">
+                        <h4 className="health-group-title">Outros</h4>
+                        {commonHealthItems.map((item) => (
+                          <HealthRow key={item.id} status={item.status} label={item.label} detail={item.detail} command={item.command} action={item.action} />
+                        ))}
+                      </div>
+                    ) : null}
+
+                    {/* Erros recentes */}
+                    {health.recentErrors.length > 0 ? (
+                      <div className="health-group">
+                        <h4 className="health-group-title">Problemas recentes</h4>
+                        {health.recentErrors.slice(0, 5).map((err, index) => (
+                          <HealthRow
+                            key={index}
+                            status={err.severity === 'error' ? 'error' : 'warning'}
+                            label={err.message || err.code}
+                            detail=""
+                          />
+                        ))}
+                      </div>
+                    ) : null}
+
+                    {/* Diagnóstico avançado (dev) — recolhido por padrão */}
+                    <AdvancedHealthDiagnostics health={health} extraItems={devHealthItems} />
+                  </div>
+                ) : (
+                  <div className="model-picker-empty" role="status">
+                    <strong>Diagnóstico não executado</strong>
+                    <span>Clique em "Verificar agora" para checar Ollama, ferramentas do sistema, providers e armazenamento.</span>
+                  </div>
+                )}
               </section>
             </div>
           ) : null}

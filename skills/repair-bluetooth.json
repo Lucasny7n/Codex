@@ -1,0 +1,9 @@
+{
+  "id": "repair-bluetooth",
+  "name": "Reparar Bluetooth",
+  "description": "Reinicia o stack de Bluetooth do sistema (rfkill, bluetooth.service, controlador). Skill de hardware: nunca roda em VM, exige dry-run e aprovação manual no host.",
+  "category": "bluetooth",
+  "riskLevel": "medium",
+  "scriptPath": "repair-bluetooth.sh",
+  "trusted": false
+}

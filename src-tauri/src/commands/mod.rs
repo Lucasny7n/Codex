@@ -22,21 +22,24 @@ use crate::models::{
     ActionableError, ActionableErrorSeverity, AgentSession, AppHealthAction, AppHealthCheck,
     AppHealthOverallStatus, AppHealthProvider, AppSettings, BootstrapPayload, ChatMessage,
     ChatRole, CommandLogChunk, ConversationImportResult, ExecutionRequestInput, ExecutionResponse,
-    HardwareProfile, LocalModelInstallProgress, LocalRuntimeSnapshot, LogStream,
+    HardwareProfile, LocalModelInstallProgress, LocalRuntimeSnapshot, LogStream, MemoryEntry,
     ModelComparisonRequest, ModelComparisonResponse, ModelComparisonResult, ModelFitEstimate,
     ModelFitRequest, OllamaLibrarySearchResult, OllamaModelDetails, PendingIntentKind,
     PermissionDecision, PermissionOutcome, PermissionOutcomeStatus, PermissionRequest,
     PrivilegedActionRequestInput, PrivilegedActionSpec, ProviderAccountProfile,
     ProviderCredentialStatus, ProviderGenerateRequest, ProviderRuntimeStatus, ProviderStatusState,
     QuantOption, SessionExportFormat, SessionExportResult, SessionStatus, SkillExecutionPlan,
-    SkillManifest, SkillVmReport, StatusKind, SystemHealthItem, TaskStatus, WorkspaceMeta,
+    SkillManifest, SkillVmReport, StatusKind, SystemHealthItem, TaskStatus, UserSkill,
+    UserSkillDryRun, UserSkillInput, WorkspaceMeta,
 };
 use crate::services::ai_router::{AiRouteRequest, AiRouter};
+use crate::services::memory_store::MemoryEntryStore;
 use crate::services::privileged_actions;
 use crate::services::privileged_helper_client::HelperRequest;
 use crate::services::provider_registry::ProviderRegistry;
 use crate::services::session_manager::SessionManager;
 use crate::services::skills::{self, SkillStore, VirshVmRunner};
+use crate::services::user_skills::UserSkillStore;
 use crate::state::AppState;
 
 fn map_err(error: AppError) -> ErrorPayload {
@@ -2246,6 +2249,79 @@ pub async fn test_skill_in_vm(
     Ok(skills::run_skill_in_vm(&runner, &domain, &manifest, &script, &args, &snapshot, None).await)
 }
 
+fn user_skill_store(state: &State<AppState>) -> UserSkillStore {
+    UserSkillStore::default_for_dir(state.config_manager.data_root())
+}
+
+#[tauri::command]
+pub fn list_user_skills(state: State<AppState>) -> Result<Vec<UserSkill>, ErrorPayload> {
+    Ok(user_skill_store(&state).list())
+}
+
+#[tauri::command]
+pub fn save_user_skill(
+    state: State<AppState>,
+    input: UserSkillInput,
+) -> Result<Vec<UserSkill>, ErrorPayload> {
+    user_skill_store(&state)
+        .save(input)
+        .map_err(AppError::Message)
+        .map_err(map_err)
+}
+
+#[tauri::command]
+pub fn delete_user_skill(
+    state: State<AppState>,
+    id: String,
+) -> Result<Vec<UserSkill>, ErrorPayload> {
+    user_skill_store(&state)
+        .delete(&id)
+        .map_err(AppError::Message)
+        .map_err(map_err)
+}
+
+#[tauri::command]
+pub fn dry_run_user_skill(
+    state: State<AppState>,
+    id: String,
+) -> Result<UserSkillDryRun, ErrorPayload> {
+    user_skill_store(&state)
+        .dry_run(&id)
+        .map_err(AppError::Message)
+        .map_err(map_err)
+}
+
+fn memory_entry_store(state: &State<AppState>) -> MemoryEntryStore {
+    MemoryEntryStore::default_for_dir(state.memory_manager.memory_dir())
+}
+
+#[tauri::command]
+pub fn list_memory_entries(state: State<AppState>) -> Result<Vec<MemoryEntry>, ErrorPayload> {
+    Ok(memory_entry_store(&state).list())
+}
+
+#[tauri::command]
+pub fn save_memory_entry(
+    state: State<AppState>,
+    entry: MemoryEntry,
+) -> Result<Vec<MemoryEntry>, ErrorPayload> {
+    memory_entry_store(&state)
+        .save(entry)
+        .map_err(AppError::Message)
+        .map_err(map_err)
+}
+
+#[tauri::command]
+pub fn delete_memory_entry(
+    state: State<AppState>,
+    id: String,
+) -> Result<Vec<MemoryEntry>, ErrorPayload> {
+    memory_entry_store(&state)
+        .delete(&id)
+        .map_err(AppError::Message)
+        .map_err(map_err)
+}
+
 #[tauri::command]
 pub async fn start_local_runtime(
     app: AppHandle,
@@ -3047,6 +3123,8 @@ pub async fn send_order_to_agent(
     content: String,
     mode: Option<String>,
     attachments: Option<Vec<Value>>,
+    provider_override: Option<String>,
+    model_override: Option<String>,
 ) -> Result<AgentSession, ErrorPayload> {
     run_agent_order(
         Some(&app),
@@ -3057,6 +3135,8 @@ pub async fn send_order_to_agent(
         content,
         mode,
         attachments.unwrap_or_default(),
+        provider_override,
+        model_override,
     )
     .await
     .map_err(map_err)
@@ -3069,6 +3149,8 @@ pub async fn send_temporary_order_to_agent(
     content: String,
     mode: Option<String>,
     attachments: Option<Vec<Value>>,
+    provider_override: Option<String>,
+    model_override: Option<String>,
 ) -> Result<AgentSession, ErrorPayload> {
     run_temporary_agent_order(
         state.provider_registry.clone(),
@@ -3077,6 +3159,8 @@ pub async fn send_temporary_order_to_agent(
         content,
         mode,
         attachments.unwrap_or_default(),
+        provider_override,
+        model_override,
     )
     .await
     .map_err(map_err)
@@ -3158,6 +3242,8 @@ async fn run_agent_order(
     content: String,
     mode: Option<String>,
     attachments: Vec<Value>,
+    provider_override: Option<String>,
+    model_override: Option<String>,
 ) -> crate::error::AppResult<AgentSession> {
     let prompt = content.trim();
     if prompt.is_empty() && attachments.is_empty() {
@@ -3173,11 +3259,23 @@ async fn run_agent_order(
         .as_ref()
         .map(|session| session.messages.clone())
         .unwrap_or_default();
-    let provider_id = session_environment
-        .as_ref()
-        .and_then(|session| session.provider_id.clone())
+    // Precedence: per-send routing override (resolved by the composer mode) >
+    // the session's sticky provider/model > saved settings.
+    let provider_id = provider_override
+        .clone()
+        .filter(|value| !value.trim().is_empty())
+        .or_else(|| {
+            session_environment
+                .as_ref()
+                .and_then(|session| session.provider_id.clone())
+        })
         .unwrap_or_else(|| settings.selected_provider_id.clone());
-    let model_id = if let Some(model_id) = session_environment
+    let model_id = if let Some(model_id) = model_override
+        .clone()
+        .filter(|value| !value.trim().is_empty())
+    {
+        model_id
+    } else if let Some(model_id) = session_environment
         .as_ref()
         .and_then(|session| session.model_id.clone())
     {
@@ -3336,6 +3434,8 @@ async fn run_temporary_agent_order(
     content: String,
     mode: Option<String>,
     attachments: Vec<Value>,
+    provider_override: Option<String>,
+    model_override: Option<String>,
 ) -> crate::error::AppResult<AgentSession> {
     let prompt = content.trim();
     if prompt.is_empty() && attachments.is_empty() {
@@ -3360,8 +3460,16 @@ async fn run_temporary_agent_order(
         attachments: attachments.clone(),
     });
 
-    let provider_id = settings.selected_provider_id.clone();
-    let model_id = if settings.execution_mode == crate::models::ExecutionMode::Local {
+    let provider_id = provider_override
+        .clone()
+        .filter(|value| !value.trim().is_empty())
+        .unwrap_or_else(|| settings.selected_provider_id.clone());
+    let model_id = if let Some(model_id) = model_override
+        .clone()
+        .filter(|value| !value.trim().is_empty())
+    {
+        model_id
+    } else if settings.execution_mode == crate::models::ExecutionMode::Local {
         settings
             .selected_local_model_id
             .clone()
@@ -3639,6 +3747,8 @@ mod agent_order_tests {
             "crie um plano curto".to_owned(),
             None,
             Vec::new(),
+            None,
+            None,
         )
         .await
         .expect("ordem mock deve responder");
@@ -3657,6 +3767,37 @@ mod agent_order_tests {
     }
 
     #[tokio::test]
+    async fn run_agent_order_uses_model_override_for_routing() {
+        let dir = temp_sessions_dir();
+        let session_manager = Arc::new(SessionManager::new(&dir).expect("manager deve iniciar"));
+        let provider_registry = Arc::new(ProviderRegistry::new_with_mock_for_tests());
+        let session = session_manager
+            .create_session("teste")
+            .expect("sessão deve ser criada");
+
+        let updated = run_agent_order(
+            None,
+            session_manager,
+            provider_registry,
+            mock_settings(dir.to_string_lossy().to_string()),
+            session.id,
+            "modo código".to_owned(),
+            Some("code".to_owned()),
+            Vec::new(),
+            Some("mock-development".to_owned()),
+            Some("override-coder".to_owned()),
+        )
+        .await
+        .expect("ordem com override deve responder");
+
+        // O modelo resolvido por tarefa (override) é o usado/registrado, não o
+        // padrão do settings.
+        assert_eq!(updated.model_id.as_deref(), Some("override-coder"));
+
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[tokio::test]
     async fn temporary_order_sends_user_text_to_provider_without_persistence_manager() {
         let provider_registry = Arc::new(ProviderRegistry::new_with_mock_for_tests());
         let settings = mock_settings("/tmp/workspace".to_owned());
@@ -3668,6 +3809,8 @@ mod agent_order_tests {
             "opa".to_owned(),
             None,
             Vec::new(),
+            None,
+            None,
         )
         .await
         .expect("temporário mock deve responder");
@@ -3717,6 +3860,8 @@ mod agent_order_tests {
             "continue".to_owned(),
             Some("terminal".to_owned()),
             Vec::new(),
+            None,
+            None,
         )
         .await
         .expect("temporário mock deve responder com histórico");
@@ -4124,4 +4269,228 @@ pub fn update_base_prompt(state: State<AppState>, content: String) -> Result<(),
     fs::write(path, content)
         .map_err(AppError::from)
         .map_err(map_err)
+}
+
+// ── System read-only tools and local TTS ──────────────────────────────────
+
+/// Returns true when `name` is resolvable on PATH. Uses `command -v`, which is
+/// a shell builtin and does not execute the target program.
+fn binary_in_path(name: &str) -> bool {
+    Command::new("sh")
+        .arg("-c")
+        .arg(format!("command -v {name}"))
+        .output()
+        .map(|output| output.status.success())
+        .unwrap_or(false)
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProcessEntry {
+    user: String,
+    pid: String,
+    cpu: String,
+    mem: String,
+    command: String,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProcessListReport {
+    os: String,
+    command_used: String,
+    timestamp: String,
+    processes: Vec<ProcessEntry>,
+    error: Option<String>,
+}
+
+/// Read-only listing of the top processes by memory. No sudo, no shell from the
+/// model — a fixed, safe `ps` invocation.
+#[tauri::command]
+pub fn list_running_processes() -> Result<ProcessListReport, ErrorPayload> {
+    let timestamp = crate::models::now_iso();
+    let os = std::env::consts::OS.to_owned();
+
+    if os != "linux" && os != "macos" {
+        return Ok(ProcessListReport {
+            os,
+            command_used: String::new(),
+            timestamp,
+            processes: Vec::new(),
+            error: Some(
+                "Listagem de processos suportada apenas em Linux/macOS neste app.".to_owned(),
+            ),
+        });
+    }
+
+    let command_used = "ps aux --sort=-%mem | head -20".to_owned();
+    let output = Command::new("ps").args(["aux", "--sort=-%mem"]).output();
+    let output = match output {
+        Ok(output) if output.status.success() => output,
+        Ok(output) => {
+            return Ok(ProcessListReport {
+                os,
+                command_used,
+                timestamp,
+                processes: Vec::new(),
+                error: Some(format!(
+                    "`ps` retornou erro: {}",
+                    String::from_utf8_lossy(&output.stderr).trim()
+                )),
+            });
+        }
+        Err(cause) => {
+            return Ok(ProcessListReport {
+                os,
+                command_used,
+                timestamp,
+                processes: Vec::new(),
+                error: Some(format!("Não foi possível executar `ps`: {cause}")),
+            });
+        }
+    };
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let mut processes = Vec::new();
+    // Skip the header row; ps aux columns:
+    // USER PID %CPU %MEM VSZ RSS TTY STAT START TIME COMMAND
+    for line in stdout.lines().skip(1).take(20) {
+        let mut parts = line.split_whitespace();
+        let user = parts.next().unwrap_or_default().to_owned();
+        let pid = parts.next().unwrap_or_default().to_owned();
+        let cpu = parts.next().unwrap_or_default().to_owned();
+        let mem = parts.next().unwrap_or_default().to_owned();
+        // Drop VSZ RSS TTY STAT START TIME (6 columns) before COMMAND.
+        for _ in 0..6 {
+            parts.next();
+        }
+        let command = parts.collect::<Vec<_>>().join(" ");
+        if pid.is_empty() {
+            continue;
+        }
+        processes.push(ProcessEntry {
+            user,
+            pid,
+            cpu,
+            mem,
+            command,
+        });
+    }
+
+    Ok(ProcessListReport {
+        os,
+        command_used,
+        timestamp,
+        processes,
+        error: None,
+    })
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TtsStatus {
+    available: bool,
+    engine: Option<String>,
+    detail: String,
+    install_hint: Option<String>,
+}
+
+/// Detects a local speech engine without speaking. Order of preference:
+/// speech-dispatcher (`spd-say`) then `espeak-ng`/`espeak`.
+fn detect_tts_engine() -> Option<&'static str> {
+    if binary_in_path("spd-say") {
+        Some("spd-say")
+    } else if binary_in_path("espeak-ng") {
+        Some("espeak-ng")
+    } else if binary_in_path("espeak") {
+        Some("espeak")
+    } else {
+        None
+    }
+}
+
+#[tauri::command]
+pub fn get_tts_status() -> Result<TtsStatus, ErrorPayload> {
+    match detect_tts_engine() {
+        Some(engine) => Ok(TtsStatus {
+            available: true,
+            engine: Some(engine.to_owned()),
+            detail: format!("Engine de voz local detectada: {engine}."),
+            install_hint: None,
+        }),
+        None => Ok(TtsStatus {
+            available: false,
+            engine: None,
+            detail: "Nenhuma engine de voz local encontrada.".to_owned(),
+            install_hint: Some(
+                "Instale com: sudo pacman -S speech-dispatcher espeak-ng (Arch) ou o pacote equivalente da sua distro.".to_owned(),
+            ),
+        }),
+    }
+}
+
+/// Speaks `text` via the detected local engine. Text is passed as a process
+/// argument (never through a shell), so it cannot be interpreted as a command.
+#[tauri::command]
+pub fn speak_text(text: String, lang: Option<String>) -> Result<TtsStatus, ErrorPayload> {
+    let trimmed = text.trim();
+    if trimmed.is_empty() {
+        return Ok(TtsStatus {
+            available: true,
+            engine: None,
+            detail: "Nada para falar.".to_owned(),
+            install_hint: None,
+        });
+    }
+
+    let engine = match detect_tts_engine() {
+        Some(engine) => engine,
+        None => return get_tts_status(),
+    };
+
+    let lang = lang.unwrap_or_else(|| "pt-BR".to_owned());
+    let spawn = match engine {
+        "spd-say" => Command::new("spd-say")
+            .args(["-l", &lang, "-w", "--", trimmed])
+            .spawn(),
+        "espeak-ng" | "espeak" => Command::new(engine)
+            .args(["-v", "pt", trimmed])
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn(),
+        _ => return get_tts_status(),
+    };
+
+    match spawn {
+        Ok(_) => Ok(TtsStatus {
+            available: true,
+            engine: Some(engine.to_owned()),
+            detail: format!("Falando com {engine}."),
+            install_hint: None,
+        }),
+        Err(cause) => Ok(TtsStatus {
+            available: false,
+            engine: Some(engine.to_owned()),
+            detail: format!("Falha ao iniciar {engine}: {cause}"),
+            install_hint: None,
+        }),
+    }
+}
+
+/// Stops any in-progress local speech.
+#[tauri::command]
+pub fn stop_speech() -> Result<(), ErrorPayload> {
+    match detect_tts_engine() {
+        Some("spd-say") => {
+            let _ = Command::new("spd-say").arg("-C").output();
+        }
+        Some("espeak-ng") => {
+            let _ = Command::new("pkill").args(["-x", "espeak-ng"]).output();
+        }
+        Some("espeak") => {
+            let _ = Command::new("pkill").args(["-x", "espeak"]).output();
+        }
+        _ => {}
+    }
+    Ok(())
 }

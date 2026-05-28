@@ -23,12 +23,18 @@ function focusableElements(root: HTMLElement): HTMLElement[] {
 export function PremiumModal({ open, title, description, onClose, children, className }: PremiumModalProps): JSX.Element | null {
   const panelRef = useRef<HTMLElement>(null);
   const overlayRef = useRef<HTMLDivElement>(null);
+  // Keep onClose current without putting it in the effect deps — doing so would
+  // re-run the focus-to-first logic on every parent re-render (e.g. each
+  // keystroke in a controlled input inside the modal), which steals focus.
+  const onCloseRef = useRef(onClose);
+  useLayoutEffect(() => { onCloseRef.current = onClose; });
 
   useEffect(() => {
     if (!open) return;
     const previousActive = document.activeElement instanceof HTMLElement ? document.activeElement : undefined;
     const panel = panelRef.current;
-    const first = panel ? focusableElements(panel)[0] : undefined;
+    const explicit = panel?.querySelector<HTMLElement>('[data-autofocus]') ?? undefined;
+    const first = explicit ?? (panel ? focusableElements(panel)[0] : undefined);
     first?.focus();
     const previousOverflow = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
@@ -43,7 +49,7 @@ export function PremiumModal({ open, title, description, onClose, children, clas
       if (event.key === 'Escape') {
         event.preventDefault();
         event.stopPropagation();
-        onClose();
+        onCloseRef.current();
         return;
       }
       if (event.key !== 'Tab' || !panelRef.current) return;
@@ -66,7 +72,7 @@ export function PremiumModal({ open, title, description, onClose, children, clas
       document.body.style.overflow = previousOverflow;
       previousActive?.focus();
     };
-  }, [onClose, open]);
+  }, [open]);
 
   if (!open) return null;
 

@@ -37,6 +37,10 @@ import type {
   SkillManifest,
   SkillExecutionPlan,
   SkillVmReport,
+  UserSkill,
+  UserSkillInput,
+  UserSkillDryRun,
+  MemoryEntry,
   HardwareSnapshot,
   BackendStatus,
   RuntimeBackendId,
@@ -44,6 +48,8 @@ import type {
   RuntimeEstimate,
   RuntimeRecommendation,
   BenchmarkResult,
+  ProcessListReport,
+  TtsStatus,
 } from '../../types/domain';
 
 export async function bootstrapState(): Promise<BootstrapPayload> {
@@ -147,6 +153,22 @@ export async function recordAndTranscribeShortTest(modelPath?: string): Promise<
   return invoke('record_and_transcribe_short_test', { modelPath });
 }
 
+export async function listRunningProcesses(): Promise<ProcessListReport> {
+  return invoke('list_running_processes');
+}
+
+export async function getTtsStatus(): Promise<TtsStatus> {
+  return invoke('get_tts_status');
+}
+
+export async function speakText(text: string, lang?: string): Promise<TtsStatus> {
+  return invoke('speak_text', { text, lang });
+}
+
+export async function stopSpeech(): Promise<void> {
+  await invoke('stop_speech');
+}
+
 export async function appendUserMessage(sessionId: string, content: string): Promise<AgentSession> {
   return invoke('append_user_message', { sessionId, content });
 }
@@ -156,8 +178,10 @@ export async function sendOrderToAgent(
   content: string,
   mode?: string,
   attachments: ChatAttachment[] = [],
+  providerOverride?: string,
+  modelOverride?: string,
 ): Promise<AgentSession> {
-  return invoke('send_order_to_agent', { sessionId, content, mode, attachments });
+  return invoke('send_order_to_agent', { sessionId, content, mode, attachments, providerOverride, modelOverride });
 }
 
 export async function sendTemporaryOrderToAgent(
@@ -165,8 +189,10 @@ export async function sendTemporaryOrderToAgent(
   content: string,
   mode?: string,
   attachments: ChatAttachment[] = [],
+  providerOverride?: string,
+  modelOverride?: string,
 ): Promise<AgentSession> {
-  return invoke('send_temporary_order_to_agent', { messages, content, mode, attachments });
+  return invoke('send_temporary_order_to_agent', { messages, content, mode, attachments, providerOverride, modelOverride });
 }
 
 export async function compareModels(input: ModelComparisonRequest): Promise<ModelComparisonResponse> {
@@ -298,6 +324,34 @@ export async function testSkillInVm(
   sshTarget: string,
 ): Promise<SkillVmReport> {
   return invoke('test_skill_in_vm', { skillId, args, domain, sshTarget });
+}
+
+export async function listUserSkills(): Promise<UserSkill[]> {
+  return invoke('list_user_skills');
+}
+
+export async function saveUserSkill(input: UserSkillInput): Promise<UserSkill[]> {
+  return invoke('save_user_skill', { input });
+}
+
+export async function deleteUserSkill(id: string): Promise<UserSkill[]> {
+  return invoke('delete_user_skill', { id });
+}
+
+export async function dryRunUserSkill(id: string): Promise<UserSkillDryRun> {
+  return invoke('dry_run_user_skill', { id });
+}
+
+export async function listMemoryEntries(): Promise<MemoryEntry[]> {
+  return invoke('list_memory_entries');
+}
+
+export async function saveMemoryEntry(entry: MemoryEntry): Promise<MemoryEntry[]> {
+  return invoke('save_memory_entry', { entry });
+}
+
+export async function deleteMemoryEntry(id: string): Promise<MemoryEntry[]> {
+  return invoke('delete_memory_entry', { id });
 }
 
 export async function listPrivilegedActions(): Promise<PrivilegedActionSpec[]> {

@@ -161,7 +161,30 @@ export interface ChatAttachment {
   previewTextLimited?: string;
   hidden?: boolean;
   contextText?: string;
-  contextSource?: 'document' | 'preset' | 'project_memory' | 'system';
+  contextSource?: 'document' | 'preset' | 'project_memory' | 'memory' | 'system';
+}
+
+export interface ProcessEntry {
+  user: string;
+  pid: string;
+  cpu: string;
+  mem: string;
+  command: string;
+}
+
+export interface ProcessListReport {
+  os: string;
+  commandUsed: string;
+  timestamp: string;
+  processes: ProcessEntry[];
+  error?: string;
+}
+
+export interface TtsStatus {
+  available: boolean;
+  engine?: string;
+  detail: string;
+  installHint?: string;
 }
 
 export type VoiceTranscriptionResultStatus = 'done' | 'missing_backend' | 'error';
@@ -846,6 +869,40 @@ export interface SkillManifest {
   updatedAt?: string;
 }
 
+export type UserSkillSource = 'manual' | 'import' | 'ai';
+
+export interface UserSkill {
+  id: string;
+  name: string;
+  description: string;
+  content: string;
+  source: UserSkillSource;
+  permissions: string[];
+  risk: RiskLevel;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface UserSkillInput {
+  id?: string;
+  name: string;
+  description?: string;
+  content?: string;
+  source?: UserSkillSource;
+  permissions?: string[];
+  risk?: RiskLevel;
+}
+
+export interface UserSkillDryRun {
+  skillId: string;
+  summary: string;
+  permissions: string[];
+  risk: RiskLevel;
+  requiresApproval: boolean;
+  dangerousTokens: string[];
+  preview: string;
+}
+
 export type SkillExecutionMode = 'vm_tested' | 'manual_dry_run';
 
 export interface SkillExecutionPlan {
@@ -874,4 +931,25 @@ export interface SkillVmReport {
   steps: string[];
   alternatives: string[];
   at: string;
+}
+
+export type MemoryEntryKind = 'preference' | 'fact' | 'policy' | 'fix' | 'note';
+
+export type MemoryScope = 'global' | 'project';
+
+export type MemoryOrigin = 'user' | 'inferred' | 'imported';
+
+export type MemoryRecallMode = 'default' | 'project_only';
+
+export interface MemoryEntry {
+  id: string;
+  content: string;
+  kind: MemoryEntryKind;
+  scope: MemoryScope;
+  project?: string;
+  origin: MemoryOrigin;
+  confidence: number;
+  manual: boolean;
+  createdAt: string;
+  updatedAt?: string;
 }

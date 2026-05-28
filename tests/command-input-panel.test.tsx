@@ -160,11 +160,7 @@ describe('CommandInputPanel', () => {
     render(
       <CommandInputPanel
         busy={false}
-        privilegedActions={[]}
-        actionJsonExamples={{}}
         onSendOrder={vi.fn()}
-        onExecuteCommand={vi.fn()}
-        onRequestPrivilegedAction={vi.fn()}
         orderDisabledReason="Provider indisponível"
       />,
     );
@@ -179,24 +175,17 @@ describe('CommandInputPanel', () => {
   });
 
   it('mantem terminal como conversa sem abrir logs automaticamente', async () => {
-    const onOpenTerminal = vi.fn();
     const onSendOrder = vi.fn().mockResolvedValue(undefined);
 
     render(
       <CommandInputPanel
         busy={false}
-        privilegedActions={[]}
-        actionJsonExamples={{}}
         onSendOrder={onSendOrder}
-        onExecuteCommand={vi.fn()}
-        onRequestPrivilegedAction={vi.fn()}
-        onOpenTerminal={onOpenTerminal}
       />,
     );
 
     fireEvent.click(screen.getByLabelText('Selecionar modo de resposta'));
     fireEvent.click(screen.getByText('Terminal'));
-    expect(onOpenTerminal).not.toHaveBeenCalled();
     fireEvent.change(screen.getByPlaceholderText('Descreva a ação de terminal para a IA planejar com segurança.'), {
       target: { value: 'liste arquivos com risco baixo' },
     });
@@ -207,25 +196,68 @@ describe('CommandInputPanel', () => {
     });
   });
 
-  it('menu do + mostra somente Selecionar arquivo', () => {
+  it('menu do + tem ação real de anexo e itens futuros desabilitados (sem fingir)', () => {
     render(
       <CommandInputPanel
         busy={false}
-        privilegedActions={[]}
-        actionJsonExamples={{}}
         onSendOrder={vi.fn()}
-        onExecuteCommand={vi.fn()}
-        onRequestPrivilegedAction={vi.fn()}
       />,
     );
 
     fireEvent.click(screen.getByLabelText('Mais ações'));
 
-    expect(screen.getByText('Selecionar arquivo')).toBeInTheDocument();
+    // Ação real e habilitada.
+    expect(screen.getByText('Carregar anexo')).toBeEnabled();
+
+    // Itens ainda não implementados aparecem como "em breve" e desabilitados.
+    const screenshot = screen.getByText('Captura de tela').closest('button');
+    expect(screenshot).toBeDisabled();
+    expect(screen.getByText('Adicionar do GitHub').closest('button')).toBeDisabled();
+    expect(screen.getByText('Busca na web').closest('button')).toBeDisabled();
+    expect(screen.getAllByText('em breve').length).toBeGreaterThan(0);
+
+    // Itens futuros ficam agrupados em "Recursos futuros" (recolhido).
+    const soon = screen.getByText('Recursos futuros').closest('details');
+    expect(soon).not.toBeNull();
+    expect(soon).toContainElement(screen.getByText('Captura de tela'));
+
+    // Nada de itens antigos/inventados.
     expect(screen.queryByText('Selecionar pasta')).not.toBeInTheDocument();
-    expect(screen.queryByText('Usar caminho do PC')).not.toBeInTheDocument();
     expect(screen.queryByText('Usar terminal')).not.toBeInTheDocument();
-    expect(screen.queryByText('Configurar modelos')).not.toBeInTheDocument();
+
+    // Fecha com Esc.
+    fireEvent.keyDown(document, { key: 'Escape' });
+    expect(screen.queryByText('Carregar anexo')).not.toBeInTheDocument();
+  });
+
+  it('voz indisponível não cria banner vermelho persistente — usa toast + hint discreto', async () => {
+    Object.defineProperty(window.navigator, 'mediaDevices', {
+      configurable: true,
+      value: {
+        getUserMedia: vi.fn().mockResolvedValue({ getTracks: () => [{ stop: vi.fn() }] }),
+      },
+    });
+    vi.stubGlobal('MediaRecorder', MockMediaRecorder);
+    vi.mocked(api.transcribeAudio).mockResolvedValue({
+      status: 'missing_backend',
+      message: 'Nenhum backend local de transcrição foi encontrado.',
+      command: 'sudo pacman -S whisper.cpp',
+    });
+
+    const onToast = vi.fn();
+    const { container } = render(
+      <CommandInputPanel busy={false} onSendOrder={vi.fn()} onToast={onToast} />,
+    );
+
+    fireEvent.click(screen.getByLabelText('Entrada por voz'));
+    fireEvent.click(await screen.findByLabelText('Parar transcrição de voz'));
+
+    await waitFor(() => expect(onToast).toHaveBeenCalled());
+    // Sem banner vermelho persistente (classe danger/voice-error inline).
+    expect(container.querySelector('.voice-feedback.voice-error')).toBeNull();
+    expect(container.querySelector('.voice-feedback.voice-missing-backend')).toBeNull();
+    // Hint neutro e discreto permanece com acesso à configuração.
+    expect(container.querySelector('.voice-hint')).not.toBeNull();
   });
 
   it('abre seletor de modos e envia o modo junto do pedido', async () => {
@@ -234,11 +266,7 @@ describe('CommandInputPanel', () => {
     render(
       <CommandInputPanel
         busy={false}
-        privilegedActions={[]}
-        actionJsonExamples={{}}
         onSendOrder={onSendOrder}
-        onExecuteCommand={vi.fn()}
-        onRequestPrivilegedAction={vi.fn()}
       />,
     );
 
@@ -267,11 +295,7 @@ describe('CommandInputPanel', () => {
     render(
       <CommandInputPanel
         busy={false}
-        privilegedActions={[]}
-        actionJsonExamples={{}}
         onSendOrder={onSendOrder}
-        onExecuteCommand={vi.fn()}
-        onRequestPrivilegedAction={vi.fn()}
       />,
     );
 
@@ -304,11 +328,7 @@ describe('CommandInputPanel', () => {
     render(
       <CommandInputPanel
         busy={false}
-        privilegedActions={[]}
-        actionJsonExamples={{}}
         onSendOrder={onSendOrder}
-        onExecuteCommand={vi.fn()}
-        onRequestPrivilegedAction={vi.fn()}
       />,
     );
 
@@ -342,11 +362,7 @@ describe('CommandInputPanel', () => {
     render(
       <CommandInputPanel
         busy={false}
-        privilegedActions={[]}
-        actionJsonExamples={{}}
         onSendOrder={vi.fn()}
-        onExecuteCommand={vi.fn()}
-        onRequestPrivilegedAction={vi.fn()}
       />,
     );
 
@@ -382,11 +398,7 @@ describe('CommandInputPanel', () => {
     render(
       <CommandInputPanel
         busy={false}
-        privilegedActions={[]}
-        actionJsonExamples={{}}
         onSendOrder={vi.fn()}
-        onExecuteCommand={vi.fn()}
-        onRequestPrivilegedAction={vi.fn()}
       />,
     );
 
@@ -417,25 +429,29 @@ describe('CommandInputPanel', () => {
       command: 'sudo pacman -S --needed ffmpeg whisper.cpp',
     });
 
+    const onToast = vi.fn();
     render(
       <CommandInputPanel
         busy={false}
-        privilegedActions={[]}
-        actionJsonExamples={{}}
         onSendOrder={vi.fn()}
-        onExecuteCommand={vi.fn()}
-        onRequestPrivilegedAction={vi.fn()}
+        onToast={onToast}
       />,
     );
 
     fireEvent.click(screen.getByLabelText('Entrada por voz'));
     fireEvent.click(await screen.findByLabelText('Parar transcrição de voz'));
 
-    expect(await screen.findByRole('alert')).toHaveTextContent('Modelo de transcrição local não encontrado');
-    expect(screen.queryByText('Backend local não configurado')).not.toBeInTheDocument();
+    // Erro de voz vira toast discreto, não banner vermelho persistente.
+    await waitFor(() => {
+      expect(onToast).toHaveBeenCalledWith(
+        expect.stringMatching(/error|info/),
+        expect.stringContaining('Modelo de transcrição local não encontrado'),
+      );
+    });
+    // Sem comando cru exposto inline.
     expect(screen.queryByText('sudo pacman -S --needed ffmpeg whisper.cpp')).not.toBeInTheDocument();
-
-    fireEvent.click(screen.getByText('Configurar transcrição local'));
+    // Acesso discreto para configurar permanece.
+    fireEvent.click(screen.getByText('Abrir diagnóstico de voz'));
     expect(await screen.findByRole('dialog', { name: 'Transcrição e microfone' })).toBeInTheDocument();
     expect(api.getSttConfigState).toHaveBeenCalled();
     expect(screen.getByText('Backend STT')).toBeInTheDocument();
@@ -462,21 +478,24 @@ describe('CommandInputPanel', () => {
       command: 'sudo pacman -S --needed ffmpeg whisper.cpp',
     });
 
+    const onToast = vi.fn();
     render(
       <CommandInputPanel
         busy={false}
-        privilegedActions={[]}
-        actionJsonExamples={{}}
         onSendOrder={vi.fn()}
-        onExecuteCommand={vi.fn()}
-        onRequestPrivilegedAction={vi.fn()}
+        onToast={onToast}
       />,
     );
 
     fireEvent.click(screen.getByLabelText('Entrada por voz'));
     fireEvent.click(await screen.findByLabelText('Parar transcrição de voz'));
 
-    expect(await screen.findByRole('alert')).toHaveTextContent('Captei o áudio, mas não consegui transcrever.');
+    await waitFor(() => {
+      expect(onToast).toHaveBeenCalledWith(
+        expect.stringMatching(/error|info/),
+        expect.stringContaining('Captei o áudio, mas não consegui transcrever.'),
+      );
+    });
     expect(screen.queryByText(/Backend local não configurado/)).not.toBeInTheDocument();
     expect(screen.queryByText(/Modelo Whisper não encontrado/)).not.toBeInTheDocument();
     expect(screen.queryByText(/sudo pacman -S --needed ffmpeg whisper\.cpp/)).not.toBeInTheDocument();
@@ -494,21 +513,21 @@ describe('CommandInputPanel', () => {
     vi.stubGlobal('MediaRecorder', MockMediaRecorder);
     vi.mocked(api.transcribeAudio).mockRejectedValue(new Error('{"error":"stack trace interno","stack":"secret"}\nStack trace: linha 1'));
 
+    const onToast = vi.fn();
     render(
       <CommandInputPanel
         busy={false}
-        privilegedActions={[]}
-        actionJsonExamples={{}}
         onSendOrder={vi.fn()}
-        onExecuteCommand={vi.fn()}
-        onRequestPrivilegedAction={vi.fn()}
+        onToast={onToast}
       />,
     );
 
     fireEvent.click(screen.getByLabelText('Entrada por voz'));
     fireEvent.click(await screen.findByLabelText('Parar transcrição de voz'));
 
-    expect(await screen.findByRole('alert')).toHaveTextContent('Falha ao transcrever áudio local.');
+    await waitFor(() => {
+      expect(onToast).toHaveBeenCalledWith('error', 'Falha ao transcrever áudio local.');
+    });
     expect(screen.queryByText(/stack trace interno/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/Stack trace/i)).not.toBeInTheDocument();
   });
@@ -522,22 +541,22 @@ describe('CommandInputPanel', () => {
     });
     vi.stubGlobal('MediaRecorder', MockMediaRecorder);
 
+    const onToast = vi.fn();
     render(
       <CommandInputPanel
         busy={false}
-        privilegedActions={[]}
-        actionJsonExamples={{}}
         onSendOrder={vi.fn()}
-        onExecuteCommand={vi.fn()}
-        onRequestPrivilegedAction={vi.fn()}
+        onToast={onToast}
       />,
     );
 
     fireEvent.click(screen.getByLabelText('Entrada por voz'));
 
-    expect(await screen.findByRole('alert')).toHaveTextContent('Não consegui gravar áudio pelo fallback nativo');
+    await waitFor(() => {
+      expect(onToast).toHaveBeenCalledWith('error', expect.stringContaining('Não consegui gravar áudio pelo fallback nativo'));
+    });
     expect(api.recordAndTranscribeShortTest).toHaveBeenCalled();
-    fireEvent.click(screen.getByText('Configurar transcrição local'));
+    fireEvent.click(screen.getByText('Abrir diagnóstico de voz'));
     expect(await screen.findByRole('dialog', { name: 'Transcrição e microfone' })).toBeInTheDocument();
     expect(screen.getByText('Permissão no Linux/Hyprland')).toBeInTheDocument();
   });
@@ -559,20 +578,20 @@ describe('CommandInputPanel', () => {
       captureBackend: 'pw-record',
     });
 
+    const onToast = vi.fn();
     render(
       <CommandInputPanel
         busy={false}
-        privilegedActions={[]}
-        actionJsonExamples={{}}
         onSendOrder={vi.fn()}
-        onExecuteCommand={vi.fn()}
-        onRequestPrivilegedAction={vi.fn()}
+        onToast={onToast}
       />,
     );
 
     fireEvent.click(screen.getByLabelText('Entrada por voz'));
 
-    expect(await screen.findByRole('alert')).toHaveTextContent('Nenhuma fala foi reconhecida. Tente falar mais perto do microfone.');
+    await waitFor(() => {
+      expect(onToast).toHaveBeenCalledWith('error', expect.stringContaining('Nenhuma fala foi reconhecida. Tente falar mais perto do microfone.'));
+    });
     expect(screen.queryByText(/Backend local não configurado/)).not.toBeInTheDocument();
   });
 
@@ -590,16 +609,12 @@ describe('CommandInputPanel', () => {
     render(
       <CommandInputPanel
         busy={false}
-        privilegedActions={[]}
-        actionJsonExamples={{}}
         onSendOrder={vi.fn()}
-        onExecuteCommand={vi.fn()}
-        onRequestPrivilegedAction={vi.fn()}
       />,
     );
 
     fireEvent.click(screen.getByLabelText('Entrada por voz'));
-    fireEvent.click(await screen.findByText('Configurar transcrição local'));
+    fireEvent.click(await screen.findByText('Abrir diagnóstico de voz'));
 
     expect(await screen.findByRole('dialog', { name: 'Transcrição e microfone' })).toBeInTheDocument();
     expect(screen.getByText('Transcrição local pronta. Modelo: /home/lucas/.codex/models/ggml-base.bin')).toBeInTheDocument();
@@ -628,11 +643,7 @@ describe('CommandInputPanel', () => {
     render(
       <CommandInputPanel
         busy={false}
-        privilegedActions={[]}
-        actionJsonExamples={{}}
         onSendOrder={vi.fn()}
-        onExecuteCommand={vi.fn()}
-        onRequestPrivilegedAction={vi.fn()}
       />,
     );
 
@@ -648,16 +659,12 @@ describe('CommandInputPanel', () => {
     render(
       <CommandInputPanel
         busy={false}
-        privilegedActions={[]}
-        actionJsonExamples={{}}
         onSendOrder={vi.fn()}
-        onExecuteCommand={vi.fn()}
-        onRequestPrivilegedAction={vi.fn()}
       />,
     );
 
     fireEvent.click(screen.getByLabelText('Mais ações'));
-    fireEvent.click(screen.getByText('Selecionar arquivo'));
+    fireEvent.click(screen.getByText('Carregar anexo'));
 
     expect(await screen.findByRole('dialog', { name: 'Selecionar arquivo' })).toBeInTheDocument();
     expect(await screen.findByText('relatorio.md')).toBeInTheDocument();
@@ -681,18 +688,14 @@ describe('CommandInputPanel', () => {
     render(
       <CommandInputPanel
         busy={false}
-        privilegedActions={[]}
-        actionJsonExamples={{}}
         onSendOrder={onSendOrder}
-        onExecuteCommand={vi.fn()}
-        onRequestPrivilegedAction={vi.fn()}
       />,
     );
 
     expect(screen.getByLabelText('Enviar')).toBeDisabled();
 
     fireEvent.click(screen.getByLabelText('Mais ações'));
-    fireEvent.click(screen.getByText('Selecionar arquivo'));
+    fireEvent.click(screen.getByText('Carregar anexo'));
     fireEvent.click(await screen.findByText('relatorio.md'));
     fireEvent.click(screen.getByRole('button', { name: 'Selecionar' }));
 
@@ -753,16 +756,12 @@ describe('CommandInputPanel', () => {
     render(
       <CommandInputPanel
         busy={false}
-        privilegedActions={[]}
-        actionJsonExamples={{}}
         onSendOrder={onSendOrder}
-        onExecuteCommand={vi.fn()}
-        onRequestPrivilegedAction={vi.fn()}
       />,
     );
 
     fireEvent.click(screen.getByLabelText('Mais ações'));
-    fireEvent.click(screen.getByText('Selecionar arquivo'));
+    fireEvent.click(screen.getByText('Carregar anexo'));
     fireEvent.click(await screen.findByText(longName));
     fireEvent.click(screen.getByRole('button', { name: 'Selecionar' }));
 
@@ -789,16 +788,12 @@ describe('CommandInputPanel', () => {
     render(
       <CommandInputPanel
         busy={false}
-        privilegedActions={[]}
-        actionJsonExamples={{}}
         onSendOrder={vi.fn()}
-        onExecuteCommand={vi.fn()}
-        onRequestPrivilegedAction={vi.fn()}
       />,
     );
 
     fireEvent.click(screen.getByLabelText('Mais ações'));
-    fireEvent.click(screen.getByText('Selecionar arquivo'));
+    fireEvent.click(screen.getByText('Carregar anexo'));
     fireEvent.click(await screen.findByText('Usar caminho do PC'));
 
     const pathInput = await screen.findByLabelText('Caminho local');

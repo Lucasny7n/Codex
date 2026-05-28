@@ -28,6 +28,7 @@ vi.mock('../src/lib/api', () => ({
   showLocalModel: vi.fn(),
   testLocalModel: vi.fn(),
   testModelRuntime: vi.fn(),
+  testProviderConnection: vi.fn(),
 }));
 
 const readyStatus: ProviderRuntimeStatus = {
@@ -176,7 +177,7 @@ describe('SettingsPanel', () => {
   it('renderiza somente as abas principais e remove telas antigas', () => {
     renderSettings();
 
-    for (const label of ['Geral', 'Interface', 'Modelos', 'Conversas', 'Personalização', 'Saúde', 'Meu PC']) {
+    for (const label of ['Geral', 'Interface', 'Modelos', 'Conversas', 'Personalização', 'Saúde', 'Máquina Local']) {
       expect(screen.getByRole('button', { name: label })).toBeInTheDocument();
     }
 
@@ -254,22 +255,68 @@ describe('SettingsPanel', () => {
     });
   });
 
-  it('Modelos mostra accordions informativos sem configuração de credencial', () => {
+  it('Interface comum esconde "Política"/textarea e explica roteamento em linguagem simples', () => {
+    renderSettings({
+      settings: { ...settings(), developerMode: false },
+      initialTab: 'interface',
+    });
+
+    // Sem config crua na superfície comum.
+    expect(screen.queryByLabelText('Política de fallback')).not.toBeInTheDocument();
+    expect(screen.queryByText('Roteamento avançado')).not.toBeInTheDocument();
+    // Explicação humana presente.
+    expect(screen.getByText('Roteamento de modelos')).toBeInTheDocument();
+    expect(screen.getByText(/usa o modelo selecionado na conversa automaticamente/)).toBeInTheDocument();
+  });
+
+  it('Modelos aba local mostra modelos locais e accordions informativos', () => {
     renderSettings({ initialTab: 'models' });
 
-    expect(screen.getByText('Model Manager local')).toBeInTheDocument();
+    // Default sub-tab is Local
+    expect(screen.getByText('Gerenciador de modelos locais')).toBeInTheDocument();
     expect(screen.getByPlaceholderText('gpt-oss, llama3.2, qwen2.5-coder:7b')).toBeInTheDocument();
     expect(screen.getByText('qwen2.5-coder:1.5b')).toBeInTheDocument();
-    expect(screen.getByText('GPT-5.5')).toBeInTheDocument();
-    expect(screen.getByText('GPT-5.4 Mini via OpenRouter')).toBeInTheDocument();
     expect(screen.getByText('Qwen2.5 Coder 1.5B')).toBeInTheDocument();
-    expect(screen.getByText('Gemini 2.5 Flash')).toBeInTheDocument();
     expect(screen.getByLabelText('Buscar no catálogo de modelos')).toBeInTheDocument();
-    expect(screen.getByText('Mostrando apenas modelos em destaque. Use busca para ver mais.')).toBeInTheDocument();
-    expect(screen.getByText('Comprimento máximo do contexto')).toBeInTheDocument();
-    expect(screen.getByText('Fornecedor')).toBeInTheDocument();
+    expect(screen.getByText(/Modelos em destaque/)).toBeInTheDocument();
     expect(screen.queryByText('API Key')).not.toBeInTheDocument();
     expect(screen.queryByText('Salvar API')).not.toBeInTheDocument();
+  });
+
+  it('Modelos aba nuvem mostra modelos cloud', () => {
+    renderSettings({ initialTab: 'models' });
+
+    // Switch to cloud sub-tab
+    fireEvent.click(screen.getByRole('tab', { name: 'Nuvem' }));
+
+    expect(screen.getByText('GPT-5.5')).toBeInTheDocument();
+    expect(screen.getByText('GPT-5.4 Mini via OpenRouter')).toBeInTheDocument();
+    expect(screen.getByText('Gemini 2.5 Flash')).toBeInTheDocument();
+    expect(screen.getByText(/Modelos em destaque/)).toBeInTheDocument();
+  });
+
+  it('Nuvem testa conexão do provider e mostra resultado real (erro)', async () => {
+    vi.mocked(api.testProviderConnection).mockResolvedValue({
+      state: 'error',
+      message: '401 Unauthorized: invalid api key',
+      checkedAt: new Date().toISOString(),
+    });
+    renderSettings({ initialTab: 'models' });
+
+    fireEvent.click(screen.getByRole('tab', { name: 'Nuvem' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Testar conexão' }));
+
+    await waitFor(() => {
+      expect(api.testProviderConnection).toHaveBeenCalledWith('gemini-cli');
+      expect(screen.getByText(/401 Unauthorized: invalid api key/)).toBeInTheDocument();
+    });
+  });
+
+  it('Nuvem nunca expõe API key aberta', () => {
+    renderSettings({ initialTab: 'models' });
+    fireEvent.click(screen.getByRole('tab', { name: 'Nuvem' }));
+    // A superfície de nuvem não renderiza chaves; configuração fica em Contas.
+    expect(document.body.textContent).not.toMatch(/sk-[A-Za-z0-9]{8,}/);
   });
 
   it('Model Manager cria pull candidate gpt-oss e mostra erro inline de pull', async () => {
@@ -401,11 +448,13 @@ describe('SettingsPanel', () => {
     expect(screen.getByText('Memórias guardadas')).toBeInTheDocument();
     expect(screen.getByText('Histórico de chat de referência')).toBeInTheDocument();
     expect(screen.getByText('Personalização avançada do Ailu')).toBeInTheDocument();
-    expect(screen.getByText('Gerenciar cookies')).toBeInTheDocument();
+    // Cookies foi movido para "Avançado" — não fica na superfície comum.
+    expect(screen.queryByText('Gerenciar cookies')).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: /Avançado/ }));
 
     for (const label of [
+      'Gerenciar cookies',
       'Extração da página web',
       'Pesquisa por imagens',
       'Pesquisa na web',
@@ -423,16 +472,51 @@ describe('SettingsPanel', () => {
   it('Saúde mostra estados reais e ações sugeridas sem log cru', async () => {
     renderSettings({ initialTab: 'health' });
 
-    fireEvent.click(screen.getByRole('button', { name: 'Atualizar' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Verificar agora' }));
     await waitFor(() => {
       expect(api.getAppHealthCheck).toHaveBeenCalled();
+      // Cabeçalho em linguagem humana, não "Atenção necessária" genérico.
+      expect(screen.getByText('Pronto para conversar')).toBeInTheDocument();
+      expect(screen.queryByText('Atenção necessária')).not.toBeInTheDocument();
+      // Itens do health.items[] aparecem na seção "Outros"
       expect(screen.getByText('Ollama API ativa')).toBeInTheDocument();
       expect(screen.getByText('Backend STT')).toBeInTheDocument();
       expect(screen.getByText('Captura WebView')).toBeInTheDocument();
       expect(screen.getByText('Captura nativa')).toBeInTheDocument();
-      expect(screen.getAllByText('OK').length).toBeGreaterThanOrEqual(1);
+      // URL do Ollama aparece no detalhe do item ollama-api
       expect(screen.getByText('http://127.0.0.1:11434')).toBeInTheDocument();
+      // Status ✓ aparece para itens OK
+      expect(screen.getAllByText('✓').length).toBeGreaterThanOrEqual(1);
       expect(screen.queryByText(/CODEX_CONTEXT_BOOTSTRAP/)).not.toBeInTheDocument();
+    });
+
+    // Ferramentas dev (Node/npm/cargo) ficam dentro de "Diagnóstico avançado",
+    // recolhido por padrão — não soltas na superfície comum.
+    const advancedDetails = screen.getByText('Diagnóstico avançado').closest('details');
+    expect(advancedDetails).not.toBeNull();
+    expect(advancedDetails).not.toHaveAttribute('open');
+    expect(advancedDetails).toContainElement(screen.getByText('Node.js'));
+    expect(advancedDetails).toContainElement(screen.getByText('Rust / cargo'));
+    expect(advancedDetails).toContainElement(screen.getByRole('button', { name: 'Copiar relatório' }));
+  });
+
+  it('Saúde não diz "Pronto para conversar" se o provider selecionado falha sem fallback', async () => {
+    const failing: ProviderRuntimeStatus = {
+      state: 'error',
+      message: 'Gemini CLI indisponível.',
+      checkedAt: new Date().toISOString(),
+    };
+    renderSettings({
+      initialTab: 'health',
+      providers: providers(failing),
+      settings: { ...settings(), executionMode: 'cloud', selectedProviderId: 'gemini-cli' },
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Verificar agora' }));
+    await waitFor(() => {
+      expect(api.getAppHealthCheck).toHaveBeenCalled();
+      expect(screen.getByText('Atenção: o modelo selecionado não está pronto')).toBeInTheDocument();
+      expect(screen.queryByText('Pronto para conversar')).not.toBeInTheDocument();
     });
   });
 });

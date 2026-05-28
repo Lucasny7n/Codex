@@ -80,6 +80,13 @@ pub fn run() {
             commands::plan_skill,
             commands::mark_skill_trusted,
             commands::test_skill_in_vm,
+            commands::list_user_skills,
+            commands::save_user_skill,
+            commands::delete_user_skill,
+            commands::dry_run_user_skill,
+            commands::list_memory_entries,
+            commands::save_memory_entry,
+            commands::delete_memory_entry,
             commands::start_local_runtime,
             commands::install_local_runtime,
             commands::install_local_model,
@@ -95,6 +102,10 @@ pub fn run() {
             commands::update_settings,
             commands::get_base_prompt,
             commands::update_base_prompt,
+            commands::list_running_processes,
+            commands::get_tts_status,
+            commands::speak_text,
+            commands::stop_speech,
         ])
         .run(tauri::generate_context!())
         .expect("erro ao iniciar aplicativo");

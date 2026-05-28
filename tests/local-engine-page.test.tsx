@@ -135,7 +135,7 @@ describe('LocalEnginePage', () => {
     render(<LocalEnginePage />);
 
     await waitFor(() => {
-      expect(screen.getByText('AMD Ryzen 5 5500')).toBeInTheDocument();
+      expect(screen.getByText(/AMD Ryzen 5 5500/)).toBeInTheDocument();
     });
 
     expect(screen.getByText('AMD Radeon RX 7600')).toBeInTheDocument();
@@ -143,6 +143,20 @@ describe('LocalEnginePage', () => {
     expect(screen.getAllByText('Ollama').length).toBeGreaterThan(0);
     expect(api.detectLocalHardware).toHaveBeenCalledTimes(1);
     expect(api.listRuntimeBackends).toHaveBeenCalledTimes(1);
+  });
+
+  it('mostra resumo de capacidade com status, tamanho e runtime recomendados', async () => {
+    vi.mocked(api.detectLocalHardware).mockResolvedValue(hardwareSnapshot());
+    vi.mocked(api.listRuntimeBackends).mockResolvedValue(backendList());
+
+    render(<LocalEnginePage />);
+
+    await waitFor(() => {
+      expect(screen.getByText(/Seu PC é adequado para IA local/)).toBeInTheDocument();
+    });
+    expect(screen.getByText('Tamanho recomendado')).toBeInTheDocument();
+    expect(screen.getByText('7B–13B')).toBeInTheDocument();
+    expect(screen.getByText('Runtime recomendado')).toBeInTheDocument();
   });
 
   it('exibe estado de carregamento enquanto detecta hardware', () => {
@@ -183,7 +197,7 @@ describe('LocalEnginePage', () => {
     render(<LocalEnginePage />);
 
     await waitFor(() => {
-      expect(screen.getByText('AMD Ryzen 5 5500')).toBeInTheDocument();
+      expect(screen.getByText(/AMD Ryzen 5 5500/)).toBeInTheDocument();
     });
 
     fireEvent.click(screen.getByRole('button', { name: 'Atualizar hardware' }));
@@ -201,7 +215,7 @@ describe('LocalEnginePage', () => {
     render(<LocalEnginePage />);
 
     await waitFor(() => {
-      expect(screen.getByText('AMD Ryzen 5 5500')).toBeInTheDocument();
+      expect(screen.getByText(/AMD Ryzen 5 5500/)).toBeInTheDocument();
     });
 
     const input = screen.getByRole('textbox', { name: /ID do modelo para recomendar/i });
@@ -232,7 +246,7 @@ describe('LocalEnginePage', () => {
     render(<LocalEnginePage />);
 
     await waitFor(() => {
-      expect(screen.getByText('AMD Ryzen 5 5500')).toBeInTheDocument();
+      expect(screen.getByText(/AMD Ryzen 5 5500/)).toBeInTheDocument();
     });
 
     fireEvent.change(screen.getByRole('textbox', { name: /ID do modelo para recomendar/i }), {
@@ -254,7 +268,7 @@ describe('LocalEnginePage', () => {
     render(<LocalEnginePage />);
 
     await waitFor(() => {
-      expect(screen.getByText('AMD Ryzen 5 5500')).toBeInTheDocument();
+      expect(screen.getByText(/AMD Ryzen 5 5500/)).toBeInTheDocument();
     });
 
     expect(screen.getByText('Nenhum backend pronto. Instale Ollama ou llama.cpp primeiro.')).toBeInTheDocument();

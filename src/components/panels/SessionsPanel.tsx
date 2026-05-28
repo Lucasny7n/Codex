@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { UiIcon } from '../common/AppIcons';
+import { UiIcon, type UiIconName } from '../common/AppIcons';
 import { PopupMenu } from '../common/PremiumUI';
 import type { AgentSession } from '../../types/domain';
 import type { SettingsTab } from '../settings/SettingsPanel';
@@ -8,13 +8,13 @@ import appLogo from '../../assets/app-logo.svg';
 type SessionMenuAction =
   | 'pin'
   | 'archive'
-  | 'share'
   | 'move-to-project'
   | 'remove-from-project';
 
 interface SessionsPanelProps {
   sessions: AgentSession[];
   projects: string[];
+  projectAppearance?: Record<string, { icon?: UiIconName; color?: string }>;
   projectSessions?: Record<string, AgentSession[]>;
   activeProject?: string;
   selectedSessionId?: string;
@@ -104,9 +104,29 @@ function isToday(value: string): boolean {
   );
 }
 
+type TimeBucket = 'today' | 'week' | 'month' | 'older';
+
+const TIME_BUCKET_LABELS: Record<TimeBucket, string> = {
+  today: 'Hoje',
+  week: 'Últimos 7 dias',
+  month: 'Últimos 30 dias',
+  older: 'Anteriores',
+};
+
+function timeBucket(value: string): TimeBucket {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return 'older';
+  if (isToday(value)) return 'today';
+  const days = (Date.now() - date.getTime()) / 86_400_000;
+  if (days <= 7) return 'week';
+  if (days <= 30) return 'month';
+  return 'older';
+}
+
 export function SessionsPanel({
   sessions,
   projects,
+  projectAppearance = {},
   projectSessions = {},
   activeProject,
   selectedSessionId,
@@ -143,14 +163,33 @@ export function SessionsPanel({
 
   const visibleSessions = filteredSessions;
   const visibleProjects = projects.filter((project) => project.trim().length > 0);
-  const todaySessions = useMemo(
-    () => visibleSessions.filter((session) => isToday(session.updatedAt || session.createdAt)),
-    [visibleSessions],
+  // Sessions shown nested under the active project must NOT also appear in the
+  // flat "Todas as conversas" list — otherwise the same row (and its menu)
+  // renders twice and the menus overlap, looking like duplicated items.
+  const nestedSessionIds = useMemo(() => {
+    const ids = new Set<string>();
+    if (activeProject) {
+      for (const session of projectSessions[activeProject] ?? []) ids.add(session.id);
+    }
+    return ids;
+  }, [activeProject, projectSessions]);
+  const flatSessions = useMemo(
+    () => visibleSessions.filter((session) => !nestedSessionIds.has(session.id)),
+    [visibleSessions, nestedSessionIds],
   );
-  const olderSessions = useMemo(
-    () => visibleSessions.filter((session) => !isToday(session.updatedAt || session.createdAt)),
-    [visibleSessions],
-  );
+  const groupedSessions = useMemo(() => {
+    const groups: Array<{ bucket: TimeBucket; sessions: AgentSession[] }> = [
+      { bucket: 'today', sessions: [] },
+      { bucket: 'week', sessions: [] },
+      { bucket: 'month', sessions: [] },
+      { bucket: 'older', sessions: [] },
+    ];
+    const byBucket = new Map(groups.map((g) => [g.bucket, g.sessions]));
+    for (const session of flatSessions) {
+      byBucket.get(timeBucket(session.updatedAt || session.createdAt))?.push(session);
+    }
+    return groups.filter((g) => g.sessions.length > 0);
+  }, [flatSessions]);
 
   function toggleProjects(): void {
     setProjectsOpen((current) => {
@@ -248,10 +287,6 @@ export function SessionsPanel({
             <button type="button" onClick={() => handleSessionAction(session, 'archive')}>
               <UiIcon name="archive" className="menu-icon" />
               Arquivo
-            </button>
-            <button type="button" onClick={() => handleSessionAction(session, 'share')}>
-              <UiIcon name="send" className="menu-icon" />
-              Compartilhar
             </button>
             <button type="button" onClick={() => { setMenuSessionId(undefined); onExport(session, 'markdown'); }}>
               <UiIcon name="download" className="menu-icon" />
@@ -357,11 +392,22 @@ export function SessionsPanel({
               const projectActive = activeProject === project;
               const projectMenuOpen = menuProject === project;
               const nestedSessions = projectActive ? projectSessions[project] ?? [] : [];
+              const appearance = projectAppearance[project];
               return (
                 <div key={project} className={`qwen-project-stack ${projectActive ? 'active' : ''}`}>
                   <article className={`qwen-project-item ${projectActive ? 'active' : ''} ${projectMenuOpen ? 'menu-open' : ''}`}>
                     <button type="button" className="qwen-project-name" onClick={() => onSelectProject(project)}>
-                      <FolderIcon />
+                      {appearance?.icon ? (
+                        <span
+                          className="qwen-project-icon-badge"
+                          style={appearance.color ? { color: appearance.color } : undefined}
+                          aria-hidden="true"
+                        >
+                          <UiIcon name={appearance.icon} className="qwen-row-icon qwen-row-icon-compact" />
+                        </span>
+                      ) : (
+                        <FolderIcon />
+                      )}
                       <span>{project}</span>
                     </button>
                     <div className="popup-anchor">
@@ -404,10 +450,12 @@ export function SessionsPanel({
         </button>
         {conversationsOpen ? (
           <div className="qwen-session-list">
-            {todaySessions.length > 0 ? <span className="qwen-date-group">Hoje</span> : null}
-            {todaySessions.map((session) => renderConversationItem(session))}
-            {olderSessions.length > 0 ? <span className="qwen-date-group">Anteriores</span> : null}
-            {olderSessions.map((session) => renderConversationItem(session))}
+            {groupedSessions.map((group) => (
+              <div key={group.bucket}>
+                <span className="qwen-date-group">{TIME_BUCKET_LABELS[group.bucket]}</span>
+                {group.sessions.map((session) => renderConversationItem(session))}
+              </div>
+            ))}
           </div>
         ) : null}
       </div>

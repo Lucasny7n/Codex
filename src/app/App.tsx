@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   bootstrapState,
   archiveSession,
@@ -9,13 +9,14 @@ import {
   duplicateSession,
   exportAllConversations,
   exportSession,
+  deleteMemoryEntry,
   getLocalRuntimeState,
   installLocalModel,
   importConversations,
   listArchivedSessions,
+  listMemoryEntries,
   listProviderCredentials,
   listProviderProfiles,
-  listPrivilegedActions,
   onCommandLog,
   onFileChanged,
   onLocalModelProgress,
@@ -27,13 +28,14 @@ import {
   onStatusNote,
   openFileInVscode,
   openProjectInVscode,
+  decidePermission,
   requestExecution,
-  requestPrivilegedAction,
   renameSession,
   restoreSession,
   removeLocalModel,
   removeProviderProfile,
   renameProviderProfile,
+  saveMemoryEntry,
   saveProviderProfileCredential,
   sendOrderToAgent,
   sendTemporaryOrderToAgent,
@@ -48,6 +50,7 @@ import {
   type CloudModelProfile,
   type LocalModelProfile,
 } from '../lib/models/modelRegistry';
+import { resolveModelForTask, type RoutableModel, type TaskMode } from '../lib/models/routing';
 import {
   buildCloudModelOptions,
   buildLocalModelOptions,
@@ -59,6 +62,11 @@ import {
   buildProjectMemoryAttachment,
   updateProjectMemoryFromExchange,
 } from '../lib/memory/projectMemoryService';
+import { buildMemoryAttachment } from '../lib/memory/memoryContextService';
+import { parseMemoryCommand, type MemoryCommand } from '../lib/memory/memoryCommands';
+import { sanitizeTitle, titleFromContent } from '../lib/chat/conversationTitle';
+import { detectToolIntent } from '../lib/tools/intent';
+import { runTool } from '../lib/tools/runner';
 import { applyAppTheme } from '../lib/theme';
 import {
   canSelectModel,
@@ -71,7 +79,8 @@ import type {
   ChatMessage,
   LocalModelInstallProgress,
   LocalRuntimeSnapshot,
-  PrivilegedActionSpec,
+  PermissionDecision,
+  PermissionOutcome,
   ProviderCredentialStatus,
   ProviderAccountProfile,
   ProviderRuntimeStatus,
@@ -79,6 +88,7 @@ import type {
   EnvironmentSelectionInput,
   SelectedFileAttachment,
   ChatAttachment,
+  MemoryRecallMode,
 } from '../types/domain';
 import { useAppStore } from '../stores/appStore';
 
@@ -92,9 +102,17 @@ import { ArchivedConversationsModal } from '../components/chat/ArchivedConversat
 import { TerminalDrawer } from '../components/panels/TerminalDrawer';
 import { HelpDrawer } from '../components/panels/HelpDrawer';
 import { SkillStudioModal } from '../components/panels/SkillStudioModal';
+import { MemoryManagerModal } from '../components/panels/MemoryManagerModal';
+import { PermissionApprovalModal } from '../components/panels/PermissionApprovalModal';
 import type { EnvironmentTab } from '../components/models/ModelSelector';
 import { FileManagerModal } from '../components/file/FileManagerModal';
 import { UiIcon, type UiIconName } from '../components/common/AppIcons';
+import { ProjectAppearancePicker } from '../components/common/ProjectAppearancePicker';
+import {
+  DEFAULT_PROJECT_COLOR,
+  DEFAULT_PROJECT_ICON,
+  PROJECT_ICON_CHOICES,
+} from '../components/common/projectAppearanceOptions';
 import {
   ConfirmDialog,
   ExportDialog,
@@ -103,34 +121,6 @@ import {
   ToastViewport,
   type ToastMessage,
 } from '../components/common/PremiumUI';
-
-function homeFromDataRoot(settings?: AppSettings): string | undefined {
-  if (!settings?.codexRoot) return undefined;
-  return settings.codexRoot.endsWith('/.codex') ? settings.codexRoot.slice(0, -'/.codex'.length) : undefined;
-}
-
-function buildActionJsonExamples(settings?: AppSettings): Record<string, string> {
-  const dataRoot = settings?.codexRoot ?? '~/.codex';
-  const home = homeFromDataRoot(settings) ?? '~';
-
-  return {
-    systemctl_enable_service: '{\n  "service": "fstrim.timer"\n}',
-    systemctl_disable_service: '{\n  "service": "waydroid-container.service"\n}',
-    systemctl_restart_service: '{\n  "service": "waydroid-container.service"\n}',
-    systemctl_status_service: '{\n  "service": "waydroid-container.service"\n}',
-    bootctl_set_default_kernel: '{\n  "entry": "arch-linux-cachyos-bore.conf"\n}',
-    chmod_random_seed: '{}',
-    backup_file: '{\n  "path": "/boot/loader/loader.conf"\n}',
-    restore_file: `{\n  "backupPath": "${dataRoot}/ailu-ai-studio/backups/exemplo.bak",\n  "targetPath": "/boot/loader/loader.conf"\n}`,
-    pacman_install_packages: '{\n  "packages": ["ripgrep"]\n}',
-    paccache_keep_versions: '{\n  "keep": 2\n}',
-    waydroid_start: '{}',
-    waydroid_stop: '{}',
-    waydroid_status: '{}',
-    hyprland_verify_config: `{\n  "configPath": "${home}/.config/hypr/hyprland.conf"\n}`,
-    hyprland_reload_user: '{}',
-  };
-}
 
 function pushHistory(settings: AppSettings, mode: ExecutionMode, providerId: string, modelId: string): AppSettings {
   const entry = {
@@ -173,15 +163,24 @@ function accountStatusFromProviderState(
   return 'unavailable';
 }
 
-function titleFromContent(content: string): string {
-  const compact = content
-    .replace(/\s+/g, ' ')
-    .trim()
-    .replace(/^[-–—\s]+/, '');
-  if (!compact) {
-    return `Conversa ${new Date().toLocaleString('pt-BR')}`;
-  }
-  return compact.length > 54 ? `${compact.slice(0, 51)}...` : compact;
+/// Turns a real execution outcome into a human-readable chat message, showing
+/// actual stdout/stderr (truncated) so results are transparent, never faked.
+function buildOutcomeMessage(outcome: PermissionOutcome): string {
+  const statusLabel = outcome.status === 'success'
+    ? 'Comando concluído'
+    : outcome.status === 'denied'
+      ? 'Comando negado'
+      : outcome.status === 'blocked'
+        ? 'Comando bloqueado'
+        : 'Comando falhou';
+  const parts: string[] = [`${statusLabel}.`];
+  if (outcome.summary) parts.push(outcome.summary);
+  const stdout = (outcome.stdout ?? '').trim();
+  const stderr = (outcome.stderr ?? '').trim();
+  if (stdout) parts.push(`Saída real:\n${stdout.slice(0, 2000)}${stdout.length > 2000 ? '\n[…saída truncada]' : ''}`);
+  if (stderr) parts.push(`Erros:\n${stderr.slice(0, 1000)}${stderr.length > 1000 ? '\n[…]' : ''}`);
+  if (typeof outcome.exitCode === 'number') parts.push(`Código de saída: ${outcome.exitCode}`);
+  return parts.join('\n\n');
 }
 
 function readLocalStorage(key: string): string | undefined {
@@ -282,6 +281,8 @@ function readProjectMeta(project: string): StoredProjectMeta | undefined {
       instructions: typeof candidate.instructions === 'string' ? candidate.instructions : '',
       memoryScope: candidate.memoryScope === 'project' ? 'project' : 'default',
       presetId: PROJECT_PRESETS.some((preset) => preset.id === candidate.presetId) ? candidate.presetId : undefined,
+      icon: PROJECT_ICON_CHOICES.includes(candidate.icon as UiIconName) ? (candidate.icon as UiIconName) : undefined,
+      color: typeof candidate.color === 'string' && /^#[0-9a-fA-F]{6}$/u.test(candidate.color) ? candidate.color : undefined,
       files: Array.isArray(candidate.files) ? candidate.files.filter((item): item is string => typeof item === 'string') : [],
       updatedAt: typeof candidate.updatedAt === 'string' ? candidate.updatedAt : new Date().toISOString(),
     };
@@ -295,47 +296,127 @@ function ProjectFolderIcon(): JSX.Element {
 }
 
 type ProjectMemoryScope = 'default' | 'project';
-type ProjectPresetId = 'investment' | 'homework' | 'writing' | 'health' | 'travel';
+type ProjectPresetId =
+  | 'investment'
+  | 'homework'
+  | 'writing'
+  | 'health'
+  | 'travel'
+  | 'estudos'
+  | 'codigo'
+  | 'negocios'
+  | 'automotivo'
+  | 'migracao'
+  | 'ia_local';
 
 interface StoredProjectMeta {
   title: string;
   instructions: string;
   memoryScope: ProjectMemoryScope;
   presetId?: ProjectPresetId;
+  icon?: UiIconName;
+  color?: string;
   files: string[];
   updatedAt: string;
 }
 
-const PROJECT_PRESETS: Array<{ id: ProjectPresetId; label: string; icon: UiIconName; instructions: string }> = [
+interface ProjectPreset {
+  id: ProjectPresetId;
+  label: string;
+  icon: UiIconName;
+  color: string;
+  memoryScope: ProjectMemoryScope;
+  instructions: string;
+}
+
+const PROJECT_PRESETS: ProjectPreset[] = [
   {
     id: 'investment',
     label: 'Investimento',
     icon: 'chart',
+    color: '#22c55e',
+    memoryScope: 'default',
     instructions: 'Trate o projeto como acompanhamento de investimento. Priorize riscos, premissas, números verificáveis e decisões auditáveis.',
   },
   {
     id: 'homework',
     label: 'Tarefa de casa',
     icon: 'book',
+    color: '#f59e0b',
+    memoryScope: 'default',
     instructions: 'Ajude a resolver tarefas passo a passo, explicando raciocínio, fontes usadas e próximos exercícios.',
   },
   {
     id: 'writing',
     label: 'Escrita',
     icon: 'pen',
+    color: '#8b5cf6',
+    memoryScope: 'default',
     instructions: 'Atue como editor de escrita. Preserve intenção, melhore clareza, estrutura, tom e consistência.',
   },
   {
     id: 'health',
     label: 'Saúde',
     icon: 'heart',
+    color: '#ec4899',
+    memoryScope: 'project',
     instructions: 'Organize informações de saúde com cautela. Diferencie orientação geral de decisão médica e recomende validação profissional quando necessário.',
   },
   {
     id: 'travel',
     label: 'Viagem',
     icon: 'plane',
+    color: '#14b8a6',
+    memoryScope: 'default',
     instructions: 'Planeje viagem com foco em orçamento, datas, deslocamentos, reservas, documentos e alternativas práticas.',
+  },
+  {
+    id: 'estudos',
+    label: 'Estudos',
+    icon: 'book',
+    color: '#3b82f6',
+    memoryScope: 'default',
+    instructions: 'Ajude a aprender e revisar conteúdo. Explique conceitos, crie resumos, elabore perguntas de revisão e sugira próximos passos de estudo.',
+  },
+  {
+    id: 'codigo',
+    label: 'Código',
+    icon: 'fileCode',
+    color: '#3b82f6',
+    memoryScope: 'default',
+    instructions: 'Atue como par de programação. Revise código, sugira melhorias, explique decisões de arquitetura, debug de erros e boas práticas.',
+  },
+  {
+    id: 'negocios',
+    label: 'Negócios',
+    icon: 'chart',
+    color: '#94a3b8',
+    memoryScope: 'default',
+    instructions: 'Foco em decisões de negócios: análise de cenários, métricas, estratégia, comunicação profissional e execução de tarefas corporativas.',
+  },
+  {
+    id: 'automotivo',
+    label: 'Automotivo',
+    icon: 'car',
+    color: '#ef4444',
+    memoryScope: 'default',
+    instructions: 'Foco em veículos: manutenção, peças, diagnóstico de problemas, custos e decisões de compra/venda. Seja prático e cite quando algo exige um mecânico.',
+  },
+  {
+    id: 'migracao',
+    label: 'Migração/Portugal',
+    icon: 'globe',
+    color: '#14b8a6',
+    memoryScope: 'project',
+    instructions: 'Apoie planejamento de migração (foco Portugal): documentos, vistos, prazos, custos, moradia e adaptação. Diferencie orientação geral de aconselhamento jurídico.',
+  },
+  {
+    id: 'ia_local',
+    label: 'IA Local',
+    icon: 'cpu',
+    color: '#8b5cf6',
+    memoryScope: 'default',
+    instructions: 'Foco em IA rodando localmente: escolha de modelos, quantização, runtimes, desempenho no hardware disponível e privacidade. Seja honesto sobre limites do PC.',
   },
 ];
 
@@ -386,10 +467,10 @@ function createOptimisticUserMessage(content: string, attachments: ChatAttachmen
 
 export default function App(): JSX.Element {
   const [busy, setBusy] = useState(false);
-  const [privilegedActions, setPrivilegedActions] = useState<PrivilegedActionSpec[]>([]);
   const [terminalOpen, setTerminalOpen] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false);
   const [skillStudioOpen, setSkillStudioOpen] = useState(false);
+  const [memoryManagerOpen, setMemoryManagerOpen] = useState(false);
   const [localRuntime, setLocalRuntime] = useState<LocalRuntimeSnapshot>();
   const [localRuntimeLoading, setLocalRuntimeLoading] = useState(false);
   const [modelActionBusyId, setModelActionBusyId] = useState<string>();
@@ -427,6 +508,9 @@ export default function App(): JSX.Element {
   const [projectInstructions, setProjectInstructions] = useState('');
   const [projectMemoryScope, setProjectMemoryScope] = useState<ProjectMemoryScope>('default');
   const [projectPreset, setProjectPreset] = useState<ProjectPresetId>();
+  const [projectIcon, setProjectIcon] = useState<UiIconName>(DEFAULT_PROJECT_ICON);
+  const [projectColor, setProjectColor] = useState<string>(DEFAULT_PROJECT_COLOR);
+  const [projectAppearanceOpen, setProjectAppearanceOpen] = useState(false);
   const [projectFiles, setProjectFiles] = useState<string[]>([]);
   const [projectSessionIds, setProjectSessionIds] = useState<Record<string, string[]>>(() => {
     try {
@@ -458,6 +542,7 @@ export default function App(): JSX.Element {
     logs,
     selectedModelId,
     executionMode,
+    pendingPermissions,
     setError,
     setLoading,
     bootstrap,
@@ -512,6 +597,15 @@ export default function App(): JSX.Element {
     return Array.from(new Set(projects)).slice(0, 12);
   }, [savedProjects]);
 
+  const projectAppearance = useMemo(() => {
+    const map: Record<string, { icon?: UiIconName; color?: string }> = {};
+    for (const project of sidebarProjects) {
+      const meta = readProjectMeta(project);
+      if (meta?.icon || meta?.color) map[project] = { icon: meta.icon, color: meta.color };
+    }
+    return map;
+  }, [sidebarProjects]);
+
   const projectSessionsByName = useMemo(() => {
     const byId = new Map(sessions.map((session) => [session.id, session]));
     const next: Record<string, AgentSession[]> = {};
@@ -526,8 +620,6 @@ export default function App(): JSX.Element {
   }, [projectSessionIds, sessions, sidebarProjects]);
 
   const activeProjectConversations = activeProject ? projectSessionsByName[activeProject] ?? [] : [];
-
-  const actionJsonExamples = useMemo(() => buildActionJsonExamples(settings), [settings]);
 
   const effectiveProviderProfiles = useMemo(() => {
     const source = providerAccountProfiles.length > 0 ? providerAccountProfiles : providerProfiles;
@@ -633,6 +725,49 @@ export default function App(): JSX.Element {
     });
   }, [installationProgress, localRuntime, selectedProviderStatus]);
 
+  // Maps the visible model options to the router's lightweight shape, pulling
+  // quality scores from the registry. Used to resolve a model per composer mode.
+  const routableModels = useMemo(() => {
+    const toRoutable = (option: TopBarModelOption, mode: 'local' | 'cloud'): RoutableModel | undefined => {
+      const profile = modelRegistry.byId(option.id) ?? modelRegistry.byId(option.modelId ?? '');
+      const providerId = option.providerId ?? profile?.providerId;
+      const modelId = option.modelId ?? profile?.modelId ?? option.id;
+      if (!providerId || !modelId) return undefined;
+      return {
+        providerId,
+        modelId,
+        mode,
+        codeQuality: profile?.codeQuality,
+        reasoningQuality: profile?.reasoningQuality,
+        speed: profile?.speed,
+        available: option.available,
+      };
+    };
+    return {
+      local: topbarLocalModels.map((o) => toRoutable(o, 'local')).filter((m): m is RoutableModel => Boolean(m)),
+      cloud: topbarCloudModels.map((o) => toRoutable(o, 'cloud')).filter((m): m is RoutableModel => Boolean(m)),
+    };
+  }, [topbarLocalModels, topbarCloudModels]);
+
+  // Resolves the provider/model for a composer mode using the routing resolver.
+  // Returns undefined when nothing better than the current default applies, so
+  // the send path keeps its existing behavior (never breaks).
+  const resolveSendRouting = useCallback((mode: InputModeId): { providerId: string; modelId: string } | undefined => {
+    if (!settings) return undefined;
+    const resolved = resolveModelForTask({
+      mode: mode as TaskMode,
+      localPreferred: settings.aiRouting?.fallbackPolicy === 'local_first',
+      defaultModel: { providerId: settings.selectedProviderId, modelId: settings.selectedModelId },
+      availableLocalModels: routableModels.local,
+      availableCloudModels: routableModels.cloud,
+    });
+    if (!resolved.provider || !resolved.model) return undefined;
+    if (resolved.provider === settings.selectedProviderId && resolved.model === settings.selectedModelId) {
+      return undefined;
+    }
+    return { providerId: resolved.provider, modelId: resolved.model };
+  }, [settings, routableModels]);
+
   const orderDisabledReason = useMemo(() => {
     if (!settings) return 'Configurações não carregadas.';
 
@@ -703,6 +838,9 @@ export default function App(): JSX.Element {
     setProjectInstructions('');
     setProjectMemoryScope('default');
     setProjectPreset(undefined);
+    setProjectIcon(DEFAULT_PROJECT_ICON);
+    setProjectColor(DEFAULT_PROJECT_COLOR);
+    setProjectAppearanceOpen(false);
     setProjectFiles([]);
     setProjectAdvancedOpen(false);
     setProjectMemoryMenuOpen(false);
@@ -726,6 +864,9 @@ export default function App(): JSX.Element {
     setProjectInstructions(meta?.instructions ?? '');
     setProjectMemoryScope(meta?.memoryScope ?? 'default');
     setProjectPreset(meta?.presetId);
+    setProjectIcon(meta?.icon ?? DEFAULT_PROJECT_ICON);
+    setProjectColor(meta?.color ?? DEFAULT_PROJECT_COLOR);
+    setProjectAppearanceOpen(false);
     setProjectFiles(meta?.files ?? []);
     setProjectAdvancedOpen(Boolean(meta?.instructions || meta?.memoryScope === 'project' || (meta?.files.length ?? 0) > 0));
     setProjectMemoryMenuOpen(false);
@@ -735,8 +876,16 @@ export default function App(): JSX.Element {
   function chooseProjectPreset(presetId: ProjectPresetId): void {
     const preset = PROJECT_PRESETS.find((item) => item.id === presetId);
     if (!preset) return;
+    // Toggle off if re-clicking the active preset.
+    if (projectPreset === presetId) {
+      setProjectPreset(undefined);
+      return;
+    }
     setProjectPreset(presetId);
     setProjectInstructions(preset.instructions);
+    setProjectIcon(preset.icon);
+    setProjectColor(preset.color);
+    setProjectMemoryScope(preset.memoryScope);
   }
 
   function addProjectFile(attachment: SelectedFileAttachment): void {
@@ -779,6 +928,8 @@ export default function App(): JSX.Element {
       instructions: projectInstructions.trim(),
       memoryScope: projectMemoryScope,
       presetId: projectPreset,
+      icon: projectIcon,
+      color: projectColor,
       files: projectFiles,
       updatedAt: new Date().toISOString(),
     };
@@ -828,10 +979,6 @@ export default function App(): JSX.Element {
         if (!mounted) return;
         bootstrap(payload);
         applyAppTheme(payload.theme, payload.settings.themePreference ?? 'dark');
-        const actionCatalog = await listPrivilegedActions();
-        if (mounted) {
-          setPrivilegedActions(actionCatalog);
-        }
         const credentials = await listProviderCredentials();
         const accountProfiles = await listProviderProfiles();
         if (mounted) {
@@ -852,7 +999,19 @@ export default function App(): JSX.Element {
         unlisteners.push(await onSessionChanged((session) => upsertSession(session)));
         unlisteners.push(await onPermissionRaised((request) => addPermission(request)));
         unlisteners.push(await onPermissionResolved((requestId) => removePermission(requestId)));
-        unlisteners.push(await onPermissionOutcome((outcome) => recordPermissionOutcome(outcome)));
+        unlisteners.push(await onPermissionOutcome((outcome) => {
+          recordPermissionOutcome(outcome);
+          if (!outcome.sessionId) return;
+          const target = useAppStore.getState().sessions.find((item) => item.id === outcome.sessionId);
+          if (!target) return;
+          const message: ChatMessage = {
+            id: `outcome-${outcome.requestId}-${Date.now()}`,
+            role: 'assistant',
+            content: buildOutcomeMessage(outcome),
+            createdAt: outcome.at || new Date().toISOString(),
+          };
+          upsertSession({ ...target, updatedAt: message.createdAt, messages: [...target.messages, message] });
+        }));
         unlisteners.push(
           await onLocalRuntimeState((snapshot) => {
             setLocalRuntime(snapshot);
@@ -917,6 +1076,11 @@ export default function App(): JSX.Element {
     return () => media.removeEventListener('change', apply);
   }, [settings?.themePreference, theme]);
 
+  async function handleDecidePermission(requestId: string, decision: PermissionDecision): Promise<void> {
+    await decidePermission(requestId, decision);
+    removePermission(requestId);
+  }
+
   async function ensureSession(seed: string): Promise<string> {
     if (selectedSessionId) {
       return selectedSessionId;
@@ -925,6 +1089,30 @@ export default function App(): JSX.Element {
     upsertSession(created);
     selectSession(created.id);
     return created.id;
+  }
+
+  // Non-blocking AI title generation: fires after the first exchange, sends a
+  // minimal title-gen prompt to the model and renames the session if the result
+  // is a short, clean title. Falls back silently to the deterministic title.
+  async function generateAiTitle(sessionId: string, userText: string): Promise<void> {
+    try {
+      const snippet = userText.replace(/```[\s\S]*?```/g, '').trim().slice(0, 300);
+      if (!snippet) return;
+      const result = await sendTemporaryOrderToAgent(
+        [],
+        `Gere um título curto (3 a 7 palavras) para uma conversa que começa com:\n"${snippet}"\n\nResponda SOMENTE o título, sem pontuação final, sem aspas, sem explicações.`,
+      );
+      const lastMsg = [...result.messages].reverse().find((m) => m.role === 'assistant');
+      if (!lastMsg?.content) return;
+      // Sanitize the AI title: reject offensive content, strip noise, cap length.
+      // If the model echoed something unusable, keep the deterministic title.
+      const title = sanitizeTitle(lastMsg.content);
+      if (!title) return;
+      const renamed = await renameSession(sessionId, title);
+      upsertSession(renamed);
+    } catch {
+      // Provider not configured or call failed; deterministic title stands.
+    }
   }
 
   function handleCreateSession(): void {
@@ -965,11 +1153,177 @@ export default function App(): JSX.Element {
     setTemporaryMessages([]);
   }
 
+  function memoryRecallMode(): MemoryRecallMode {
+    return activeProject && projectMemoryScope === 'project' ? 'project_only' : 'default';
+  }
+
+  function memoryEnabled(): boolean {
+    return settings?.personalization?.memoriesStored !== false;
+  }
+
+  /// Posts a user message + a locally-produced assistant reply without calling
+  /// the model. Used by the deterministic memory-command fallback.
+  async function postLocalExchange(userText: string, assistantText: string): Promise<void> {
+    const now = Date.now();
+    const userMessage: ChatMessage = {
+      id: `mem-user-${now}`,
+      role: 'user',
+      content: userText,
+      createdAt: new Date().toISOString(),
+    };
+    const assistantMessage: ChatMessage = {
+      id: `mem-assistant-${now}`,
+      role: 'assistant',
+      content: assistantText,
+      createdAt: new Date().toISOString(),
+    };
+    if (temporaryChatActive) {
+      setTemporaryMessages((prev) => [...prev, userMessage, assistantMessage]);
+      return;
+    }
+    const sessionId = await ensureSession(userText);
+    const session = useAppStore.getState().sessions.find((item) => item.id === sessionId);
+    if (!session) return;
+    upsertSession({
+      ...session,
+      updatedAt: assistantMessage.createdAt,
+      messages: [...session.messages, userMessage, assistantMessage],
+    });
+  }
+
+  /// Deterministic fallback for simple memory commands while AI tool-use is not
+  /// available. Saves/lists/forgets via the memory_store commands, then replies
+  /// locally — the model is never called.
+  async function handleMemoryCommand(command: MemoryCommand, originalText: string): Promise<void> {
+    if (command.type === 'recall') {
+      const entries = await listMemoryEntries();
+      const scoped = entries.filter((entry) =>
+        command.scope === 'global'
+          ? entry.scope === 'global'
+          : entry.scope === 'project' && entry.project === activeProject,
+      );
+      const header = command.scope === 'global'
+        ? 'O que eu lembro sobre você:'
+        : `O que eu lembro sobre ${activeProject ?? 'este projeto'}:`;
+      const body = scoped.length
+        ? scoped.map((entry) => `- ${entry.content}`).join('\n')
+        : command.scope === 'global'
+          ? 'Ainda não guardei nenhuma memória global sobre você.'
+          : 'Ainda não há memórias para este projeto.';
+      await postLocalExchange(originalText, `${header}\n${body}`);
+      return;
+    }
+    if (command.type === 'forget') {
+      const entries = await listMemoryEntries();
+      const needle = command.query.toLowerCase();
+      const matches = entries.filter((entry) => entry.content.toLowerCase().includes(needle));
+      if (matches.length === 0) {
+        await postLocalExchange(originalText, `Não encontrei memória que combine com "${command.query}".`);
+        return;
+      }
+      for (const match of matches) {
+        await deleteMemoryEntry(match.id);
+      }
+      await postLocalExchange(originalText, `Esqueci ${matches.length} memória(s) que combinavam com "${command.query}".`);
+      return;
+    }
+    // save
+    let content = command.content.trim();
+    if (!content) {
+      const messages = temporaryChatActive ? temporaryMessages : selectedSession?.messages ?? [];
+      content = [...messages].reverse().find((message) => message.role === 'assistant')?.content.trim() ?? '';
+    }
+    if (!content) {
+      await postLocalExchange(originalText, 'Diga o que devo lembrar. Ex.: "lembre que eu prefiro respostas curtas".');
+      return;
+    }
+    let scope = command.scope;
+    let project: string | undefined;
+    if (scope === 'project') {
+      if (activeProject) {
+        project = activeProject;
+      } else {
+        scope = 'global';
+      }
+    }
+    await saveMemoryEntry({
+      id: typeof crypto !== 'undefined' && 'randomUUID' in crypto ? crypto.randomUUID() : `mem-${Date.now()}`,
+      content,
+      kind: 'note',
+      scope,
+      project,
+      origin: 'user',
+      confidence: 1,
+      manual: true,
+      createdAt: '',
+    });
+    const where = scope === 'project' ? `no projeto ${project}` : 'na memória global';
+    await postLocalExchange(originalText, `Guardado ${where}: ${content}`);
+  }
+
   async function handleSendPrompt(prompt: string, mode: InputModeId = 'auto', attachments: ChatAttachment[] = []): Promise<void> {
     const cleaned = trimMultiline(prompt);
     if (!cleaned && attachments.length === 0) return;
     const visibleContent = cleaned || 'Anexo enviado.';
     const outgoingAttachments = [...attachments];
+
+    // Deterministic memory-command fallback (until AI tool-use lands): handle
+    // "lembre que…", "esqueça…", "o que você lembra…" locally and stop here.
+    const memoryCommand = cleaned ? parseMemoryCommand(cleaned) : undefined;
+    if (memoryCommand) {
+      setBusy(true);
+      try {
+        await handleMemoryCommand(memoryCommand, visibleContent);
+      } catch (cause) {
+        setError(cause instanceof Error ? cause.message : 'Falha ao acessar a memória.');
+      } finally {
+        setBusy(false);
+      }
+      return;
+    }
+
+    // Internal tool-use: collect real data first, then either post locally
+    // (approval/error cases) or inject the data as hidden context so the model
+    // composes a natural, data-driven answer instead of preset text.
+    const toolId = cleaned && !temporaryChatActive ? detectToolIntent(cleaned) : undefined;
+    if (toolId) {
+      setBusy(true);
+      let toolResult: Awaited<ReturnType<typeof runTool>> | undefined;
+      try {
+        toolResult = await runTool(toolId, { ensureSession });
+      } catch (cause) {
+        setError(cause instanceof Error ? cause.message : 'Falha ao executar a ferramenta.');
+        setBusy(false);
+        return;
+      }
+      setBusy(false);
+
+      if (toolResult.permissionRequest) addPermission(toolResult.permissionRequest);
+
+      if (!toolResult.ok || toolResult.approvalRequested) {
+        // Error or approval-pending: reply locally, do not call the model.
+        const text = toolResult.ok
+          ? toolResult.summary
+          : `Não consegui usar essa ferramenta agora: ${toolResult.error ?? 'erro desconhecido.'}`;
+        await postLocalExchange(visibleContent, text);
+        return;
+      }
+
+      // Safe tool succeeded: inject real data as hidden context attachment so
+      // the model responds naturally with the actual data, not preset text.
+      outgoingAttachments.push({
+        path: `tool://${toolId}`,
+        name: 'Dados do sistema',
+        kind: 'text',
+        mimeType: 'text/plain',
+        size: 0,
+        previewAvailable: false,
+        hidden: true,
+        contextText: `[resultado real da ferramenta '${toolId}' — use estes dados para responder de forma natural, precisa e completa. Não invente dados além do que está aqui]\n${toolResult.summary}`,
+        contextSource: 'system',
+      });
+      // Fall through to the normal model-send path below.
+    }
 
     if (!temporaryChatActive && activeProject) {
       const meta = readProjectMeta(activeProject);
@@ -978,6 +1332,23 @@ export default function App(): JSX.Element {
         meta?.memoryScope === 'project' ? meta.instructions : undefined,
       );
       if (projectMemory) outgoingAttachments.push(projectMemory);
+    }
+
+    // Inject relevant structured memories (global + active project per mode).
+    // Best-effort: never block a send if the store cannot be read.
+    if (!temporaryChatActive) {
+      try {
+        const entries = await listMemoryEntries();
+        const memoryAttachment = buildMemoryAttachment(entries, {
+          mode: memoryRecallMode(),
+          activeProject,
+          query: visibleContent,
+          enabled: memoryEnabled(),
+        });
+        if (memoryAttachment) outgoingAttachments.push(memoryAttachment);
+      } catch {
+        // memory is optional context; ignore failures
+      }
     }
 
     if (temporaryChatActive) {
@@ -992,7 +1363,8 @@ export default function App(): JSX.Element {
       setTemporaryMessages([...previousMessages, userMessage]);
       setBusy(true);
       try {
-        const session = await sendTemporaryOrderToAgent(previousMessages, visibleContent, mode, outgoingAttachments);
+        const routed = resolveSendRouting(mode);
+        const session = await sendTemporaryOrderToAgent(previousMessages, visibleContent, mode, outgoingAttachments, routed?.providerId, routed?.modelId);
         setTemporaryMessages(session.messages);
       } catch (cause) {
         const message = cause instanceof Error ? cause.message : 'Falha ao executar Bate-papo Temporário.';
@@ -1027,12 +1399,18 @@ export default function App(): JSX.Element {
       if (activeProject) {
         rememberProjectSession(activeProject, sessionId);
       }
-      const updated = await sendOrderToAgent(sessionId, visibleContent, mode, outgoingAttachments);
+      const routed = resolveSendRouting(mode);
+      const updated = await sendOrderToAgent(sessionId, visibleContent, mode, outgoingAttachments, routed?.providerId, routed?.modelId);
       if (activeProject) {
         const assistantText = [...updated.messages].reverse().find((message) => message.role === 'assistant')?.content ?? '';
         if (assistantText.trim()) updateProjectMemoryFromExchange(activeProject, visibleContent, assistantText);
       }
       upsertSession(updated);
+      // Fire non-blocking AI title generation on the first real exchange.
+      // Message count === 2 means exactly 1 user + 1 assistant message.
+      if (updated.messages.length === 2) {
+        void generateAiTitle(sessionId, visibleContent);
+      }
     } catch (cause) {
       const message = cause instanceof Error ? cause.message : 'Falha ao enviar mensagem ao provider.';
       if (sessionId) {
@@ -1060,41 +1438,14 @@ export default function App(): JSX.Element {
     }
   }
 
-  async function handleExecuteCommand(command: string): Promise<void> {
-    const cleaned = trimMultiline(command);
-    if (!cleaned) return;
-    setBusy(true);
-    try {
-      const sessionId = await ensureSession(cleaned);
-      const response = await requestExecution({
-        sessionId,
-        command: cleaned,
-        cwd: settings?.workspaceRoot,
-        reason: 'Comando solicitado pelo usuário na central.',
-      });
-      if (response.permissionRequest) {
-        addPermission(response.permissionRequest);
-      }
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function handleRequestPrivilegedAction(actionId: string, args: Record<string, unknown>, dryRun: boolean): Promise<void> {
-    setBusy(true);
-    try {
-      const sessionId = await ensureSession(actionId);
-      const request = await requestPrivilegedAction({
-        sessionId,
-        actionId,
-        args,
-        reason: 'Ação privilegiada solicitada pelo usuário no painel de permissões.',
-        dryRun,
-      });
-      addPermission(request);
-    } finally {
-      setBusy(false);
-    }
+  async function handleRedoMessage(messageId: string): Promise<void> {
+    const session = selectedSession ?? temporarySession;
+    if (!session) return;
+    const idx = session.messages.findIndex((m) => m.id === messageId);
+    if (idx < 0) return;
+    const prevUser = [...session.messages].slice(0, idx).reverse().find((m) => m.role === 'user');
+    if (!prevUser) return;
+    await handleSendPrompt(prevUser.content, 'auto', prevUser.attachments ?? []);
   }
 
   async function applySettings(next: AppSettings): Promise<void> {
@@ -1299,6 +1650,19 @@ export default function App(): JSX.Element {
 
   async function handleInstallLocalModel(model: LocalModelProfile): Promise<void> {
     if (!settings) return;
+    // Heavy models can swap/freeze on modest hardware. Require explicit
+    // confirmation and show the (estimated) memory cost before downloading.
+    const isHeavy = model.caveats?.some((caveat) => caveat.toLowerCase().includes('pesado')) ?? false;
+    if (isHeavy && typeof window !== 'undefined' && typeof window.confirm === 'function') {
+      const proceed = window.confirm(
+        `${model.displayName} é um modelo pesado.\n\n`
+        + `RAM estimada: ${model.ramRequirement || 'desconhecida'} · VRAM estimada: ${model.vramRequirement || 'desconhecida'}\n`
+        + '(valores estimados, não medidos no seu hardware)\n\n'
+        + 'Pode usar swap, ficar muito lento ou travar em máquinas com pouca memória. '
+        + 'Baixar mesmo assim?',
+      );
+      if (!proceed) return;
+    }
     setModelActionBusyId(model.id);
     try {
       const snapshot = await installLocalModel(model.modelId);
@@ -1453,7 +1817,7 @@ export default function App(): JSX.Element {
     selectSession(undefined);
   }
 
-  function handleSessionMenuAction(session: AgentSession, action: 'pin' | 'archive' | 'share' | 'move-to-project' | 'remove-from-project'): void {
+  function handleSessionMenuAction(session: AgentSession, action: 'pin' | 'archive' | 'move-to-project' | 'remove-from-project'): void {
     if (action === 'pin') {
       pushToast('info', 'Pino será conectado na próxima etapa.');
       return;
@@ -1462,10 +1826,6 @@ export default function App(): JSX.Element {
       void handleArchiveSession(session).catch((cause) => {
         setError(cause instanceof Error ? cause.message : 'Falha ao arquivar conversa.');
       });
-      return;
-    }
-    if (action === 'share') {
-      pushToast('info', 'Compartilhamento será conectado na próxima etapa.');
       return;
     }
     if (action === 'move-to-project') {
@@ -1652,19 +2012,10 @@ export default function App(): JSX.Element {
     <CommandInputPanel
       key={temporaryChatActive ? 'temporary-composer' : activeProject ? `project-${activeProject}` : 'regular-composer'}
       busy={busy}
-      privilegedActions={privilegedActions}
       onSendOrder={handleSendPrompt}
-      onExecuteCommand={handleExecuteCommand}
-      onRequestPrivilegedAction={handleRequestPrivilegedAction}
-      actionJsonExamples={actionJsonExamples}
       orderDisabledReason={orderDisabledReason}
-      executionMode={executionMode}
-      activeModelLabel={activeModelLabel}
-      providerLabel={selectedProviderStatus?.state === 'ready' ? selectedProvider?.label : 'Configurar'}
-      runtimeState={executionMode === 'local' ? localRuntime?.state : undefined}
-      onOpenModelSelector={() => openEnvironmentTab('ready')}
-      onOpenTerminal={() => setTerminalOpen(true)}
       onOpenSkills={() => setSkillStudioOpen(true)}
+      onToast={pushToast}
     />
   );
 
@@ -1675,6 +2026,7 @@ export default function App(): JSX.Element {
           <SessionsPanel
             sessions={sessions}
             projects={sidebarProjects}
+            projectAppearance={projectAppearance}
             projectSessions={projectSessionsByName}
             activeProject={activeProject}
             selectedSessionId={selectedSessionId}
@@ -1745,7 +2097,7 @@ export default function App(): JSX.Element {
                     <p>Esta conversa não aparecerá no histórico e as suas mensagens não serão guardadas.</p>
                   </section>
                 ) : (
-                  <ChatPanel session={temporarySession} emptyTitle="Bate-papo Temporário" onOpenEnvironment={() => openEnvironmentTab('ready')} isResponding={activeChatResponding} />
+                  <ChatPanel session={temporarySession} emptyTitle="Bate-papo Temporário" onOpenEnvironment={() => openEnvironmentTab('ready')} onChangeModel={() => openSettingsTab('models')} onChangeAccount={() => openEnvironmentTab('accounts')} onRedoMessage={handleRedoMessage} isResponding={activeChatResponding} onToast={pushToast} />
                 )}
                 {commandInput}
               </>
@@ -1754,7 +2106,7 @@ export default function App(): JSX.Element {
                 <div className="project-workspace-inner">
                   <header className="project-workspace-header">
                     <ProjectFolderIcon />
-                    <h1>{activeProject}</h1>
+                    <h1 className="project-workspace-title" title={activeProject}>{activeProject}</h1>
                   </header>
                   {commandInput}
                   <section className="project-conversation-section" aria-label={`Conversas do projeto ${activeProject}`}>
@@ -1793,10 +2145,6 @@ export default function App(): JSX.Element {
                                   <UiIcon name="archive" className="menu-icon" />
                                   Arquivo
                                 </button>
-                                <button type="button" onClick={() => { setProjectConversationMenuId(undefined); handleSessionMenuAction(session, 'share'); }}>
-                                  <UiIcon name="send" className="menu-icon" />
-                                  Compartilhar
-                                </button>
                                 <button type="button" onClick={() => { setProjectConversationMenuId(undefined); void handleExportSession(session, 'markdown'); }}>
                                   <UiIcon name="download" className="menu-icon" />
                                   Baixar
@@ -1829,7 +2177,7 @@ export default function App(): JSX.Element {
               </section>
             ) : (
               <>
-                <ChatPanel session={selectedSession} emptyTitle="O que gostaria de explorar?" onOpenEnvironment={() => openEnvironmentTab('accounts')} isResponding={activeChatResponding} />
+                <ChatPanel session={selectedSession} emptyTitle="O que gostaria de explorar?" onOpenEnvironment={() => openEnvironmentTab('accounts')} onChangeModel={() => openSettingsTab('models')} onChangeAccount={() => openEnvironmentTab('accounts')} onRedoMessage={handleRedoMessage} isResponding={activeChatResponding} onToast={pushToast} />
                 {commandInput}
               </>
             )}
@@ -1860,6 +2208,7 @@ export default function App(): JSX.Element {
           onImportConversations={handleImportConversations}
           onArchiveAllConversations={handleArchiveAllConversations}
           onDeleteAllConversations={handleDeleteAllConversations}
+          onOpenMemoryManager={() => setMemoryManagerOpen(true)}
           initialTab={settingsTabRequest?.tab ?? 'general'}
         />
       </PremiumModal>
@@ -1879,6 +2228,14 @@ export default function App(): JSX.Element {
         open={skillStudioOpen}
         sessionId={activeChatSession?.id}
         onClose={() => setSkillStudioOpen(false)}
+        onToast={pushToast}
+      />
+
+      <MemoryManagerModal
+        open={memoryManagerOpen}
+        projects={sidebarProjects}
+        activeProject={activeProject}
+        onClose={() => setMemoryManagerOpen(false)}
         onToast={pushToast}
       />
 
@@ -1923,10 +2280,28 @@ export default function App(): JSX.Element {
       >
         <div className="project-dialog project-dialog-simple">
           <div className="project-name-row">
-            <span className="project-plus-mark" aria-hidden="true">
-              <UiIcon name="folderPlus" />
-            </span>
+            <div className="popup-anchor project-appearance-anchor">
+              <button
+                type="button"
+                className="project-appearance-button"
+                style={{ background: projectColor }}
+                aria-label="Escolher ícone e cor do projeto"
+                aria-expanded={projectAppearanceOpen}
+                onClick={() => setProjectAppearanceOpen((current) => !current)}
+              >
+                <UiIcon name={projectIcon} className="project-appearance-icon" />
+              </button>
+              <ProjectAppearancePicker
+                open={projectAppearanceOpen}
+                icon={projectIcon}
+                color={projectColor}
+                onClose={() => setProjectAppearanceOpen(false)}
+                onSelectIcon={(icon) => setProjectIcon(icon)}
+                onSelectColor={(color) => setProjectColor(color)}
+              />
+            </div>
             <input
+              data-autofocus
               value={projectName}
               placeholder="Nome do Projeto"
               onChange={(event) => setProjectName(event.target.value)}
@@ -2039,6 +2414,11 @@ export default function App(): JSX.Element {
           addProjectFile(attachment);
           setProjectFileManagerOpen(false);
         }}
+      />
+
+      <PermissionApprovalModal
+        permissions={pendingPermissions}
+        onDecide={handleDecidePermission}
       />
 
       <ToastViewport

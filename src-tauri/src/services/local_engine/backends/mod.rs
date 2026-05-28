@@ -27,6 +27,9 @@ pub async fn detect_backends(snapshot: &HardwareSnapshot) -> Vec<BackendStatus> 
 }
 
 fn cloud_fallback() -> BackendStatus {
+    // Never advertised as "ready": cloud only works when a provider has been
+    // configured and tested, which this layer cannot confirm. It stays a
+    // viable last-resort candidate for the selector without faking readiness.
     BackendStatus {
         id: RuntimeBackendId::CloudFallback,
         label: "Cloud (fallback)".to_owned(),
@@ -57,7 +60,7 @@ mod tests {
     #[test]
     fn cloud_fallback_is_not_ready_without_provider_validation() {
         let status = cloud_fallback();
-
+        assert_eq!(status.id, RuntimeBackendId::CloudFallback);
         assert_eq!(status.availability, BackendAvailability::Unknown);
         assert!(status.detail.contains("testar um provider cloud"));
     }
