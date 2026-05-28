@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   bootstrapState,
   archiveSession,
@@ -50,6 +50,7 @@ import {
   type CloudModelProfile,
   type LocalModelProfile,
 } from '../lib/models/modelRegistry';
+import { resolveModelForTask, type RoutableModel, type TaskMode } from '../lib/models/routing';
 import {
   buildCloudModelOptions,
   buildLocalModelOptions,
@@ -724,6 +725,49 @@ export default function App(): JSX.Element {
     });
   }, [installationProgress, localRuntime, selectedProviderStatus]);
 
+  // Maps the visible model options to the router's lightweight shape, pulling
+  // quality scores from the registry. Used to resolve a model per composer mode.
+  const routableModels = useMemo(() => {
+    const toRoutable = (option: TopBarModelOption, mode: 'local' | 'cloud'): RoutableModel | undefined => {
+      const profile = modelRegistry.byId(option.id) ?? modelRegistry.byId(option.modelId ?? '');
+      const providerId = option.providerId ?? profile?.providerId;
+      const modelId = option.modelId ?? profile?.modelId ?? option.id;
+      if (!providerId || !modelId) return undefined;
+      return {
+        providerId,
+        modelId,
+        mode,
+        codeQuality: profile?.codeQuality,
+        reasoningQuality: profile?.reasoningQuality,
+        speed: profile?.speed,
+        available: option.available,
+      };
+    };
+    return {
+      local: topbarLocalModels.map((o) => toRoutable(o, 'local')).filter((m): m is RoutableModel => Boolean(m)),
+      cloud: topbarCloudModels.map((o) => toRoutable(o, 'cloud')).filter((m): m is RoutableModel => Boolean(m)),
+    };
+  }, [topbarLocalModels, topbarCloudModels]);
+
+  // Resolves the provider/model for a composer mode using the routing resolver.
+  // Returns undefined when nothing better than the current default applies, so
+  // the send path keeps its existing behavior (never breaks).
+  const resolveSendRouting = useCallback((mode: InputModeId): { providerId: string; modelId: string } | undefined => {
+    if (!settings) return undefined;
+    const resolved = resolveModelForTask({
+      mode: mode as TaskMode,
+      localPreferred: settings.aiRouting?.fallbackPolicy === 'local_first',
+      defaultModel: { providerId: settings.selectedProviderId, modelId: settings.selectedModelId },
+      availableLocalModels: routableModels.local,
+      availableCloudModels: routableModels.cloud,
+    });
+    if (!resolved.provider || !resolved.model) return undefined;
+    if (resolved.provider === settings.selectedProviderId && resolved.model === settings.selectedModelId) {
+      return undefined;
+    }
+    return { providerId: resolved.provider, modelId: resolved.model };
+  }, [settings, routableModels]);
+
   const orderDisabledReason = useMemo(() => {
     if (!settings) return 'Configurações não carregadas.';
 
@@ -1319,7 +1363,8 @@ export default function App(): JSX.Element {
       setTemporaryMessages([...previousMessages, userMessage]);
       setBusy(true);
       try {
-        const session = await sendTemporaryOrderToAgent(previousMessages, visibleContent, mode, outgoingAttachments);
+        const routed = resolveSendRouting(mode);
+        const session = await sendTemporaryOrderToAgent(previousMessages, visibleContent, mode, outgoingAttachments, routed?.providerId, routed?.modelId);
         setTemporaryMessages(session.messages);
       } catch (cause) {
         const message = cause instanceof Error ? cause.message : 'Falha ao executar Bate-papo Temporário.';
@@ -1354,7 +1399,8 @@ export default function App(): JSX.Element {
       if (activeProject) {
         rememberProjectSession(activeProject, sessionId);
       }
-      const updated = await sendOrderToAgent(sessionId, visibleContent, mode, outgoingAttachments);
+      const routed = resolveSendRouting(mode);
+      const updated = await sendOrderToAgent(sessionId, visibleContent, mode, outgoingAttachments, routed?.providerId, routed?.modelId);
       if (activeProject) {
         const assistantText = [...updated.messages].reverse().find((message) => message.role === 'assistant')?.content ?? '';
         if (assistantText.trim()) updateProjectMemoryFromExchange(activeProject, visibleContent, assistantText);

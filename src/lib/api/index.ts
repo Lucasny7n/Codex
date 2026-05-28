@@ -178,8 +178,10 @@ export async function sendOrderToAgent(
   content: string,
   mode?: string,
   attachments: ChatAttachment[] = [],
+  providerOverride?: string,
+  modelOverride?: string,
 ): Promise<AgentSession> {
-  return invoke('send_order_to_agent', { sessionId, content, mode, attachments });
+  return invoke('send_order_to_agent', { sessionId, content, mode, attachments, providerOverride, modelOverride });
 }
 
 export async function sendTemporaryOrderToAgent(
@@ -187,8 +189,10 @@ export async function sendTemporaryOrderToAgent(
   content: string,
   mode?: string,
   attachments: ChatAttachment[] = [],
+  providerOverride?: string,
+  modelOverride?: string,
 ): Promise<AgentSession> {
-  return invoke('send_temporary_order_to_agent', { messages, content, mode, attachments });
+  return invoke('send_temporary_order_to_agent', { messages, content, mode, attachments, providerOverride, modelOverride });
 }
 
 export async function compareModels(input: ModelComparisonRequest): Promise<ModelComparisonResponse> {

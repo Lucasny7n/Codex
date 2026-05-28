@@ -713,7 +713,7 @@ describe('App layout visibility', () => {
     expect(await screen.findByText('opa')).toBeInTheDocument();
     expect(screen.getByLabelText('Assistente respondendo')).toBeInTheDocument();
     expect(api.createSession).toHaveBeenCalledTimes(1);
-    expect(api.sendOrderToAgent).toHaveBeenCalledWith('created-session', 'opa', 'auto', []);
+    expect(api.sendOrderToAgent).toHaveBeenCalledWith('created-session', 'opa', 'auto', [], undefined, undefined);
 
     const now = new Date().toISOString();
     resolveOrder({
@@ -824,6 +824,8 @@ describe('App layout visibility', () => {
         'mensagem sem histórico',
         'auto',
         [],
+        undefined,
+        undefined,
       );
     });
     expect(await screen.findByText('mensagem sem histórico')).toBeInTheDocument();

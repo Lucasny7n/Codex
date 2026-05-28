@@ -3123,6 +3123,8 @@ pub async fn send_order_to_agent(
     content: String,
     mode: Option<String>,
     attachments: Option<Vec<Value>>,
+    provider_override: Option<String>,
+    model_override: Option<String>,
 ) -> Result<AgentSession, ErrorPayload> {
     run_agent_order(
         Some(&app),
@@ -3133,6 +3135,8 @@ pub async fn send_order_to_agent(
         content,
         mode,
         attachments.unwrap_or_default(),
+        provider_override,
+        model_override,
     )
     .await
     .map_err(map_err)
@@ -3145,6 +3149,8 @@ pub async fn send_temporary_order_to_agent(
     content: String,
     mode: Option<String>,
     attachments: Option<Vec<Value>>,
+    provider_override: Option<String>,
+    model_override: Option<String>,
 ) -> Result<AgentSession, ErrorPayload> {
     run_temporary_agent_order(
         state.provider_registry.clone(),
@@ -3153,6 +3159,8 @@ pub async fn send_temporary_order_to_agent(
         content,
         mode,
         attachments.unwrap_or_default(),
+        provider_override,
+        model_override,
     )
     .await
     .map_err(map_err)
@@ -3234,6 +3242,8 @@ async fn run_agent_order(
     content: String,
     mode: Option<String>,
     attachments: Vec<Value>,
+    provider_override: Option<String>,
+    model_override: Option<String>,
 ) -> crate::error::AppResult<AgentSession> {
     let prompt = content.trim();
     if prompt.is_empty() && attachments.is_empty() {
@@ -3249,11 +3259,23 @@ async fn run_agent_order(
         .as_ref()
         .map(|session| session.messages.clone())
         .unwrap_or_default();
-    let provider_id = session_environment
-        .as_ref()
-        .and_then(|session| session.provider_id.clone())
+    // Precedence: per-send routing override (resolved by the composer mode) >
+    // the session's sticky provider/model > saved settings.
+    let provider_id = provider_override
+        .clone()
+        .filter(|value| !value.trim().is_empty())
+        .or_else(|| {
+            session_environment
+                .as_ref()
+                .and_then(|session| session.provider_id.clone())
+        })
         .unwrap_or_else(|| settings.selected_provider_id.clone());
-    let model_id = if let Some(model_id) = session_environment
+    let model_id = if let Some(model_id) = model_override
+        .clone()
+        .filter(|value| !value.trim().is_empty())
+    {
+        model_id
+    } else if let Some(model_id) = session_environment
         .as_ref()
         .and_then(|session| session.model_id.clone())
     {
@@ -3412,6 +3434,8 @@ async fn run_temporary_agent_order(
     content: String,
     mode: Option<String>,
     attachments: Vec<Value>,
+    provider_override: Option<String>,
+    model_override: Option<String>,
 ) -> crate::error::AppResult<AgentSession> {
     let prompt = content.trim();
     if prompt.is_empty() && attachments.is_empty() {
@@ -3436,8 +3460,16 @@ async fn run_temporary_agent_order(
         attachments: attachments.clone(),
     });
 
-    let provider_id = settings.selected_provider_id.clone();
-    let model_id = if settings.execution_mode == crate::models::ExecutionMode::Local {
+    let provider_id = provider_override
+        .clone()
+        .filter(|value| !value.trim().is_empty())
+        .unwrap_or_else(|| settings.selected_provider_id.clone());
+    let model_id = if let Some(model_id) = model_override
+        .clone()
+        .filter(|value| !value.trim().is_empty())
+    {
+        model_id
+    } else if settings.execution_mode == crate::models::ExecutionMode::Local {
         settings
             .selected_local_model_id
             .clone()
@@ -3715,6 +3747,8 @@ mod agent_order_tests {
             "crie um plano curto".to_owned(),
             None,
             Vec::new(),
+            None,
+            None,
         )
         .await
         .expect("ordem mock deve responder");
@@ -3728,6 +3762,37 @@ mod agent_order_tests {
             message.role,
             crate::models::ChatRole::Assistant
         ) && message.content.starts_with("[MOCK]")));
+
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[tokio::test]
+    async fn run_agent_order_uses_model_override_for_routing() {
+        let dir = temp_sessions_dir();
+        let session_manager = Arc::new(SessionManager::new(&dir).expect("manager deve iniciar"));
+        let provider_registry = Arc::new(ProviderRegistry::new_with_mock_for_tests());
+        let session = session_manager
+            .create_session("teste")
+            .expect("sessão deve ser criada");
+
+        let updated = run_agent_order(
+            None,
+            session_manager,
+            provider_registry,
+            mock_settings(dir.to_string_lossy().to_string()),
+            session.id,
+            "modo código".to_owned(),
+            Some("code".to_owned()),
+            Vec::new(),
+            Some("mock-development".to_owned()),
+            Some("override-coder".to_owned()),
+        )
+        .await
+        .expect("ordem com override deve responder");
+
+        // O modelo resolvido por tarefa (override) é o usado/registrado, não o
+        // padrão do settings.
+        assert_eq!(updated.model_id.as_deref(), Some("override-coder"));
 
         let _ = fs::remove_dir_all(dir);
     }
