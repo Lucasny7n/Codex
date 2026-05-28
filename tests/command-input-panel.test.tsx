@@ -442,7 +442,7 @@ describe('CommandInputPanel', () => {
     // Sem comando cru exposto inline.
     expect(screen.queryByText('sudo pacman -S --needed ffmpeg whisper.cpp')).not.toBeInTheDocument();
     // Acesso discreto para configurar permanece.
-    fireEvent.click(screen.getByText('Configurar transcrição local'));
+    fireEvent.click(screen.getByText('Abrir diagnóstico de voz'));
     expect(await screen.findByRole('dialog', { name: 'Transcrição e microfone' })).toBeInTheDocument();
     expect(api.getSttConfigState).toHaveBeenCalled();
     expect(screen.getByText('Backend STT')).toBeInTheDocument();
@@ -547,7 +547,7 @@ describe('CommandInputPanel', () => {
       expect(onToast).toHaveBeenCalledWith('error', expect.stringContaining('Não consegui gravar áudio pelo fallback nativo'));
     });
     expect(api.recordAndTranscribeShortTest).toHaveBeenCalled();
-    fireEvent.click(screen.getByText('Configurar transcrição local'));
+    fireEvent.click(screen.getByText('Abrir diagnóstico de voz'));
     expect(await screen.findByRole('dialog', { name: 'Transcrição e microfone' })).toBeInTheDocument();
     expect(screen.getByText('Permissão no Linux/Hyprland')).toBeInTheDocument();
   });
@@ -605,7 +605,7 @@ describe('CommandInputPanel', () => {
     );
 
     fireEvent.click(screen.getByLabelText('Entrada por voz'));
-    fireEvent.click(await screen.findByText('Configurar transcrição local'));
+    fireEvent.click(await screen.findByText('Abrir diagnóstico de voz'));
 
     expect(await screen.findByRole('dialog', { name: 'Transcrição e microfone' })).toBeInTheDocument();
     expect(screen.getByText('Transcrição local pronta. Modelo: /home/lucas/.codex/models/ggml-base.bin')).toBeInTheDocument();

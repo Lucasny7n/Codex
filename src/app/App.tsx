@@ -2106,7 +2106,7 @@ export default function App(): JSX.Element {
                 <div className="project-workspace-inner">
                   <header className="project-workspace-header">
                     <ProjectFolderIcon />
-                    <h1>{activeProject}</h1>
+                    <h1 className="project-workspace-title" title={activeProject}>{activeProject}</h1>
                   </header>
                   {commandInput}
                   <section className="project-conversation-section" aria-label={`Conversas do projeto ${activeProject}`}>

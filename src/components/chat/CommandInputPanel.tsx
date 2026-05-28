@@ -64,17 +64,12 @@ const INPUT_MODES: InputModeOption[] = [
   },
 ];
 
-// Planned "+" menu actions not yet wired to a real backend. Shown disabled
-// with an "em breve" badge so we never pretend they work.
+// A short, honest preview of planned "+" actions. Kept small and collapsed so
+// the surface stays clean — we never pretend these work.
 const PLUS_SOON_ITEMS: Array<{ label: string; icon: UiIconName }> = [
   { label: 'Captura de tela', icon: 'image' },
-  { label: 'Adicionar ao projeto', icon: 'folderPlus' },
   { label: 'Adicionar do GitHub', icon: 'globe' },
-  { label: 'Conectores', icon: 'desktop' },
-  { label: 'Pesquisa', icon: 'search' },
   { label: 'Busca na web', icon: 'globe' },
-  { label: 'Estilo', icon: 'pen' },
-  { label: 'Ferramentas', icon: 'fileCode' },
 ];
 
 type VoiceState =
@@ -246,8 +241,10 @@ export function CommandInputPanel({
     stopRecordingTracks();
   }, []);
 
-  // Voice errors surface as a discreet toast, not a persistent red banner under
-  // the composer. Fires once per transition into a failure state.
+  // Voice errors surface as a single discreet toast (not a persistent banner),
+  // fired once per transition into a failure state (no repeats while it stays).
+  // The message is the real, concise diagnostic; copy/diagnostic actions live
+  // in the inline hint below the field.
   useEffect(() => {
     const failed = voiceState === 'error' || voiceState === 'missing-backend' || voiceState === 'permission-denied';
     if (failed && lastVoiceToastRef.current !== voiceState) {
@@ -640,7 +637,7 @@ export function CommandInputPanel({
               </button>
             ) : null}
             <details className="plus-menu-soon">
-              <summary>Em breve</summary>
+              <summary>Recursos futuros</summary>
               {PLUS_SOON_ITEMS.map((item) => (
                 <button
                   key={item.label}
@@ -727,8 +724,17 @@ export function CommandInputPanel({
       {voiceState === 'error' || voiceState === 'missing-backend' || voiceState === 'permission-denied' ? (
         <div className="voice-hint" role="note">
           <span>Voz indisponível agora.</span>
+          {sttSnapshot?.installCommand ? (
+            <button
+              type="button"
+              className="voice-config-button"
+              onClick={() => void navigator.clipboard?.writeText(sttSnapshot.installCommand)}
+            >
+              Copiar comando
+            </button>
+          ) : null}
           <button type="button" className="voice-config-button" onClick={openSttSetup}>
-            {voiceState === 'permission-denied' ? 'Configurar microfone' : 'Configurar transcrição local'}
+            {voiceState === 'permission-denied' ? 'Configurar microfone' : 'Abrir diagnóstico de voz'}
           </button>
         </div>
       ) : null}

@@ -903,7 +903,7 @@ export function SettingsPanel({
               <section className="ollama-manager" aria-label="Model Manager Ollama">
                 <div className="ollama-manager-header">
                   <div>
-                    <strong>Model Manager local</strong>
+                    <strong>Gerenciador de modelos locais</strong>
                     <small>{managerRuntime?.message ?? 'Ollama ainda não foi consultado.'}</small>
                   </div>
                   <button type="button" className="settings-pill-button" disabled={managerBusyId === 'refresh'} onClick={() => void refreshManager()}>
@@ -927,7 +927,7 @@ export function SettingsPanel({
                       onClick={() => managerPullCandidate ? void pullManagerModel(managerPullCandidate.modelId) : undefined}
                       title={managerPullCandidate ? `Baixar ${managerPullCandidate.modelId} pelo Ollama` : undefined}
                     >
-                      Baixar modelo selecionado
+                      {managerPullCandidate ? `Baixar ${managerPullCandidate.modelId}` : 'Baixar modelo'}
                     </button>
                   </div>
                 </label>

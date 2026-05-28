@@ -273,7 +273,7 @@ describe('SettingsPanel', () => {
     renderSettings({ initialTab: 'models' });
 
     // Default sub-tab is Local
-    expect(screen.getByText('Model Manager local')).toBeInTheDocument();
+    expect(screen.getByText('Gerenciador de modelos locais')).toBeInTheDocument();
     expect(screen.getByPlaceholderText('gpt-oss, llama3.2, qwen2.5-coder:7b')).toBeInTheDocument();
     expect(screen.getByText('qwen2.5-coder:1.5b')).toBeInTheDocument();
     expect(screen.getByText('Qwen2.5 Coder 1.5B')).toBeInTheDocument();
@@ -326,7 +326,7 @@ describe('SettingsPanel', () => {
     fireEvent.change(screen.getByPlaceholderText('gpt-oss, llama3.2, qwen2.5-coder:7b'), {
       target: { value: 'gpt oss' },
     });
-    fireEvent.click(screen.getByRole('button', { name: 'Baixar modelo selecionado' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Baixar gpt-oss' }));
 
     await waitFor(() => {
       expect(api.installLocalModel).toHaveBeenCalledWith('gpt-oss');
